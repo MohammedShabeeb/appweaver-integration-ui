@@ -41,6 +41,8 @@ type WorkflowExport = {
   canvases: Record<string, CanvasState>;
 };
 
+type SidebarView = "components" | "workflows";
+
 type PersistedFlowState = {
   workflows?: Record<string, WorkflowRecord>;
   workflowOrder?: string[];
@@ -293,6 +295,7 @@ interface FlowState {
   selectedNode: AppNode | null;
   selectedEdge: AppEdge | null;
   isSidebarOpen: boolean;
+  sidebarView: SidebarView;
   setNodes: (nodes: AppNode[]) => void;
   setEdges: (edges: AppEdge[]) => void;
   addNode: (type: AppNodeType, position: XYPosition) => void;
@@ -307,9 +310,11 @@ interface FlowState {
   goBackCanvas: () => void;
   openCanvasFromBreadcrumb: (canvasId: string) => void;
   toggleSidebar: () => void;
+  openSidebar: (view: SidebarView) => void;
   exportWorkflow: () => WorkflowExport;
   importWorkflow: (raw: unknown, fallbackName?: string) => boolean;
   selectWorkflow: (workflowId: string) => void;
+  deleteWorkflow: (workflowId: string) => void;
 }
 
 const initialWorkflow = createInitialWorkflow();
@@ -346,6 +351,7 @@ export const useFlowStore = create<FlowState>()(
       selectedNode: null,
       selectedEdge: null,
       isSidebarOpen: false,
+      sidebarView: "components",
 
       setNodes: (nodes) =>
         set((state) => {
@@ -426,6 +432,7 @@ export const useFlowStore = create<FlowState>()(
       setSelectedEdge: (edge) => set({ selectedEdge: edge }),
       clearSelection: () => set({ selectedNode: null, selectedEdge: null }),
       toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
+      openSidebar: (view) => set({ isSidebarOpen: true, sidebarView: view }),
       exportWorkflow: () => {
         const state = get();
         const activeWorkflow = state.workflows[state.activeWorkflowId];
@@ -483,6 +490,55 @@ export const useFlowStore = create<FlowState>()(
             canvases: workflow.canvases,
             currentCanvasId: workflow.currentCanvasId,
             canvasStack: workflow.canvasStack,
+            selectedNode: null,
+            selectedEdge: null,
+          };
+        }),
+
+      deleteWorkflow: (workflowId) =>
+        set((state) => {
+          if (!(workflowId in state.workflows)) {
+            return state;
+          }
+
+          const nextWorkflowOrder = state.workflowOrder.filter((id) => id !== workflowId);
+
+          if (nextWorkflowOrder.length === 0) {
+            const replacementWorkflow = createInitialWorkflow();
+
+            return {
+              workflows: {
+                [replacementWorkflow.id]: replacementWorkflow,
+              },
+              workflowOrder: [replacementWorkflow.id],
+              activeWorkflowId: replacementWorkflow.id,
+              canvases: replacementWorkflow.canvases,
+              currentCanvasId: replacementWorkflow.currentCanvasId,
+              canvasStack: replacementWorkflow.canvasStack,
+              selectedNode: null,
+              selectedEdge: null,
+            };
+          }
+
+          const { [workflowId]: deletedWorkflow, ...remainingWorkflows } = state.workflows;
+          void deletedWorkflow;
+          const nextActiveWorkflowId =
+            state.activeWorkflowId === workflowId
+              ? nextWorkflowOrder[0]
+              : state.activeWorkflowId;
+          const nextActiveWorkflow = remainingWorkflows[nextActiveWorkflowId];
+
+          if (!nextActiveWorkflow) {
+            return state;
+          }
+
+          return {
+            workflows: remainingWorkflows,
+            workflowOrder: nextWorkflowOrder,
+            activeWorkflowId: nextActiveWorkflow.id,
+            canvases: nextActiveWorkflow.canvases,
+            currentCanvasId: nextActiveWorkflow.currentCanvasId,
+            canvasStack: nextActiveWorkflow.canvasStack,
             selectedNode: null,
             selectedEdge: null,
           };

@@ -1,44 +1,18 @@
 "use client";
 
-import {
-  useEffect,
-  useRef,
-  useState,
-  type ChangeEvent,
-} from "react";
+import { useRef, type ChangeEvent } from "react";
 
 import { useFlowStore } from "@/store/useFlowStore";
 
 export default function TopNav() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const workflowMenuRef = useRef<HTMLDivElement | null>(null);
-  const [isWorkflowMenuOpen, setIsWorkflowMenuOpen] = useState(false);
   const {
-    activeWorkflowId,
-    canvases,
     exportWorkflow,
     importWorkflow,
     isSidebarOpen,
-    selectWorkflow,
-    toggleSidebar,
-    workflowOrder,
-    workflows,
+    openSidebar,
+    sidebarView,
   } = useFlowStore();
-
-  const activeWorkflow = workflows[activeWorkflowId];
-  const activeWorkflowName =
-    activeWorkflow?.name || canvases[activeWorkflow?.rootCanvasId ?? ""]?.name || "Workflow";
-
-  useEffect(() => {
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!workflowMenuRef.current?.contains(event.target as Node)) {
-        setIsWorkflowMenuOpen(false);
-      }
-    };
-
-    window.addEventListener("mousedown", handlePointerDown);
-    return () => window.removeEventListener("mousedown", handlePointerDown);
-  }, []);
 
   const handleSaveWorkflow = () => {
     const workflow = exportWorkflow();
@@ -62,10 +36,6 @@ export default function TopNav() {
     URL.revokeObjectURL(url);
   };
 
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
-
   const handleImportChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
 
@@ -80,18 +50,14 @@ export default function TopNav() {
 
       if (!imported) {
         window.alert("The selected JSON file is not a valid workflow export.");
+      } else {
+        openSidebar("workflows");
       }
     } catch {
       window.alert("The selected file could not be imported.");
     } finally {
       event.target.value = "";
-      setIsWorkflowMenuOpen(false);
     }
-  };
-
-  const handleWorkflowSelect = (workflowId: string) => {
-    selectWorkflow(workflowId);
-    setIsWorkflowMenuOpen(false);
   };
 
   return (
@@ -114,64 +80,47 @@ export default function TopNav() {
       </div>
 
       <div className="topnav-actions">
-        <div className="topnav-workflow-menu" ref={workflowMenuRef}>
-          <span className="topnav-select-label">Workflow</span>
-          <button
-            type="button"
-            className={`topnav-select-trigger ${isWorkflowMenuOpen ? "topnav-select-trigger-open" : ""}`}
-            onClick={() => setIsWorkflowMenuOpen((open) => !open)}
-            aria-haspopup="listbox"
-            aria-expanded={isWorkflowMenuOpen}
+        <button
+          type="button"
+          className={`topnav-btn ${isSidebarOpen && sidebarView === "workflows" ? "topnav-btn-active" : ""}`}
+          onClick={() => openSidebar("workflows")}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="topnav-btn-icon"
           >
-            <span className="topnav-select-value">{activeWorkflowName}</span>
-            <span className="topnav-select-count">{workflowOrder.length}</span>
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="topnav-select-icon"
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
-
-          {isWorkflowMenuOpen ? (
-            <div className="topnav-select-menu" role="listbox">
-              {workflowOrder.map((workflowId) => {
-                const workflow = workflows[workflowId];
-
-                if (!workflow) {
-                  return null;
-                }
-
-                const isActive = workflow.id === activeWorkflowId;
-
-                return (
-                  <button
-                    key={workflow.id}
-                    type="button"
-                    className={`topnav-select-option ${isActive ? "topnav-select-option-active" : ""}`}
-                    onClick={() => handleWorkflowSelect(workflow.id)}
-                    role="option"
-                    aria-selected={isActive}
-                  >
-                    <span className="topnav-select-option-title">
-                      {workflow.name || canvases[workflow.rootCanvasId]?.name || "Workflow"}
-                    </span>
-                    <span className="topnav-select-option-meta">
-                      {Object.keys(workflow.canvases).length} canvas
-                      {Object.keys(workflow.canvases).length === 1 ? "" : "es"}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
-
+            <rect x="3" y="4" width="18" height="4" rx="1.5" />
+            <rect x="3" y="10" width="18" height="4" rx="1.5" />
+            <rect x="3" y="16" width="18" height="4" rx="1.5" />
+          </svg>
+          Workflows
+        </button>
+        <button
+          type="button"
+          className={`topnav-btn ${isSidebarOpen && sidebarView === "components" ? "topnav-btn-active" : ""}`}
+          onClick={() => openSidebar("components")}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="topnav-btn-icon"
+          >
+            <rect x="3" y="3" width="7" height="7" rx="1.5" />
+            <rect x="14" y="3" width="7" height="7" rx="1.5" />
+            <rect x="3" y="14" width="7" height="7" rx="1.5" />
+            <rect x="14" y="14" width="7" height="7" rx="1.5" />
+          </svg>
+          Components
+        </button>
         <input
           ref={fileInputRef}
           type="file"
@@ -182,7 +131,7 @@ export default function TopNav() {
         <button
           type="button"
           className="topnav-btn"
-          onClick={handleImportClick}
+          onClick={() => fileInputRef.current?.click()}
         >
           <svg
             viewBox="0 0 24 24"
@@ -218,27 +167,6 @@ export default function TopNav() {
             <path d="M5 21h14" />
           </svg>
           Save JSON
-        </button>
-        <button
-          type="button"
-          className={`topnav-btn ${isSidebarOpen ? "topnav-btn-active" : ""}`}
-          onClick={toggleSidebar}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="topnav-btn-icon"
-          >
-            <rect x="3" y="3" width="7" height="7" rx="1.5" />
-            <rect x="14" y="3" width="7" height="7" rx="1.5" />
-            <rect x="3" y="14" width="7" height="7" rx="1.5" />
-            <rect x="14" y="14" width="7" height="7" rx="1.5" />
-          </svg>
-          Components
         </button>
       </div>
     </nav>
