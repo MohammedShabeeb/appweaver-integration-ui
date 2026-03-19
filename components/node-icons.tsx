@@ -56,6 +56,17 @@ export function ContainerIcon(props: IconProps) {
   );
 }
 
+export function ActionIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <rect x="4" y="5" width="16" height="14" rx="3" />
+      <path d="M8 9.5h8" />
+      <path d="M8 13h5" />
+      <circle cx="16.5" cy="13" r="1" fill="currentColor" stroke="none" />
+    </BaseIcon>
+  );
+}
+
 export function ConnectorIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>
@@ -82,5 +93,9 @@ export const nodeTypeMeta = {
   container: {
     label: "Container",
     Icon: ContainerIcon,
+  },
+  action: {
+    label: "Action",
+    Icon: ActionIcon,
   },
 } as const;

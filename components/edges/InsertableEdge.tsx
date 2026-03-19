@@ -79,7 +79,12 @@ export default function InsertableEdge({
 
                 const type = event.dataTransfer.getData("application/reactflow");
 
-                if (type === "http" || type === "delay" || type === "container") {
+                if (
+                  type === "http" ||
+                  type === "delay" ||
+                  type === "container" ||
+                  type === "action"
+                ) {
                   insertNodeOnEdge(id, type);
                 }
               }}

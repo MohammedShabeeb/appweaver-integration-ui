@@ -1,9 +1,14 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Edge, Node, XYPosition } from "reactflow";
+import {
+  createDefaultComponentAssignments,
+  type ComponentGroupId,
+  type ComponentType,
+} from "@/config/componentCatalog";
 
-type AppNodeType = "start" | "http" | "delay" | "container";
-type InsertableNodeType = "http" | "delay" | "container";
+type AppNodeType = ComponentType;
+type InsertableNodeType = Exclude<ComponentType, "start">;
 
 type AppNodeData = {
   label: string;
@@ -50,6 +55,7 @@ type PersistedFlowState = {
   canvases?: Record<string, CanvasState>;
   currentCanvasId?: string;
   canvasStack?: string[];
+  componentGroupAssignments?: Partial<Record<ComponentType, ComponentGroupId>>;
 };
 
 const DEFAULT_WORKFLOW_ID = "workflow-root";
@@ -93,6 +99,7 @@ function createFlowNode(type: AppNodeType, position: XYPosition): AppNode {
     http: "HTTP",
     delay: "Delay",
     container: "Container",
+    action: "Action",
   };
 
   const node: AppNode = {
@@ -234,6 +241,12 @@ function normalizeImportedWorkflow(
 }
 
 function normalizePersistedState(persistedState?: PersistedFlowState) {
+  const defaultAssignments = createDefaultComponentAssignments();
+  const componentGroupAssignments = {
+    ...defaultAssignments,
+    ...(persistedState?.componentGroupAssignments ?? {}),
+  };
+
   if (persistedState?.workflows && Object.keys(persistedState.workflows).length > 0) {
     const workflowOrder =
       persistedState.workflowOrder?.filter(
@@ -253,6 +266,7 @@ function normalizePersistedState(persistedState?: PersistedFlowState) {
       canvases: activeWorkflow.canvases,
       currentCanvasId: activeWorkflow.currentCanvasId,
       canvasStack: activeWorkflow.canvasStack,
+      componentGroupAssignments,
     };
   }
 
@@ -282,6 +296,7 @@ function normalizePersistedState(persistedState?: PersistedFlowState) {
     canvases: legacyWorkflow.canvases,
     currentCanvasId: legacyWorkflow.currentCanvasId,
     canvasStack: legacyWorkflow.canvasStack,
+    componentGroupAssignments,
   };
 }
 
@@ -296,6 +311,7 @@ interface FlowState {
   selectedEdge: AppEdge | null;
   isSidebarOpen: boolean;
   sidebarView: SidebarView;
+  componentGroupAssignments: Record<ComponentType, ComponentGroupId>;
   setNodes: (nodes: AppNode[]) => void;
   setEdges: (edges: AppEdge[]) => void;
   addNode: (type: AppNodeType, position: XYPosition) => void;
@@ -305,12 +321,14 @@ interface FlowState {
   updateNodeData: (id: string, data: Partial<AppNodeData>) => void;
   deleteNode: (id: string) => void;
   deleteEdge: (id: string) => void;
+  clearCurrentCanvas: () => void;
   insertNodeOnEdge: (edgeId: string, type: InsertableNodeType) => void;
   openContainer: (nodeId: string) => void;
   goBackCanvas: () => void;
   openCanvasFromBreadcrumb: (canvasId: string) => void;
   toggleSidebar: () => void;
   openSidebar: (view: SidebarView) => void;
+  assignComponentToGroup: (type: ComponentType, groupId: ComponentGroupId) => void;
   exportWorkflow: () => WorkflowExport;
   importWorkflow: (raw: unknown, fallbackName?: string) => boolean;
   selectWorkflow: (workflowId: string) => void;
@@ -352,6 +370,7 @@ export const useFlowStore = create<FlowState>()(
       selectedEdge: null,
       isSidebarOpen: false,
       sidebarView: "components",
+      componentGroupAssignments: createDefaultComponentAssignments(),
 
       setNodes: (nodes) =>
         set((state) => {
@@ -433,6 +452,13 @@ export const useFlowStore = create<FlowState>()(
       clearSelection: () => set({ selectedNode: null, selectedEdge: null }),
       toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
       openSidebar: (view) => set({ isSidebarOpen: true, sidebarView: view }),
+      assignComponentToGroup: (type, groupId) =>
+        set((state) => ({
+          componentGroupAssignments: {
+            ...state.componentGroupAssignments,
+            [type]: groupId,
+          },
+        })),
       exportWorkflow: () => {
         const state = get();
         const activeWorkflow = state.workflows[state.activeWorkflowId];
@@ -689,6 +715,41 @@ export const useFlowStore = create<FlowState>()(
           };
         }),
 
+      clearCurrentCanvas: () =>
+        set((state) => {
+          const activeWorkflow = state.workflows[state.activeWorkflowId];
+
+          if (!activeWorkflow) {
+            return state;
+          }
+
+          const currentCanvas = activeWorkflow.canvases[activeWorkflow.currentCanvasId];
+
+          if (!currentCanvas) {
+            return state;
+          }
+
+          const startNode =
+            currentCanvas.nodes.find((node) => node.type === "start") ??
+            createStartNode(`${currentCanvas.id}-start`, { x: 160, y: 120 });
+
+          return {
+            ...syncActiveWorkflow(state, {
+              ...activeWorkflow,
+              canvases: {
+                ...activeWorkflow.canvases,
+                [activeWorkflow.currentCanvasId]: {
+                  ...currentCanvas,
+                  nodes: [startNode],
+                  edges: [],
+                },
+              },
+            }),
+            selectedNode: null,
+            selectedEdge: null,
+          };
+        }),
+
       insertNodeOnEdge: (edgeId, type) =>
         set((state) => {
           const activeWorkflow = state.workflows[state.activeWorkflowId];
@@ -844,13 +905,14 @@ export const useFlowStore = create<FlowState>()(
     }),
     {
       name: "nextui-flow-store",
-      version: 2,
+      version: 3,
       migrate: (persistedState) =>
         normalizePersistedState(persistedState as PersistedFlowState),
       partialize: (state) => ({
         workflows: state.workflows,
         workflowOrder: state.workflowOrder,
         activeWorkflowId: state.activeWorkflowId,
+        componentGroupAssignments: state.componentGroupAssignments,
       }),
     },
   ),

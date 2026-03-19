@@ -534,6 +534,10 @@ button.sidebar-item {
   background: rgba(192, 132, 252, 0.12);
 }
 
+.sidebar-item-action .sidebar-item-icon {
+  background: rgba(148, 163, 184, 0.12);
+}
+
 .sidebar-item-info {
   display: flex;
   flex-direction: column;

@@ -22,14 +22,16 @@ import FromNode from "./nodes/StartNode";
 import HttpNode from "./nodes/HttpNode";
 import DelayNode from "./nodes/DelayNode";
 import ContainerNode from "./nodes/ContainerNode";
+import ActionNode from "./nodes/ActionNode";
 import InsertableEdge from "./edges/InsertableEdge";
-import { nodeTypeMeta } from "./node-icons";
+import { isBranchableGroup, type ComponentType } from "@/config/componentCatalog";
 
 const nodeTypes = {
   start: FromNode,
   http: HttpNode,
   delay: DelayNode,
   container: ContainerNode,
+  action: ActionNode,
 };
 
 const edgeTypes = {
@@ -41,6 +43,7 @@ export default function FlowCanvas() {
     canvases,
     currentCanvasId,
     canvasStack,
+    componentGroupAssignments,
     selectedNode,
     selectedEdge,
     setNodes,
@@ -51,6 +54,7 @@ export default function FlowCanvas() {
     clearSelection,
     deleteNode,
     deleteEdge,
+    clearCurrentCanvas,
     openContainer,
     goBackCanvas,
     openCanvasFromBreadcrumb,
@@ -61,8 +65,57 @@ export default function FlowCanvas() {
   const nodes = currentCanvas?.nodes ?? [];
   const edges = currentCanvas?.edges ?? [];
 
+  const canUseEndpoint = useCallback(
+    (params: Connection) => {
+      if (!params.source || !params.target) {
+        return false;
+      }
+
+      const sourceNode = nodes.find((node) => node.id === params.source);
+      const targetNode = nodes.find((node) => node.id === params.target);
+      const sourceGroup = sourceNode?.type
+        ? componentGroupAssignments[sourceNode.type as ComponentType]
+        : null;
+      const targetGroup = targetNode?.type
+        ? componentGroupAssignments[targetNode.type as ComponentType]
+        : null;
+      const sourceIsBranchable = sourceGroup ? isBranchableGroup(sourceGroup) : true;
+      const targetIsBranchable = targetGroup ? isBranchableGroup(targetGroup) : true;
+
+      const sourceHandle = params.sourceHandle ?? null;
+      const targetHandle = params.targetHandle ?? null;
+
+      if (
+        !sourceIsBranchable &&
+        edges.some(
+          (edge) =>
+            edge.source === params.source && (edge.sourceHandle ?? null) === sourceHandle,
+        )
+      ) {
+        return false;
+      }
+
+      if (
+        !targetIsBranchable &&
+        edges.some(
+          (edge) =>
+            edge.target === params.target && (edge.targetHandle ?? null) === targetHandle,
+        )
+      ) {
+        return false;
+      }
+
+      return true;
+    },
+    [componentGroupAssignments, edges, nodes]
+  );
+
   const onConnect = useCallback(
-    (params: Connection) =>
+    (params: Connection) => {
+      if (!canUseEndpoint(params)) {
+        return;
+      }
+
       setEdges(
         addEdge(
           {
@@ -71,8 +124,9 @@ export default function FlowCanvas() {
           },
           edges
         )
-      ),
-    [edges, setEdges]
+      );
+    },
+    [canUseEndpoint, edges, setEdges]
   );
 
   const onNodesChange = useCallback(
@@ -108,7 +162,7 @@ export default function FlowCanvas() {
         return;
       }
 
-      addNode(type as "start" | "http" | "delay" | "container", position);
+      addNode(type as "start" | "http" | "delay" | "container" | "action", position);
     },
     [addNode]
   );
@@ -212,7 +266,9 @@ export default function FlowCanvas() {
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        proOptions={{ hideAttribution: true }}
         connectionMode={ConnectionMode.Loose}
+        isValidConnection={canUseEndpoint}
         onInit={(instance) => {
           reactFlowRef.current = instance;
         }}
@@ -238,6 +294,34 @@ export default function FlowCanvas() {
         <Background />
         <Controls />
       </ReactFlow>
+      <button
+        type="button"
+        onClick={clearCurrentCanvas}
+        style={{
+          position: "absolute",
+          right: 16,
+          bottom: 16,
+          zIndex: 20,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minWidth: 92,
+          height: 36,
+          borderRadius: 10,
+          border: "1px solid rgba(248, 113, 113, 0.25)",
+          background: "rgba(127, 29, 29, 0.18)",
+          backdropFilter: "blur(12px)",
+          padding: "0 12px",
+          color: "#fecaca",
+          fontSize: 12,
+          fontWeight: 700,
+          fontFamily: "'Inter', sans-serif",
+          cursor: "pointer",
+          boxShadow: "0 8px 20px rgba(2, 6, 23, 0.28)",
+        }}
+      >
+        Clear Canvas
+      </button>
     </div>
   );
 }

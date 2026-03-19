@@ -135,6 +135,29 @@ export default function ConfigPanel() {
           </p>
         </div>
       )}
+
+      {type === "action" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <label>
+            <span style={{ fontSize: 13, fontWeight: 500, color: "#cbd5e1", marginBottom: 4, display: "block" }}>
+              Action name
+            </span>
+            <input
+              value={selectedNode.data.label || ""}
+              placeholder="Action name"
+              style={inputStyle}
+              onChange={(e) =>
+                updateNodeData(selectedNode.id, {
+                  label: e.target.value,
+                })
+              }
+            />
+          </label>
+          <p style={{ fontSize: 13, color: "#94a3b8" }}>
+            This component is un-branchable, so each endpoint can have only one connector.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

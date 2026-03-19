@@ -1,0 +1,46 @@
+{
+  "groups": [
+    {
+      "id": "branchable",
+      "label": "Branchable Components",
+      "description": "These components can branch into additional paths."
+    },
+    {
+      "id": "unbranchable",
+      "label": "Un-branchable Components",
+      "description": "Reserved for components that stay on a single path."
+    }
+  ],
+  "components": [
+    {
+      "type": "start",
+      "defaultGroup": "branchable",
+      "color": "#34d399",
+      "bgClass": "sidebar-item-from"
+    },
+    {
+      "type": "http",
+      "defaultGroup": "branchable",
+      "color": "#60a5fa",
+      "bgClass": "sidebar-item-http"
+    },
+    {
+      "type": "delay",
+      "defaultGroup": "branchable",
+      "color": "#fbbf24",
+      "bgClass": "sidebar-item-delay"
+    },
+    {
+      "type": "container",
+      "defaultGroup": "branchable",
+      "color": "#c084fc",
+      "bgClass": "sidebar-item-container"
+    },
+    {
+      "type": "action",
+      "defaultGroup": "unbranchable",
+      "color": "#94a3b8",
+      "bgClass": "sidebar-item-action"
+    }
+  ]
+}

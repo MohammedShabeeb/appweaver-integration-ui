@@ -3,48 +3,12 @@
 import { useState } from "react";
 import { useFlowStore } from "@/store/useFlowStore";
 import { nodeTypeMeta } from "./node-icons";
-
-type ComponentType = keyof typeof nodeTypeMeta;
-
-type DraggableItem = {
-  type: ComponentType;
-  label: string;
-  color: string;
-  bgClass: string;
-};
-
-type ComponentGroupId = "branchable" | "unbranchable";
-
-type ComponentGroup = {
-  id: ComponentGroupId;
-  label: string;
-  description: string;
-};
-
-const draggableItems: DraggableItem[] = [
-  { type: "start", label: nodeTypeMeta.start.label, color: "#34d399", bgClass: "sidebar-item-from" },
-  { type: "http", label: nodeTypeMeta.http.label, color: "#60a5fa", bgClass: "sidebar-item-http" },
-  { type: "delay", label: nodeTypeMeta.delay.label, color: "#fbbf24", bgClass: "sidebar-item-delay" },
-  { type: "container", label: nodeTypeMeta.container.label, color: "#c084fc", bgClass: "sidebar-item-container" },
-];
-
-const componentGroups: ComponentGroup[] = [
-  {
-    id: "branchable",
-    label: "Branchable Components",
-    description: "These components can branch into additional paths.",
-  },
-  {
-    id: "unbranchable",
-    label: "Un-branchable Components",
-    description: "Reserved for components that stay on a single path.",
-  },
-];
-
-const initialGroupedComponents: Record<ComponentGroupId, ComponentType[]> = {
-  branchable: draggableItems.map((item) => item.type),
-  unbranchable: [],
-};
+import {
+  componentDefinitions,
+  componentGroups,
+  type ComponentGroupId,
+  type ComponentType,
+} from "@/config/componentCatalog";
 
 type PendingDeleteWorkflow = {
   id: string;
@@ -57,13 +21,14 @@ export default function ComponentsSidebar() {
     activeWorkflowId,
     isSidebarOpen,
     openSidebar,
+    assignComponentToGroup,
+    componentGroupAssignments,
     selectWorkflow,
     sidebarView,
     toggleSidebar,
     workflowOrder,
     workflows,
   } = useFlowStore();
-  const [groupedComponents, setGroupedComponents] = useState(initialGroupedComponents);
   const [expandedGroups, setExpandedGroups] = useState<Record<ComponentGroupId, boolean>>({
     branchable: true,
     unbranchable: true,
@@ -80,12 +45,20 @@ export default function ComponentsSidebar() {
   const isWorkflowView = sidebarView === "workflows";
 
   const getGroupItems = (groupId: ComponentGroupId) =>
-    groupedComponents[groupId]
-      .map((type) => draggableItems.find((item) => item.type === type))
-      .filter((item): item is DraggableItem => Boolean(item));
+    componentDefinitions
+      .filter((item) => componentGroupAssignments[item.type] === groupId)
+      .map((item) => ({
+        ...item,
+        label: nodeTypeMeta[item.type].label,
+      }));
 
   const getAvailableItems = (groupId: ComponentGroupId) =>
-    draggableItems.filter((item) => !groupedComponents[groupId].includes(item.type));
+    componentDefinitions
+      .filter((item) => componentGroupAssignments[item.type] !== groupId)
+      .map((item) => ({
+        ...item,
+        label: nodeTypeMeta[item.type].label,
+      }));
 
   const toggleGroup = (groupId: ComponentGroupId) => {
     setExpandedGroups((current) => ({
@@ -95,16 +68,7 @@ export default function ComponentsSidebar() {
   };
 
   const addComponentToGroup = (groupId: ComponentGroupId, type: ComponentType) => {
-    setGroupedComponents((current) => {
-      const nextGroups: Record<ComponentGroupId, ComponentType[]> = {
-        branchable: current.branchable.filter((itemType) => itemType !== type),
-        unbranchable: current.unbranchable.filter((itemType) => itemType !== type),
-      };
-
-      nextGroups[groupId] = [...nextGroups[groupId], type];
-
-      return nextGroups;
-    });
+    assignComponentToGroup(type, groupId);
     setMenuOpenForGroup(null);
   };
 
