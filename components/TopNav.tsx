@@ -98,7 +98,6 @@ export default function TopNav() {
             <rect x="3" y="10" width="18" height="4" rx="1.5" />
             <rect x="3" y="16" width="18" height="4" rx="1.5" />
           </svg>
-          Workflows
         </button>
         <button
           type="button"
@@ -119,7 +118,6 @@ export default function TopNav() {
             <rect x="3" y="14" width="7" height="7" rx="1.5" />
             <rect x="14" y="14" width="7" height="7" rx="1.5" />
           </svg>
-          Components
         </button>
         <input
           ref={fileInputRef}
@@ -146,7 +144,6 @@ export default function TopNav() {
             <path d="m17 14-5-5-5 5" />
             <path d="M5 3h14" />
           </svg>
-          Import JSON
         </button>
         <button
           type="button"
@@ -166,7 +163,6 @@ export default function TopNav() {
             <path d="m7 10 5 5 5-5" />
             <path d="M5 21h14" />
           </svg>
-          Save JSON
         </button>
       </div>
     </nav>
