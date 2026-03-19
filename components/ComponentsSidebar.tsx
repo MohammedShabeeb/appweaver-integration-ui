@@ -4,17 +4,47 @@ import { useState } from "react";
 import { useFlowStore } from "@/store/useFlowStore";
 import { nodeTypeMeta } from "./node-icons";
 
-const draggableItems: {
-  type: string;
+type ComponentType = keyof typeof nodeTypeMeta;
+
+type DraggableItem = {
+  type: ComponentType;
   label: string;
   color: string;
   bgClass: string;
-}[] = [
+};
+
+type ComponentGroupId = "branchable" | "unbranchable";
+
+type ComponentGroup = {
+  id: ComponentGroupId;
+  label: string;
+  description: string;
+};
+
+const draggableItems: DraggableItem[] = [
   { type: "start", label: nodeTypeMeta.start.label, color: "#34d399", bgClass: "sidebar-item-from" },
   { type: "http", label: nodeTypeMeta.http.label, color: "#60a5fa", bgClass: "sidebar-item-http" },
   { type: "delay", label: nodeTypeMeta.delay.label, color: "#fbbf24", bgClass: "sidebar-item-delay" },
   { type: "container", label: nodeTypeMeta.container.label, color: "#c084fc", bgClass: "sidebar-item-container" },
 ];
+
+const componentGroups: ComponentGroup[] = [
+  {
+    id: "branchable",
+    label: "Branchable Components",
+    description: "These components can branch into additional paths.",
+  },
+  {
+    id: "unbranchable",
+    label: "Un-branchable Components",
+    description: "Reserved for components that stay on a single path.",
+  },
+];
+
+const initialGroupedComponents: Record<ComponentGroupId, ComponentType[]> = {
+  branchable: draggableItems.map((item) => item.type),
+  unbranchable: [],
+};
 
 type PendingDeleteWorkflow = {
   id: string;
@@ -33,6 +63,12 @@ export default function ComponentsSidebar() {
     workflowOrder,
     workflows,
   } = useFlowStore();
+  const [groupedComponents, setGroupedComponents] = useState(initialGroupedComponents);
+  const [expandedGroups, setExpandedGroups] = useState<Record<ComponentGroupId, boolean>>({
+    branchable: true,
+    unbranchable: true,
+  });
+  const [menuOpenForGroup, setMenuOpenForGroup] = useState<ComponentGroupId | null>(null);
   const [pendingDeleteWorkflow, setPendingDeleteWorkflow] = useState<PendingDeleteWorkflow | null>(
     null,
   );
@@ -42,6 +78,35 @@ export default function ComponentsSidebar() {
   }
 
   const isWorkflowView = sidebarView === "workflows";
+
+  const getGroupItems = (groupId: ComponentGroupId) =>
+    groupedComponents[groupId]
+      .map((type) => draggableItems.find((item) => item.type === type))
+      .filter((item): item is DraggableItem => Boolean(item));
+
+  const getAvailableItems = (groupId: ComponentGroupId) =>
+    draggableItems.filter((item) => !groupedComponents[groupId].includes(item.type));
+
+  const toggleGroup = (groupId: ComponentGroupId) => {
+    setExpandedGroups((current) => ({
+      ...current,
+      [groupId]: !current[groupId],
+    }));
+  };
+
+  const addComponentToGroup = (groupId: ComponentGroupId, type: ComponentType) => {
+    setGroupedComponents((current) => {
+      const nextGroups: Record<ComponentGroupId, ComponentType[]> = {
+        branchable: current.branchable.filter((itemType) => itemType !== type),
+        unbranchable: current.unbranchable.filter((itemType) => itemType !== type),
+      };
+
+      nextGroups[groupId] = [...nextGroups[groupId], type];
+
+      return nextGroups;
+    });
+    setMenuOpenForGroup(null);
+  };
 
   return (
     <>
@@ -94,42 +159,148 @@ export default function ComponentsSidebar() {
 
         {!isWorkflowView ? (
           <div className="sidebar-items">
-            {draggableItems.map((item) => {
-              const meta = nodeTypeMeta[item.type as keyof typeof nodeTypeMeta];
-              const Icon = meta?.Icon;
+            {componentGroups.map((group) => {
+              const isExpanded = expandedGroups[group.id];
+              const groupItems = getGroupItems(group.id);
+              const availableItems = getAvailableItems(group.id);
+              const isMenuOpen = menuOpenForGroup === group.id;
 
               return (
-                <div
-                  key={item.type}
-                  className={`sidebar-item ${item.bgClass}`}
-                  draggable
-                  onDragStart={(event) => {
-                    event.dataTransfer.setData("application/reactflow", item.type);
-                    event.dataTransfer.effectAllowed = "move";
-                  }}
+                <section
+                  key={group.id}
+                  className="sidebar-group"
+                  aria-labelledby={`sidebar-group-${group.id}`}
                 >
-                  <div className="sidebar-item-icon" style={{ color: item.color }}>
-                    {Icon ? <Icon className="h-5 w-5" /> : null}
+                  <div className="sidebar-group-toolbar">
+                    <button
+                      type="button"
+                      className="sidebar-group-trigger"
+                      onClick={() => toggleGroup(group.id)}
+                      aria-expanded={isExpanded}
+                      aria-controls={`sidebar-group-panel-${group.id}`}
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={`sidebar-group-chevron ${isExpanded ? "sidebar-group-chevron-open" : ""}`}
+                        aria-hidden="true"
+                      >
+                        <path d="m9 6 6 6-6 6" />
+                      </svg>
+                      <span id={`sidebar-group-${group.id}`} className="sidebar-group-title">
+                        {group.label}
+                      </span>
+                    </button>
+
+                    <div className="sidebar-group-actions">
+                      <button
+                        type="button"
+                        className="sidebar-group-add"
+                        aria-label={`Add component to ${group.label}`}
+                        aria-expanded={isMenuOpen}
+                        onClick={() =>
+                          setMenuOpenForGroup((current) =>
+                            current === group.id ? null : group.id,
+                          )
+                        }
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="sidebar-group-add-icon"
+                        >
+                          <path d="M12 5v14" />
+                          <path d="M5 12h14" />
+                        </svg>
+                      </button>
+
+                      {isMenuOpen ? (
+                        <div className="sidebar-group-menu" role="menu">
+                          {availableItems.length > 0 ? (
+                            availableItems.map((item) => (
+                              <button
+                                key={`${group.id}-${item.type}`}
+                                type="button"
+                                className="sidebar-group-menu-item"
+                                onClick={() => addComponentToGroup(group.id, item.type)}
+                              >
+                                {item.label}
+                              </button>
+                            ))
+                          ) : (
+                            <div className="sidebar-group-menu-empty">
+                              No more components to add
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="sidebar-item-info">
-                    <span className="sidebar-item-label">{item.label}</span>
-                    <span className="sidebar-item-type">{item.type}</span>
-                  </div>
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    className="sidebar-item-grip"
-                  >
-                    <circle cx="9" cy="6" r="1" fill="currentColor" />
-                    <circle cx="15" cy="6" r="1" fill="currentColor" />
-                    <circle cx="9" cy="12" r="1" fill="currentColor" />
-                    <circle cx="15" cy="12" r="1" fill="currentColor" />
-                    <circle cx="9" cy="18" r="1" fill="currentColor" />
-                    <circle cx="15" cy="18" r="1" fill="currentColor" />
-                  </svg>
-                </div>
+
+                  {isExpanded ? (
+                    <div
+                      id={`sidebar-group-panel-${group.id}`}
+                      className="sidebar-group-panel"
+                    >
+                      <div className="sidebar-group-header">
+                        <p className="sidebar-group-description">{group.description}</p>
+                      </div>
+
+                      {groupItems.length > 0 ? (
+                        <div className="sidebar-group-items">
+                          {groupItems.map((item) => {
+                            const meta = nodeTypeMeta[item.type];
+                            const Icon = meta?.Icon;
+
+                            return (
+                              <div
+                                key={item.type}
+                                className={`sidebar-item ${item.bgClass}`}
+                                draggable
+                                onDragStart={(event) => {
+                                  event.dataTransfer.setData("application/reactflow", item.type);
+                                  event.dataTransfer.effectAllowed = "move";
+                                }}
+                              >
+                                <div className="sidebar-item-icon" style={{ color: item.color }}>
+                                  {Icon ? <Icon className="h-5 w-5" /> : null}
+                                </div>
+                                <div className="sidebar-item-info">
+                                  <span className="sidebar-item-label">{item.label}</span>
+                                  <span className="sidebar-item-type">{item.type}</span>
+                                </div>
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.5"
+                                  className="sidebar-item-grip"
+                                >
+                                  <circle cx="9" cy="6" r="1" fill="currentColor" />
+                                  <circle cx="15" cy="6" r="1" fill="currentColor" />
+                                  <circle cx="9" cy="12" r="1" fill="currentColor" />
+                                  <circle cx="15" cy="12" r="1" fill="currentColor" />
+                                  <circle cx="9" cy="18" r="1" fill="currentColor" />
+                                  <circle cx="15" cy="18" r="1" fill="currentColor" />
+                                </svg>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="sidebar-group-empty">No components in this group yet.</div>
+                      )}
+                    </div>
+                  ) : null}
+                </section>
               );
             })}
           </div>

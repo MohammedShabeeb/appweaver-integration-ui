@@ -80,45 +80,53 @@ export default function TopNav() {
       </div>
 
       <div className="topnav-actions">
-        <button
-          type="button"
-          className={`topnav-btn ${isSidebarOpen && sidebarView === "workflows" ? "topnav-btn-active" : ""}`}
-          onClick={() => openSidebar("workflows")}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="topnav-btn-icon"
+        <div className="topnav-action">
+          <button
+            type="button"
+            aria-label="Open workflows"
+            className={`topnav-btn ${isSidebarOpen && sidebarView === "workflows" ? "topnav-btn-active" : ""}`}
+            onClick={() => openSidebar("workflows")}
           >
-            <rect x="3" y="4" width="18" height="4" rx="1.5" />
-            <rect x="3" y="10" width="18" height="4" rx="1.5" />
-            <rect x="3" y="16" width="18" height="4" rx="1.5" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          className={`topnav-btn ${isSidebarOpen && sidebarView === "components" ? "topnav-btn-active" : ""}`}
-          onClick={() => openSidebar("components")}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="topnav-btn-icon"
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="topnav-btn-icon"
+            >
+              <rect x="3" y="4" width="18" height="4" rx="1.5" />
+              <rect x="3" y="10" width="18" height="4" rx="1.5" />
+              <rect x="3" y="16" width="18" height="4" rx="1.5" />
+            </svg>
+          </button>
+          <span className="topnav-tooltip">Open workflows</span>
+        </div>
+        <div className="topnav-action">
+          <button
+            type="button"
+            aria-label="Open components"
+            className={`topnav-btn ${isSidebarOpen && sidebarView === "components" ? "topnav-btn-active" : ""}`}
+            onClick={() => openSidebar("components")}
           >
-            <rect x="3" y="3" width="7" height="7" rx="1.5" />
-            <rect x="14" y="3" width="7" height="7" rx="1.5" />
-            <rect x="3" y="14" width="7" height="7" rx="1.5" />
-            <rect x="14" y="14" width="7" height="7" rx="1.5" />
-          </svg>
-        </button>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="topnav-btn-icon"
+            >
+              <rect x="3" y="3" width="7" height="7" rx="1.5" />
+              <rect x="14" y="3" width="7" height="7" rx="1.5" />
+              <rect x="3" y="14" width="7" height="7" rx="1.5" />
+              <rect x="14" y="14" width="7" height="7" rx="1.5" />
+            </svg>
+          </button>
+          <span className="topnav-tooltip">Open components</span>
+        </div>
         <input
           ref={fileInputRef}
           type="file"
@@ -126,44 +134,52 @@ export default function TopNav() {
           style={{ display: "none" }}
           onChange={handleImportChange}
         />
-        <button
-          type="button"
-          className="topnav-btn"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="topnav-btn-icon"
+        <div className="topnav-action">
+          <button
+            type="button"
+            aria-label="Import workflow"
+            className="topnav-btn"
+            onClick={() => fileInputRef.current?.click()}
           >
-            <path d="M12 21V9" />
-            <path d="m17 14-5-5-5 5" />
-            <path d="M5 3h14" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          className="topnav-btn"
-          onClick={handleSaveWorkflow}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="topnav-btn-icon"
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="topnav-btn-icon"
+            >
+              <path d="M12 21V9" />
+              <path d="m17 14-5-5-5 5" />
+              <path d="M5 3h14" />
+            </svg>
+          </button>
+          <span className="topnav-tooltip">Import workflow</span>
+        </div>
+        <div className="topnav-action">
+          <button
+            type="button"
+            aria-label="Export workflow"
+            className="topnav-btn"
+            onClick={handleSaveWorkflow}
           >
-            <path d="M12 3v12" />
-            <path d="m7 10 5 5 5-5" />
-            <path d="M5 21h14" />
-          </svg>
-        </button>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="topnav-btn-icon"
+            >
+              <path d="M12 3v12" />
+              <path d="m7 10 5 5 5-5" />
+              <path d="M5 21h14" />
+            </svg>
+          </button>
+          <span className="topnav-tooltip">Export workflow</span>
+        </div>
       </div>
     </nav>
   );
