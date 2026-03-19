@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
   addEdge,
   applyEdgeChanges,
@@ -22,16 +22,22 @@ import FromNode from "./nodes/StartNode";
 import HttpNode from "./nodes/HttpNode";
 import DelayNode from "./nodes/DelayNode";
 import ContainerNode from "./nodes/ContainerNode";
-import ActionNode from "./nodes/ActionNode";
+import CustomNode from "./nodes/CustomNode";
 import InsertableEdge from "./edges/InsertableEdge";
-import { isBranchableGroup, type ComponentType } from "@/config/componentCatalog";
+import {
+  builtInComponentMap,
+  componentDefinitions,
+  componentGroups,
+  isBuiltInComponent,
+} from "@/config/componentCatalog";
+import { nodeTypeMeta } from "./node-icons";
 
 const nodeTypes = {
   start: FromNode,
   http: HttpNode,
   delay: DelayNode,
   container: ContainerNode,
-  action: ActionNode,
+  custom: CustomNode,
 };
 
 const edgeTypes = {
@@ -44,6 +50,7 @@ export default function FlowCanvas() {
     currentCanvasId,
     canvasStack,
     componentGroupAssignments,
+    customComponents,
     selectedNode,
     selectedEdge,
     setNodes,
@@ -58,12 +65,79 @@ export default function FlowCanvas() {
     openContainer,
     goBackCanvas,
     openCanvasFromBreadcrumb,
+    openSidebar,
   } = useFlowStore();
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const reactFlowRef = useRef<ReactFlowInstance | null>(null);
+  const [searchValue, setSearchValue] = useState("");
   const currentCanvas = canvases[currentCanvasId];
   const nodes = currentCanvas?.nodes ?? [];
   const edges = currentCanvas?.edges ?? [];
+  const searchResults = useMemo(() => {
+    const query = searchValue.trim().toLowerCase();
+
+    if (!query) {
+      return [];
+    }
+
+    const categoryResults = componentGroups
+      .filter(
+        (group) =>
+          group.label.toLowerCase().includes(query) ||
+          group.description.toLowerCase().includes(query),
+      )
+      .map((group) => ({
+        id: `category-${group.id}`,
+        kind: "Category" as const,
+        title: group.label,
+        subtitle: group.description,
+        target: {
+          kind: "group" as const,
+          groupId: group.id,
+        },
+      }));
+
+    const builtInResults = componentDefinitions
+      .filter((component) => {
+        const meta = nodeTypeMeta[component.type];
+
+        return (
+          meta.label.toLowerCase().includes(query) || component.type.toLowerCase().includes(query)
+        );
+      })
+      .map((component) => ({
+        id: `component-${component.type}`,
+        kind: "Component" as const,
+        title: nodeTypeMeta[component.type].label,
+        subtitle: component.type,
+        target: {
+          kind: "component" as const,
+          groupId: component.defaultGroup,
+          componentKey: component.type,
+        },
+      }));
+
+    const customResults = customComponents
+      .filter(
+        (component) =>
+          component.label.toLowerCase().includes(query) ||
+          component.key.toLowerCase().includes(query) ||
+          component.description.toLowerCase().includes(query),
+      )
+      .map((component) => ({
+        id: `component-${component.key}`,
+        kind: "Component" as const,
+        title: component.label,
+        subtitle: component.description || component.key,
+        target: {
+          kind: "component" as const,
+          groupId: componentGroupAssignments[component.key],
+          componentKey: component.key,
+        },
+      }));
+
+    return [...categoryResults, ...builtInResults, ...customResults].slice(0, 8);
+  }, [componentGroupAssignments, customComponents, searchValue]);
 
   const canUseEndpoint = useCallback(
     (params: Connection) => {
@@ -73,20 +147,26 @@ export default function FlowCanvas() {
 
       const sourceNode = nodes.find((node) => node.id === params.source);
       const targetNode = nodes.find((node) => node.id === params.target);
-      const sourceGroup = sourceNode?.type
-        ? componentGroupAssignments[sourceNode.type as ComponentType]
-        : null;
-      const targetGroup = targetNode?.type
-        ? componentGroupAssignments[targetNode.type as ComponentType]
-        : null;
-      const sourceIsBranchable = sourceGroup ? isBranchableGroup(sourceGroup) : true;
-      const targetIsBranchable = targetGroup ? isBranchableGroup(targetGroup) : true;
+      const sourceComponentKey = sourceNode?.data?.componentKey ?? sourceNode?.type;
+      const targetComponentKey = targetNode?.data?.componentKey ?? targetNode?.type;
+      const sourceIsSingleEndpoint = sourceComponentKey
+        ? isBuiltInComponent(sourceComponentKey)
+          ? builtInComponentMap[sourceComponentKey].singleEndpointOnly
+          : customComponents.find((component) => component.key === sourceComponentKey)
+              ?.singleEndpointOnly ?? false
+        : false;
+      const targetIsSingleEndpoint = targetComponentKey
+        ? isBuiltInComponent(targetComponentKey)
+          ? builtInComponentMap[targetComponentKey].singleEndpointOnly
+          : customComponents.find((component) => component.key === targetComponentKey)
+              ?.singleEndpointOnly ?? false
+        : false;
 
       const sourceHandle = params.sourceHandle ?? null;
       const targetHandle = params.targetHandle ?? null;
 
       if (
-        !sourceIsBranchable &&
+        sourceIsSingleEndpoint &&
         edges.some(
           (edge) =>
             edge.source === params.source && (edge.sourceHandle ?? null) === sourceHandle,
@@ -96,7 +176,7 @@ export default function FlowCanvas() {
       }
 
       if (
-        !targetIsBranchable &&
+        targetIsSingleEndpoint &&
         edges.some(
           (edge) =>
             edge.target === params.target && (edge.targetHandle ?? null) === targetHandle,
@@ -107,7 +187,7 @@ export default function FlowCanvas() {
 
       return true;
     },
-    [componentGroupAssignments, edges, nodes]
+    [customComponents, edges, nodes]
   );
 
   const onConnect = useCallback(
@@ -147,9 +227,20 @@ export default function FlowCanvas() {
     (event: React.DragEvent<HTMLDivElement>) => {
       event.preventDefault();
 
-      const type = event.dataTransfer.getData("application/reactflow");
+      const rawComponent = event.dataTransfer.getData("application/reactflow-component");
+      const fallbackType = event.dataTransfer.getData("application/reactflow");
+      let componentKey = fallbackType;
 
-      if (!type) {
+      if (rawComponent) {
+        try {
+          componentKey =
+            (JSON.parse(rawComponent) as { componentKey?: string }).componentKey ?? "";
+        } catch {
+          componentKey = "";
+        }
+      }
+
+      if (!componentKey) {
         return;
       }
 
@@ -162,7 +253,7 @@ export default function FlowCanvas() {
         return;
       }
 
-      addNode(type as "start" | "http" | "delay" | "container" | "action", position);
+      addNode(componentKey, position);
     },
     [addNode]
   );
@@ -260,6 +351,126 @@ export default function FlowCanvas() {
             </React.Fragment>
           ))}
         </div>
+      </div>
+      <div
+        style={{
+          position: "absolute",
+          left: 16,
+          top: 72,
+          zIndex: 20,
+          width: 280,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            borderRadius: 12,
+            border: "1px solid rgba(71, 85, 105, 0.5)",
+            background: "rgba(15, 23, 42, 0.92)",
+            backdropFilter: "blur(16px)",
+            padding: "8px 10px",
+            boxShadow: "0 4px 16px rgba(0, 0, 0, 0.25)",
+          }}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ width: 15, height: 15, color: "#64748b", flexShrink: 0 }}
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+          <input
+            type="text"
+            value={searchValue}
+            onChange={(event) => setSearchValue(event.target.value)}
+            placeholder="Search components or categories"
+            style={{
+              width: "100%",
+              border: "none",
+              background: "transparent",
+              color: "#e2e8f0",
+              fontSize: 13,
+              outline: "none",
+              fontFamily: "'Inter', sans-serif",
+            }}
+          />
+        </div>
+        {searchResults.length > 0 ? (
+          <div
+            style={{
+              marginTop: 8,
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              borderRadius: 14,
+              border: "1px solid rgba(71, 85, 105, 0.45)",
+              background: "rgba(15, 23, 42, 0.96)",
+              backdropFilter: "blur(16px)",
+              padding: 8,
+              boxShadow: "0 12px 28px rgba(2, 6, 23, 0.32)",
+            }}
+          >
+            {searchResults.map((result) => (
+              <button
+                key={result.id}
+                type="button"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  openSidebar("components");
+                  setSearchValue(result.title);
+                  window.dispatchEvent(
+                    new CustomEvent("focus-sidebar-search-target", {
+                      detail: result.target,
+                    }),
+                  );
+                }}
+                style={{
+                  display: "flex",
+                  width: "100%",
+                  flexDirection: "column",
+                  alignItems: "flex-start",
+                  gap: 2,
+                  border: "none",
+                  borderRadius: 10,
+                  background: "transparent",
+                  padding: "10px 12px",
+                  color: "#e2e8f0",
+                  cursor: "pointer",
+                  textAlign: "left",
+                  fontFamily: "'Inter', sans-serif",
+                }}
+              >
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{result.title}</span>
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                  {result.kind} • {result.subtitle}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : searchValue.trim() ? (
+          <div
+            style={{
+              marginTop: 8,
+              borderRadius: 14,
+              border: "1px solid rgba(71, 85, 105, 0.45)",
+              background: "rgba(15, 23, 42, 0.96)",
+              backdropFilter: "blur(16px)",
+              padding: "12px 14px",
+              color: "#64748b",
+              fontSize: 12,
+              boxShadow: "0 12px 28px rgba(2, 6, 23, 0.32)",
+            }}
+          >
+            No matching component or category found.
+          </div>
+        ) : null}
       </div>
       <ReactFlow
         nodes={nodes}

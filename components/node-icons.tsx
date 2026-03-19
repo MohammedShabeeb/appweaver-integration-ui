@@ -94,8 +94,4 @@ export const nodeTypeMeta = {
     label: "Container",
     Icon: ContainerIcon,
   },
-  action: {
-    label: "Action",
-    Icon: ActionIcon,
-  },
 } as const;

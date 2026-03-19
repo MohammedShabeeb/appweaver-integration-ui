@@ -1,13 +1,18 @@
 "use client";
 
-import { useState } from "react";
-import { useFlowStore } from "@/store/useFlowStore";
-import { nodeTypeMeta } from "./node-icons";
+import {
+  useEffect,
+  useState,
+  type ComponentType as ReactComponentType,
+  type CSSProperties,
+} from "react";
+import { useFlowStore, type CustomComponentDefinition } from "@/store/useFlowStore";
+import { ActionIcon, nodeTypeMeta } from "./node-icons";
 import {
   componentDefinitions,
   componentGroups,
   type ComponentGroupId,
-  type ComponentType,
+  isBuiltInComponent,
 } from "@/config/componentCatalog";
 
 type PendingDeleteWorkflow = {
@@ -15,14 +20,71 @@ type PendingDeleteWorkflow = {
   name: string;
 };
 
+type PendingDeleteComponent = {
+  key: string;
+  label: string;
+};
+
+type ComponentListItem = {
+  type: string;
+  label: string;
+  color: string;
+  bgClass?: string;
+  Icon: ReactComponentType<{ className?: string; style?: CSSProperties }>;
+  description?: string;
+};
+
+const createJsonTemplate = (groupId: ComponentGroupId) =>
+  JSON.stringify(
+    {
+      key:
+        groupId === "component"
+          ? "ui-widget"
+          : groupId === "processor"
+            ? "approval-step"
+            : groupId === "entity"
+              ? "customer-record"
+              : "http-source",
+      label:
+        groupId === "component"
+          ? "UI Widget"
+          : groupId === "processor"
+            ? "Approval Step"
+            : groupId === "entity"
+              ? "Customer Record"
+              : "HTTP Source",
+      description:
+        groupId === "component"
+          ? "Reusable component in the flow."
+          : groupId === "processor"
+            ? "Processes a message before the next step."
+            : groupId === "entity"
+              ? "Represents a data-focused entity in the flow."
+              : "Reusable Kamelet-style integration block.",
+      color:
+        groupId === "component"
+          ? "#14b8a6"
+          : groupId === "processor"
+            ? "#22c55e"
+            : groupId === "entity"
+              ? "#8b5cf6"
+              : "#f97316",
+      singleEndpointOnly: false,
+    },
+    null,
+    2,
+  );
+
 export default function ComponentsSidebar() {
   const {
     deleteWorkflow,
     activeWorkflowId,
     isSidebarOpen,
     openSidebar,
-    assignComponentToGroup,
     componentGroupAssignments,
+    customComponents,
+    addCustomComponent,
+    removeCustomComponent,
     selectWorkflow,
     sidebarView,
     toggleSidebar,
@@ -30,35 +92,45 @@ export default function ComponentsSidebar() {
     workflows,
   } = useFlowStore();
   const [expandedGroups, setExpandedGroups] = useState<Record<ComponentGroupId, boolean>>({
-    branchable: true,
-    unbranchable: true,
+    component: true,
+    processor: true,
+    entity: true,
+    kamelet: true,
   });
-  const [menuOpenForGroup, setMenuOpenForGroup] = useState<ComponentGroupId | null>(null);
+  const [jsonEditorGroup, setJsonEditorGroup] = useState<ComponentGroupId | null>(null);
+  const [jsonValue, setJsonValue] = useState(createJsonTemplate("component"));
+  const [jsonError, setJsonError] = useState<string | null>(null);
+  const [highlightedTarget, setHighlightedTarget] = useState<string | null>(null);
   const [pendingDeleteWorkflow, setPendingDeleteWorkflow] = useState<PendingDeleteWorkflow | null>(
     null,
   );
-
-  if (!isSidebarOpen) {
-    return null;
-  }
+  const [pendingDeleteComponent, setPendingDeleteComponent] =
+    useState<PendingDeleteComponent | null>(null);
 
   const isWorkflowView = sidebarView === "workflows";
+  const allComponentItems: ComponentListItem[] = [
+    ...componentDefinitions.map((item) => ({
+      type: item.type,
+      label: nodeTypeMeta[item.type].label,
+      color: item.color,
+      bgClass: item.bgClass,
+      Icon: nodeTypeMeta[item.type].Icon,
+    })),
+    ...customComponents.map((item) => ({
+      type: item.key,
+      label: item.label,
+      color: item.color,
+      Icon: ActionIcon,
+      description: item.singleEndpointOnly
+        ? `${item.description} | single endpoint`
+        : item.description,
+    })),
+  ];
 
   const getGroupItems = (groupId: ComponentGroupId) =>
-    componentDefinitions
+    allComponentItems
       .filter((item) => componentGroupAssignments[item.type] === groupId)
-      .map((item) => ({
-        ...item,
-        label: nodeTypeMeta[item.type].label,
-      }));
-
-  const getAvailableItems = (groupId: ComponentGroupId) =>
-    componentDefinitions
-      .filter((item) => componentGroupAssignments[item.type] !== groupId)
-      .map((item) => ({
-        ...item,
-        label: nodeTypeMeta[item.type].label,
-      }));
+      .sort((left, right) => left.label.localeCompare(right.label));
 
   const toggleGroup = (groupId: ComponentGroupId) => {
     setExpandedGroups((current) => ({
@@ -67,9 +139,93 @@ export default function ComponentsSidebar() {
     }));
   };
 
-  const addComponentToGroup = (groupId: ComponentGroupId, type: ComponentType) => {
-    assignComponentToGroup(type, groupId);
-    setMenuOpenForGroup(null);
+  const openJsonEditor = (groupId: ComponentGroupId) => {
+    setJsonEditorGroup(groupId);
+    setJsonValue(createJsonTemplate(groupId));
+    setJsonError(null);
+  };
+
+  useEffect(() => {
+    const handleFocusSearchTarget = (
+      event: Event,
+    ) => {
+      const customEvent = event as CustomEvent<{
+        kind: "group" | "component";
+        groupId?: ComponentGroupId;
+        componentKey?: string;
+      }>;
+      const detail = customEvent.detail;
+
+      if (!detail) {
+        return;
+      }
+
+      if (detail.groupId) {
+        setExpandedGroups((current) => ({
+          ...current,
+          [detail.groupId!]: true,
+        }));
+      }
+
+      const targetId =
+        detail.kind === "group"
+          ? `sidebar-group-section-${detail.groupId}`
+          : `sidebar-component-${detail.componentKey}`;
+
+      window.setTimeout(() => {
+        const target = document.getElementById(targetId);
+
+        if (!target) {
+          return;
+        }
+
+        setHighlightedTarget(targetId);
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        window.setTimeout(() => setHighlightedTarget(null), 1600);
+      }, 120);
+    };
+
+    window.addEventListener("focus-sidebar-search-target", handleFocusSearchTarget as EventListener);
+
+    return () =>
+      window.removeEventListener(
+        "focus-sidebar-search-target",
+        handleFocusSearchTarget as EventListener,
+      );
+  }, []);
+
+  if (!isSidebarOpen) {
+    return null;
+  }
+
+  const handleCreateComponent = () => {
+    if (!jsonEditorGroup) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(jsonValue) as Partial<CustomComponentDefinition>;
+      const result = addCustomComponent(
+        {
+          key: String(parsed.key ?? "").trim(),
+          label: String(parsed.label ?? "").trim() || "Custom Component",
+          description: String(parsed.description ?? "").trim(),
+          color: String(parsed.color ?? "").trim() || "#94a3b8",
+          singleEndpointOnly: Boolean(parsed.singleEndpointOnly),
+        },
+        jsonEditorGroup,
+      );
+
+      if (!result.ok) {
+        setJsonError(result.reason);
+        return;
+      }
+
+      setJsonEditorGroup(null);
+      setJsonError(null);
+    } catch {
+      setJsonError("Enter valid JSON before creating the component.");
+    }
   };
 
   return (
@@ -126,13 +282,16 @@ export default function ComponentsSidebar() {
             {componentGroups.map((group) => {
               const isExpanded = expandedGroups[group.id];
               const groupItems = getGroupItems(group.id);
-              const availableItems = getAvailableItems(group.id);
-              const isMenuOpen = menuOpenForGroup === group.id;
 
               return (
                 <section
                   key={group.id}
-                  className="sidebar-group"
+                  id={`sidebar-group-section-${group.id}`}
+                  className={`sidebar-group ${
+                    highlightedTarget === `sidebar-group-section-${group.id}`
+                      ? "sidebar-search-match"
+                      : ""
+                  }`.trim()}
                   aria-labelledby={`sidebar-group-${group.id}`}
                 >
                   <div className="sidebar-group-toolbar">
@@ -165,12 +324,7 @@ export default function ComponentsSidebar() {
                         type="button"
                         className="sidebar-group-add"
                         aria-label={`Add component to ${group.label}`}
-                        aria-expanded={isMenuOpen}
-                        onClick={() =>
-                          setMenuOpenForGroup((current) =>
-                            current === group.id ? null : group.id,
-                          )
-                        }
+                        onClick={() => openJsonEditor(group.id)}
                       >
                         <svg
                           viewBox="0 0 24 24"
@@ -185,27 +339,6 @@ export default function ComponentsSidebar() {
                           <path d="M5 12h14" />
                         </svg>
                       </button>
-
-                      {isMenuOpen ? (
-                        <div className="sidebar-group-menu" role="menu">
-                          {availableItems.length > 0 ? (
-                            availableItems.map((item) => (
-                              <button
-                                key={`${group.id}-${item.type}`}
-                                type="button"
-                                className="sidebar-group-menu-item"
-                                onClick={() => addComponentToGroup(group.id, item.type)}
-                              >
-                                {item.label}
-                              </button>
-                            ))
-                          ) : (
-                            <div className="sidebar-group-menu-empty">
-                              No more components to add
-                            </div>
-                          )}
-                        </div>
-                      ) : null}
                     </div>
                   </div>
 
@@ -221,26 +354,79 @@ export default function ComponentsSidebar() {
                       {groupItems.length > 0 ? (
                         <div className="sidebar-group-items">
                           {groupItems.map((item) => {
-                            const meta = nodeTypeMeta[item.type];
-                            const Icon = meta?.Icon;
+                            const Icon = item.Icon;
 
                             return (
                               <div
                                 key={item.type}
-                                className={`sidebar-item ${item.bgClass}`}
+                                id={`sidebar-component-${item.type}`}
+                                className={`sidebar-item ${item.bgClass ?? ""} ${
+                                  highlightedTarget === `sidebar-component-${item.type}`
+                                    ? "sidebar-search-match"
+                                    : ""
+                                }`.trim()}
                                 draggable
                                 onDragStart={(event) => {
+                                  event.dataTransfer.setData(
+                                    "application/reactflow-component",
+                                    JSON.stringify({
+                                      componentKey: item.type,
+                                    }),
+                                  );
                                   event.dataTransfer.setData("application/reactflow", item.type);
                                   event.dataTransfer.effectAllowed = "move";
                                 }}
                               >
-                                <div className="sidebar-item-icon" style={{ color: item.color }}>
-                                  {Icon ? <Icon className="h-5 w-5" /> : null}
+                                <div
+                                  className="sidebar-item-icon"
+                                  style={{
+                                    color: item.color,
+                                    ...(item.bgClass
+                                      ? {}
+                                      : { background: `${item.color}1f` }),
+                                  }}
+                                >
+                                  <Icon className="h-5 w-5" />
                                 </div>
                                 <div className="sidebar-item-info">
                                   <span className="sidebar-item-label">{item.label}</span>
-                                  <span className="sidebar-item-type">{item.type}</span>
+                                  <span className="sidebar-item-type">
+                                    {isBuiltInComponent(item.type)
+                                      ? item.type
+                                      : item.description || item.type}
+                                  </span>
                                 </div>
+                                {!isBuiltInComponent(item.type) ? (
+                                  <button
+                                    type="button"
+                                    className="sidebar-component-delete"
+                                    aria-label={`Delete ${item.label}`}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      event.preventDefault();
+                                      setPendingDeleteComponent({
+                                        key: item.type,
+                                        label: item.label,
+                                      });
+                                    }}
+                                  >
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="1.8"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      className="h-4 w-4"
+                                    >
+                                      <path d="M9 3.75h6a1 1 0 0 1 1 1V6H8V4.75a1 1 0 0 1 1-1Z" />
+                                      <path d="M4.75 6h14.5" />
+                                      <path d="M6.75 6.75 7.6 19a2 2 0 0 0 2 1.86h4.8a2 2 0 0 0 2-1.86l.85-12.25" />
+                                      <path d="M10 10.25v6.5" />
+                                      <path d="M14 10.25v6.5" />
+                                    </svg>
+                                  </button>
+                                ) : null}
                                 <svg
                                   viewBox="0 0 24 24"
                                   fill="none"
@@ -421,6 +607,137 @@ export default function ComponentsSidebar() {
                 }}
               >
                 Delete Workflow
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {jsonEditorGroup ? (
+        <div
+          className="app-modal-backdrop"
+          role="presentation"
+          onClick={() => {
+            setJsonEditorGroup(null);
+            setJsonError(null);
+          }}
+        >
+          <div
+            className="app-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-component-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="app-modal-header">
+              <div className="app-modal-icon">
+                <ActionIcon className="h-5 w-5" />
+              </div>
+              <div className="app-modal-copy">
+                <h3 id="create-component-title" className="app-modal-title">
+                  Create Component
+                </h3>
+                <p className="app-modal-text">
+                  Define the new {jsonEditorGroup} component in JSON. It will appear in the
+                  sidebar as soon as you create it.
+                </p>
+              </div>
+            </div>
+            <textarea
+              className="dark-input"
+              style={{ minHeight: 220, resize: "vertical", fontFamily: "monospace" }}
+              value={jsonValue}
+              onChange={(event) => setJsonValue(event.target.value)}
+            />
+            {jsonError ? <p className="app-modal-warning-text">{jsonError}</p> : null}
+            <div className="app-modal-actions">
+              <button
+                type="button"
+                className="app-modal-btn app-modal-btn-secondary"
+                onClick={() => {
+                  setJsonEditorGroup(null);
+                  setJsonError(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="app-modal-btn app-modal-btn-danger"
+                onClick={handleCreateComponent}
+              >
+                Create Component
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingDeleteComponent ? (
+        <div
+          className="app-modal-backdrop"
+          role="presentation"
+          onClick={() => setPendingDeleteComponent(null)}
+        >
+          <div
+            className="app-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-component-title"
+            aria-describedby="delete-component-description"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="app-modal-header">
+              <div className="app-modal-icon app-modal-icon-danger">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                >
+                  <path d="M9 3.75h6a1 1 0 0 1 1 1V6H8V4.75a1 1 0 0 1 1-1Z" />
+                  <path d="M4.75 6h14.5" />
+                  <path d="M6.75 6.75 7.6 19a2 2 0 0 0 2 1.86h4.8a2 2 0 0 0 2-1.86l.85-12.25" />
+                  <path d="M10 10.25v6.5" />
+                  <path d="M14 10.25v6.5" />
+                </svg>
+              </div>
+              <div className="app-modal-copy">
+                <h3 id="delete-component-title" className="app-modal-title">
+                  Delete component?
+                </h3>
+                <p id="delete-component-description" className="app-modal-text">
+                  <span className="app-modal-strong">{pendingDeleteComponent.label}</span> will be
+                  removed from the sidebar and deleted from canvases where it is used.
+                </p>
+              </div>
+            </div>
+            <div className="app-modal-warning">
+              <span className="app-modal-warning-label">Permanent action</span>
+              <span className="app-modal-warning-text">
+                Existing instances of <span className="app-modal-strong">{pendingDeleteComponent.label}</span> will also be removed.
+              </span>
+            </div>
+            <div className="app-modal-actions">
+              <button
+                type="button"
+                className="app-modal-btn app-modal-btn-secondary"
+                onClick={() => setPendingDeleteComponent(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="app-modal-btn app-modal-btn-danger"
+                onClick={() => {
+                  removeCustomComponent(pendingDeleteComponent.key);
+                  setPendingDeleteComponent(null);
+                }}
+              >
+                Delete Component
               </button>
             </div>
           </div>

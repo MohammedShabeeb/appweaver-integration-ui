@@ -5,14 +5,27 @@ import {
   createDefaultComponentAssignments,
   type ComponentGroupId,
   type ComponentType,
+  type BuiltInComponentType,
+  isBuiltInComponent,
 } from "@/config/componentCatalog";
 
-type AppNodeType = ComponentType;
+type AppNodeType = BuiltInComponentType | "custom";
 type InsertableNodeType = Exclude<ComponentType, "start">;
+
+export type CustomComponentDefinition = {
+  key: string;
+  label: string;
+  description: string;
+  color: string;
+  singleEndpointOnly: boolean;
+};
 
 type AppNodeData = {
   label: string;
   config: Record<string, unknown>;
+  componentKey?: string;
+  description?: string;
+  accentColor?: string;
   childCanvasId?: string;
 };
 
@@ -56,6 +69,7 @@ type PersistedFlowState = {
   currentCanvasId?: string;
   canvasStack?: string[];
   componentGroupAssignments?: Partial<Record<ComponentType, ComponentGroupId>>;
+  customComponents?: CustomComponentDefinition[];
 };
 
 const DEFAULT_WORKFLOW_ID = "workflow-root";
@@ -92,27 +106,36 @@ function createInitialWorkflow(id = DEFAULT_WORKFLOW_ID, name = "Root"): Workflo
   };
 }
 
-function createFlowNode(type: AppNodeType, position: XYPosition): AppNode {
-  const id = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  const labelMap: Record<AppNodeType, string> = {
+function createFlowNode(
+  componentKey: ComponentType,
+  position: XYPosition,
+  customComponents: CustomComponentDefinition[],
+): AppNode {
+  const builtInType = isBuiltInComponent(componentKey) ? componentKey : null;
+  const nodeType: AppNodeType = builtInType ?? "custom";
+  const id = `${componentKey}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const labelMap: Record<BuiltInComponentType, string> = {
     start: "From",
     http: "HTTP",
     delay: "Delay",
     container: "Container",
-    action: "Action",
   };
+  const customComponent = customComponents.find((component) => component.key === componentKey);
 
   const node: AppNode = {
     id,
-    type,
+    type: nodeType,
     position,
     data: {
-      label: labelMap[type],
+      label: builtInType ? labelMap[builtInType] : customComponent?.label ?? "Custom",
       config: {},
+      componentKey,
+      description: customComponent?.description,
+      accentColor: customComponent?.color,
     },
   };
 
-  if (type === "container") {
+  if (builtInType === "container") {
     node.data.childCanvasId = `canvas-${id}`;
   }
 
@@ -140,6 +163,77 @@ function removeCanvasSubtree(
   }
 
   delete nextCanvases[canvasId];
+  return nextCanvases;
+}
+
+function removeComponentInstancesFromCanvases(
+  canvases: Record<string, CanvasState>,
+  componentKey: string,
+): Record<string, CanvasState> {
+  let nextCanvases = { ...canvases };
+
+  for (const [canvasId, canvas] of Object.entries(canvases)) {
+    const nodesToDelete = canvas.nodes.filter((node) => node.data?.componentKey === componentKey);
+    let nextCanvasMap = nextCanvases;
+
+    for (const node of nodesToDelete) {
+      if (node.data?.childCanvasId) {
+        nextCanvasMap = removeCanvasSubtree(nextCanvasMap, node.data.childCanvasId);
+      }
+    }
+
+    nextCanvases = {
+      ...nextCanvasMap,
+      [canvasId]: {
+        ...canvas,
+        nodes: canvas.nodes.filter((node) => node.data?.componentKey !== componentKey),
+        edges: canvas.edges.filter((edge) => {
+          const sourceNode = canvas.nodes.find((node) => node.id === edge.source);
+          const targetNode = canvas.nodes.find((node) => node.id === edge.target);
+
+          return (
+            sourceNode?.data?.componentKey !== componentKey &&
+            targetNode?.data?.componentKey !== componentKey
+          );
+        }),
+      },
+    };
+  }
+
+  return nextCanvases;
+}
+
+function pruneDeprecatedNodesFromCanvases(
+  canvases: Record<string, CanvasState>,
+  shouldRemove: (node: AppNode) => boolean,
+): Record<string, CanvasState> {
+  let nextCanvases = { ...canvases };
+
+  for (const [canvasId, canvas] of Object.entries(canvases)) {
+    const nodesToDelete = canvas.nodes.filter(shouldRemove);
+    let nextCanvasMap = nextCanvases;
+
+    for (const node of nodesToDelete) {
+      if (node.data?.childCanvasId) {
+        nextCanvasMap = removeCanvasSubtree(nextCanvasMap, node.data.childCanvasId);
+      }
+    }
+
+    nextCanvases = {
+      ...nextCanvasMap,
+      [canvasId]: {
+        ...canvas,
+        nodes: canvas.nodes.filter((node) => !shouldRemove(node)),
+        edges: canvas.edges.filter((edge) => {
+          const sourceNode = canvas.nodes.find((node) => node.id === edge.source);
+          const targetNode = canvas.nodes.find((node) => node.id === edge.target);
+
+          return !sourceNode || !targetNode || (!shouldRemove(sourceNode) && !shouldRemove(targetNode));
+        }),
+      },
+    };
+  }
+
   return nextCanvases;
 }
 
@@ -240,12 +334,18 @@ function normalizeImportedWorkflow(
   };
 }
 
-function normalizePersistedState(persistedState?: PersistedFlowState) {
+function normalizePersistedState(
+  persistedState?: PersistedFlowState,
+  resetLegacyCustomizations = false,
+) {
   const defaultAssignments = createDefaultComponentAssignments();
   const componentGroupAssignments = {
     ...defaultAssignments,
-    ...(persistedState?.componentGroupAssignments ?? {}),
+    ...(resetLegacyCustomizations ? {} : persistedState?.componentGroupAssignments ?? {}),
   };
+  const customComponents = resetLegacyCustomizations
+    ? []
+    : persistedState?.customComponents ?? [];
 
   if (persistedState?.workflows && Object.keys(persistedState.workflows).length > 0) {
     const workflowOrder =
@@ -256,17 +356,33 @@ function normalizePersistedState(persistedState?: PersistedFlowState) {
       persistedState.activeWorkflowId && persistedState.activeWorkflowId in persistedState.workflows
         ? persistedState.activeWorkflowId
         : workflowOrder[0];
-    const activeWorkflow =
-      persistedState.workflows[activeWorkflowId] ?? createInitialWorkflow();
+
+    const normalizedWorkflows = resetLegacyCustomizations
+      ? Object.fromEntries(
+          Object.entries(persistedState.workflows).map(([workflowId, workflow]) => [
+            workflowId,
+            {
+              ...workflow,
+              canvases: pruneDeprecatedNodesFromCanvases(
+                workflow.canvases,
+                (node) => node.type === "action" || node.type === "custom",
+              ),
+            },
+          ]),
+        ) as Record<string, WorkflowRecord>
+      : persistedState.workflows;
+    const normalizedActiveWorkflow =
+      normalizedWorkflows[activeWorkflowId] ?? createInitialWorkflow();
 
     return {
-      workflows: persistedState.workflows,
+      workflows: normalizedWorkflows,
       workflowOrder,
       activeWorkflowId,
-      canvases: activeWorkflow.canvases,
-      currentCanvasId: activeWorkflow.currentCanvasId,
-      canvasStack: activeWorkflow.canvasStack,
+      canvases: normalizedActiveWorkflow.canvases,
+      currentCanvasId: normalizedActiveWorkflow.currentCanvasId,
+      canvasStack: normalizedActiveWorkflow.canvasStack,
       componentGroupAssignments,
+      customComponents,
     };
   }
 
@@ -274,14 +390,19 @@ function normalizePersistedState(persistedState?: PersistedFlowState) {
   const legacyCanvases = persistedState?.canvases;
 
   if (legacyCanvases && Object.keys(legacyCanvases).length > 0) {
-    legacyWorkflow.canvases = legacyCanvases;
+    legacyWorkflow.canvases = resetLegacyCustomizations
+      ? pruneDeprecatedNodesFromCanvases(
+          legacyCanvases,
+          (node) => node.type === "action" || node.type === "custom",
+        )
+      : legacyCanvases;
     legacyWorkflow.currentCanvasId =
       persistedState.currentCanvasId &&
-      persistedState.currentCanvasId in legacyCanvases
+      persistedState.currentCanvasId in legacyWorkflow.canvases
         ? persistedState.currentCanvasId
         : legacyWorkflow.rootCanvasId;
     legacyWorkflow.canvasStack =
-      persistedState.canvasStack?.filter((canvasId) => canvasId in legacyCanvases) ?? [
+      persistedState.canvasStack?.filter((canvasId) => canvasId in legacyWorkflow.canvases) ?? [
         legacyWorkflow.rootCanvasId,
       ];
     legacyWorkflow.name = legacyCanvases[legacyWorkflow.rootCanvasId]?.name ?? legacyWorkflow.name;
@@ -297,6 +418,7 @@ function normalizePersistedState(persistedState?: PersistedFlowState) {
     currentCanvasId: legacyWorkflow.currentCanvasId,
     canvasStack: legacyWorkflow.canvasStack,
     componentGroupAssignments,
+    customComponents,
   };
 }
 
@@ -311,10 +433,11 @@ interface FlowState {
   selectedEdge: AppEdge | null;
   isSidebarOpen: boolean;
   sidebarView: SidebarView;
-  componentGroupAssignments: Record<ComponentType, ComponentGroupId>;
+  componentGroupAssignments: Record<string, ComponentGroupId>;
+  customComponents: CustomComponentDefinition[];
   setNodes: (nodes: AppNode[]) => void;
   setEdges: (edges: AppEdge[]) => void;
-  addNode: (type: AppNodeType, position: XYPosition) => void;
+  addNode: (componentKey: ComponentType, position: XYPosition) => void;
   setSelectedNode: (node: AppNode | null) => void;
   setSelectedEdge: (edge: AppEdge | null) => void;
   clearSelection: () => void;
@@ -329,6 +452,11 @@ interface FlowState {
   toggleSidebar: () => void;
   openSidebar: (view: SidebarView) => void;
   assignComponentToGroup: (type: ComponentType, groupId: ComponentGroupId) => void;
+  addCustomComponent: (
+    component: CustomComponentDefinition,
+    groupId: ComponentGroupId,
+  ) => { ok: true } | { ok: false; reason: string };
+  removeCustomComponent: (componentKey: string) => void;
   exportWorkflow: () => WorkflowExport;
   importWorkflow: (raw: unknown, fallbackName?: string) => boolean;
   selectWorkflow: (workflowId: string) => void;
@@ -371,6 +499,7 @@ export const useFlowStore = create<FlowState>()(
       isSidebarOpen: false,
       sidebarView: "components",
       componentGroupAssignments: createDefaultComponentAssignments(),
+      customComponents: [],
 
       setNodes: (nodes) =>
         set((state) => {
@@ -412,7 +541,7 @@ export const useFlowStore = create<FlowState>()(
           });
         }),
 
-      addNode: (type, position) =>
+      addNode: (componentKey, position) =>
         set((state) => {
           const activeWorkflow = state.workflows[state.activeWorkflowId];
 
@@ -421,7 +550,7 @@ export const useFlowStore = create<FlowState>()(
           }
 
           const currentCanvas = activeWorkflow.canvases[activeWorkflow.currentCanvasId];
-          const newNode = createFlowNode(type, position);
+          const newNode = createFlowNode(componentKey, position, state.customComponents);
           const nextCanvases: Record<string, CanvasState> = {
             ...activeWorkflow.canvases,
             [activeWorkflow.currentCanvasId]: {
@@ -430,7 +559,7 @@ export const useFlowStore = create<FlowState>()(
             },
           };
 
-          if (type === "container" && newNode.data.childCanvasId) {
+          if (componentKey === "container" && newNode.data.childCanvasId) {
             nextCanvases[newNode.data.childCanvasId] = createCanvas(
               newNode.data.childCanvasId,
               newNode.data.label,
@@ -459,6 +588,91 @@ export const useFlowStore = create<FlowState>()(
             [type]: groupId,
           },
         })),
+      addCustomComponent: (component, groupId) => {
+        const trimmedKey = component.key.trim();
+
+        if (!trimmedKey) {
+          return { ok: false, reason: "Component key is required." };
+        }
+
+        const currentState = get();
+
+        if (
+          isBuiltInComponent(trimmedKey) ||
+          currentState.customComponents.some((item) => item.key === trimmedKey)
+        ) {
+          return { ok: false, reason: "That component key already exists." };
+        }
+
+        set((state) => ({
+          customComponents: [
+            ...state.customComponents,
+            { ...component, key: trimmedKey, singleEndpointOnly: component.singleEndpointOnly },
+          ],
+          componentGroupAssignments: {
+            ...state.componentGroupAssignments,
+            [trimmedKey]: groupId,
+          },
+        }));
+
+        return { ok: true };
+      },
+      removeCustomComponent: (componentKey) =>
+        set((state) => {
+          const nextCustomComponents = state.customComponents.filter(
+            (component) => component.key !== componentKey,
+          );
+
+          if (nextCustomComponents.length === state.customComponents.length) {
+            return state;
+          }
+
+          const nextAssignments = { ...state.componentGroupAssignments };
+          delete nextAssignments[componentKey];
+
+          const nextWorkflows = Object.fromEntries(
+            Object.entries(state.workflows).map(([workflowId, workflow]) => {
+              const nextCanvases = removeComponentInstancesFromCanvases(
+                workflow.canvases,
+                componentKey,
+              );
+              const nextCurrentCanvasId = nextCanvases[workflow.currentCanvasId]
+                ? workflow.currentCanvasId
+                : workflow.rootCanvasId;
+              const nextCanvasStack = workflow.canvasStack.filter(
+                (canvasId) => canvasId in nextCanvases,
+              );
+
+              return [
+                workflowId,
+                {
+                  ...workflow,
+                  canvases: nextCanvases,
+                  currentCanvasId: nextCurrentCanvasId,
+                  canvasStack:
+                    nextCanvasStack.length > 0 &&
+                    nextCanvasStack[nextCanvasStack.length - 1] === nextCurrentCanvasId
+                      ? nextCanvasStack
+                      : [workflow.rootCanvasId],
+                },
+              ];
+            }),
+          ) as Record<string, WorkflowRecord>;
+
+          const activeWorkflow = nextWorkflows[state.activeWorkflowId];
+
+          return {
+            workflows: nextWorkflows,
+            canvases: activeWorkflow?.canvases ?? state.canvases,
+            currentCanvasId: activeWorkflow?.currentCanvasId ?? state.currentCanvasId,
+            canvasStack: activeWorkflow?.canvasStack ?? state.canvasStack,
+            customComponents: nextCustomComponents,
+            componentGroupAssignments: nextAssignments,
+            selectedNode:
+              state.selectedNode?.data?.componentKey === componentKey ? null : state.selectedNode,
+            selectedEdge: state.selectedEdge,
+          };
+        }),
       exportWorkflow: () => {
         const state = get();
         const activeWorkflow = state.workflows[state.activeWorkflowId];
@@ -750,7 +964,7 @@ export const useFlowStore = create<FlowState>()(
           };
         }),
 
-      insertNodeOnEdge: (edgeId, type) =>
+      insertNodeOnEdge: (edgeId, componentKey) =>
         set((state) => {
           const activeWorkflow = state.workflows[state.activeWorkflowId];
 
@@ -772,13 +986,14 @@ export const useFlowStore = create<FlowState>()(
             (node) => node.id === edgeToSplit.target,
           );
           const newNode = createFlowNode(
-            type,
+            componentKey,
             sourceNode && targetNode
               ? {
                   x: (sourceNode.position.x + targetNode.position.x) / 2,
                   y: (sourceNode.position.y + targetNode.position.y) / 2,
                 }
               : { x: 200, y: 200 },
+            state.customComponents,
           );
 
           const remainingEdges = currentCanvas.edges.filter((edge) => edge.id !== edgeId);
@@ -805,7 +1020,7 @@ export const useFlowStore = create<FlowState>()(
             },
           };
 
-          if (type === "container" && newNode.data.childCanvasId) {
+          if (componentKey === "container" && newNode.data.childCanvasId) {
             nextCanvases[newNode.data.childCanvasId] = createCanvas(
               newNode.data.childCanvasId,
               newNode.data.label,
@@ -905,14 +1120,18 @@ export const useFlowStore = create<FlowState>()(
     }),
     {
       name: "nextui-flow-store",
-      version: 3,
-      migrate: (persistedState) =>
-        normalizePersistedState(persistedState as PersistedFlowState),
+      version: 4,
+      migrate: (persistedState, version) =>
+        normalizePersistedState(
+          persistedState as PersistedFlowState,
+          typeof version === "number" && version < 4,
+        ),
       partialize: (state) => ({
         workflows: state.workflows,
         workflowOrder: state.workflowOrder,
         activeWorkflowId: state.activeWorkflowId,
         componentGroupAssignments: state.componentGroupAssignments,
+        customComponents: state.customComponents,
       }),
     },
   ),

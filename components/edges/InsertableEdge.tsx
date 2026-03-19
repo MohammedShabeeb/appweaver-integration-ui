@@ -64,9 +64,20 @@ export default function InsertableEdge({
               }}
               onClick={(event) => event.stopPropagation()}
               onDragOver={(event) => {
-                const type = event.dataTransfer.getData("application/reactflow");
+                const rawComponent = event.dataTransfer.getData("application/reactflow-component");
+                const fallbackType = event.dataTransfer.getData("application/reactflow");
+                let componentKey = fallbackType;
 
-                if (!type || type === "start") {
+                if (rawComponent) {
+                  try {
+                    componentKey =
+                      (JSON.parse(rawComponent) as { componentKey?: string }).componentKey ?? "";
+                  } catch {
+                    componentKey = "";
+                  }
+                }
+
+                if (!componentKey || componentKey === "start") {
                   return;
                 }
 
@@ -77,15 +88,21 @@ export default function InsertableEdge({
                 event.preventDefault();
                 event.stopPropagation();
 
-                const type = event.dataTransfer.getData("application/reactflow");
+                const rawComponent = event.dataTransfer.getData("application/reactflow-component");
+                const fallbackType = event.dataTransfer.getData("application/reactflow");
+                let componentKey = fallbackType;
 
-                if (
-                  type === "http" ||
-                  type === "delay" ||
-                  type === "container" ||
-                  type === "action"
-                ) {
-                  insertNodeOnEdge(id, type);
+                if (rawComponent) {
+                  try {
+                    componentKey =
+                      (JSON.parse(rawComponent) as { componentKey?: string }).componentKey ?? "";
+                  } catch {
+                    componentKey = "";
+                  }
+                }
+
+                if (componentKey && componentKey !== "start") {
+                  insertNodeOnEdge(id, componentKey);
                 }
               }}
             >

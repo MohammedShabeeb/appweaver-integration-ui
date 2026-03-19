@@ -478,6 +478,12 @@ body {
   text-align: center;
 }
 
+.sidebar-search-match {
+  border-color: rgba(129, 140, 248, 0.4) !important;
+  box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.22), 0 10px 24px rgba(30, 41, 59, 0.25);
+  background: rgba(49, 46, 129, 0.14) !important;
+}
+
 .sidebar-item {
   display: flex;
   align-items: center;
@@ -534,10 +540,6 @@ button.sidebar-item {
   background: rgba(192, 132, 252, 0.12);
 }
 
-.sidebar-item-action .sidebar-item-icon {
-  background: rgba(148, 163, 184, 0.12);
-}
-
 .sidebar-item-info {
   display: flex;
   flex-direction: column;
@@ -563,6 +565,28 @@ button.sidebar-item {
   height: 14px;
   color: #334155;
   flex-shrink: 0;
+}
+
+.sidebar-component-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 9px;
+  background: rgba(15, 23, 42, 0.48);
+  color: #64748b;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.18s ease;
+}
+
+.sidebar-component-delete:hover {
+  border-color: rgba(248, 113, 113, 0.34);
+  background: rgba(127, 29, 29, 0.18);
+  color: #f8b4b4;
 }
 
 .sidebar-workflow-item {
@@ -795,6 +819,7 @@ button.sidebar-item {
 
 .app-modal-btn:focus-visible,
 .sidebar-workflow-delete:focus-visible,
+.sidebar-component-delete:focus-visible,
 .sidebar-workflow-select:focus-visible,
 .sidebar-group-trigger:focus-visible,
 .sidebar-group-add:focus-visible,

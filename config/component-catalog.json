@@ -1,46 +1,54 @@
 {
   "groups": [
     {
-      "id": "branchable",
-      "label": "Branchable Components",
-      "description": "These components can branch into additional paths."
+      "id": "component",
+      "label": "Component",
+      "description": "Reusable building blocks for your integration flow."
     },
     {
-      "id": "unbranchable",
-      "label": "Un-branchable Components",
-      "description": "Reserved for components that stay on a single path."
+      "id": "processor",
+      "label": "Processor",
+      "description": "Steps that transform, route, or act on messages."
+    },
+    {
+      "id": "entity",
+      "label": "Entity",
+      "description": "Domain objects and data-oriented building blocks."
+    },
+    {
+      "id": "kamelet",
+      "label": "Kamelet",
+      "description": "Packaged connectors and integration templates."
     }
   ],
   "components": [
     {
       "type": "start",
-      "defaultGroup": "branchable",
+      "defaultGroup": "component",
+      "singleEndpointOnly": false,
       "color": "#34d399",
       "bgClass": "sidebar-item-from"
     },
     {
       "type": "http",
-      "defaultGroup": "branchable",
+      "defaultGroup": "processor",
+      "singleEndpointOnly": false,
       "color": "#60a5fa",
       "bgClass": "sidebar-item-http"
     },
     {
       "type": "delay",
-      "defaultGroup": "branchable",
+      "defaultGroup": "processor",
+      "singleEndpointOnly": false,
       "color": "#fbbf24",
       "bgClass": "sidebar-item-delay"
     },
     {
       "type": "container",
-      "defaultGroup": "branchable",
+      "defaultGroup": "entity",
+      "singleEndpointOnly": false,
       "color": "#c084fc",
       "bgClass": "sidebar-item-container"
-    },
-    {
-      "type": "action",
-      "defaultGroup": "unbranchable",
-      "color": "#94a3b8",
-      "bgClass": "sidebar-item-action"
     }
   ]
 }
