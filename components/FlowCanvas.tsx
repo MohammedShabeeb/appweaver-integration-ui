@@ -24,12 +24,7 @@ import DelayNode from "./nodes/DelayNode";
 import ContainerNode from "./nodes/ContainerNode";
 import CustomNode from "./nodes/CustomNode";
 import InsertableEdge from "./edges/InsertableEdge";
-import {
-  builtInComponentMap,
-  componentDefinitions,
-  componentGroups,
-  isBuiltInComponent,
-} from "@/config/componentCatalog";
+import { componentDefinitions, componentGroups } from "@/config/componentCatalog";
 import { nodeTypeMeta } from "./node-icons";
 
 const nodeTypes = {
@@ -145,28 +140,14 @@ export default function FlowCanvas() {
         return false;
       }
 
-      const sourceNode = nodes.find((node) => node.id === params.source);
-      const targetNode = nodes.find((node) => node.id === params.target);
-      const sourceComponentKey = sourceNode?.data?.componentKey ?? sourceNode?.type;
-      const targetComponentKey = targetNode?.data?.componentKey ?? targetNode?.type;
-      const sourceIsSingleEndpoint = sourceComponentKey
-        ? isBuiltInComponent(sourceComponentKey)
-          ? builtInComponentMap[sourceComponentKey].singleEndpointOnly
-          : customComponents.find((component) => component.key === sourceComponentKey)
-              ?.singleEndpointOnly ?? false
-        : false;
-      const targetIsSingleEndpoint = targetComponentKey
-        ? isBuiltInComponent(targetComponentKey)
-          ? builtInComponentMap[targetComponentKey].singleEndpointOnly
-          : customComponents.find((component) => component.key === targetComponentKey)
-              ?.singleEndpointOnly ?? false
-        : false;
+      if (params.source === params.target) {
+        return false;
+      }
 
       const sourceHandle = params.sourceHandle ?? null;
       const targetHandle = params.targetHandle ?? null;
 
       if (
-        sourceIsSingleEndpoint &&
         edges.some(
           (edge) =>
             edge.source === params.source && (edge.sourceHandle ?? null) === sourceHandle,
@@ -176,7 +157,6 @@ export default function FlowCanvas() {
       }
 
       if (
-        targetIsSingleEndpoint &&
         edges.some(
           (edge) =>
             edge.target === params.target && (edge.targetHandle ?? null) === targetHandle,
@@ -187,7 +167,7 @@ export default function FlowCanvas() {
 
       return true;
     },
-    [customComponents, edges, nodes]
+    [edges]
   );
 
   const onConnect = useCallback(

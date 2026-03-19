@@ -106,6 +106,7 @@ export default function ComponentsSidebar() {
   );
   const [pendingDeleteComponent, setPendingDeleteComponent] =
     useState<PendingDeleteComponent | null>(null);
+  const [activeGroupFilters, setActiveGroupFilters] = useState<ComponentGroupId[]>([]);
 
   const isWorkflowView = sidebarView === "workflows";
   const allComponentItems: ComponentListItem[] = [
@@ -131,6 +132,19 @@ export default function ComponentsSidebar() {
     allComponentItems
       .filter((item) => componentGroupAssignments[item.type] === groupId)
       .sort((left, right) => left.label.localeCompare(right.label));
+
+  const visibleGroups =
+    activeGroupFilters.length > 0
+      ? componentGroups.filter((group) => activeGroupFilters.includes(group.id))
+      : componentGroups;
+
+  const toggleGroupFilter = (groupId: ComponentGroupId) => {
+    setActiveGroupFilters((current) =>
+      current.includes(groupId)
+        ? current.filter((id) => id !== groupId)
+        : [...current, groupId],
+    );
+  };
 
   const toggleGroup = (groupId: ComponentGroupId) => {
     setExpandedGroups((current) => ({
@@ -165,6 +179,9 @@ export default function ComponentsSidebar() {
           ...current,
           [detail.groupId!]: true,
         }));
+        setActiveGroupFilters((current) =>
+          current.includes(detail.groupId!) ? current : [...current, detail.groupId!],
+        );
       }
 
       const targetId =
@@ -279,7 +296,109 @@ export default function ComponentsSidebar() {
 
         {!isWorkflowView ? (
           <div className="sidebar-items">
-            {componentGroups.map((group) => {
+            <section
+              className="sidebar-filter-panel"
+              aria-label="Filter categories"
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+                padding: "4px 2px 10px",
+              }}
+            >
+              <div
+                className="sidebar-filter-header"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  padding: "0 4px",
+                }}
+              >
+                <span
+                  className="sidebar-filter-title"
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "#cbd5e1",
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  Filter Categories
+                </span>
+                {activeGroupFilters.length > 0 ? (
+                  <button
+                    type="button"
+                    className="sidebar-filter-clear"
+                    onClick={() => setActiveGroupFilters([])}
+                    style={{
+                      appearance: "none",
+                      border: "none",
+                      background: "transparent",
+                      color: "#93c5fd",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+              <div
+                className="sidebar-filter-chips"
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  padding: "0 2px",
+                }}
+              >
+                {componentGroups.map((group) => {
+                  const isActive = activeGroupFilters.includes(group.id);
+
+                  return (
+                    <button
+                      key={group.id}
+                      type="button"
+                      className={`sidebar-filter-chip ${isActive ? "sidebar-filter-chip-active" : ""}`}
+                      onClick={() => toggleGroupFilter(group.id)}
+                      aria-pressed={isActive}
+                      style={{
+                        appearance: "none",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        minHeight: 28,
+                        borderRadius: 999,
+                        border: isActive
+                          ? "1px solid rgba(96, 165, 250, 0.36)"
+                          : "1px solid rgba(148, 163, 184, 0.24)",
+                        background: isActive
+                          ? "rgba(37, 99, 235, 0.18)"
+                          : "rgba(15, 23, 42, 0.55)",
+                        color: isActive ? "#bfdbfe" : "#e2e8f0",
+                        boxShadow: isActive
+                          ? "0 0 0 1px rgba(59, 130, 246, 0.16)"
+                          : "none",
+                        padding: "0 16px",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        fontFamily: "'Inter', sans-serif",
+                        cursor: "pointer",
+                        transition: "all 0.18s ease",
+                      }}
+                    >
+                      {group.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            {visibleGroups.map((group) => {
               const isExpanded = expandedGroups[group.id];
               const groupItems = getGroupItems(group.id);
 
