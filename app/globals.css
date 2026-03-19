@@ -16,6 +16,98 @@ body {
   box-sizing: border-box;
 }
 
+html {
+  scrollbar-color: rgba(129, 140, 248, 0.55) rgba(15, 23, 42, 0.92);
+  scrollbar-width: thin;
+}
+
+html,
+body,
+.app-layout,
+.app-body,
+.components-sidebar,
+.react-flow,
+.react-flow__renderer,
+.react-flow__pane,
+.react-flow__viewport {
+  scrollbar-color: rgba(129, 140, 248, 0.55) rgba(15, 23, 42, 0.92);
+  scrollbar-width: thin;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+.app-layout::-webkit-scrollbar,
+.app-body::-webkit-scrollbar,
+.components-sidebar::-webkit-scrollbar,
+.react-flow::-webkit-scrollbar,
+.react-flow__renderer::-webkit-scrollbar,
+.react-flow__pane::-webkit-scrollbar,
+.react-flow__viewport::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track,
+.app-layout::-webkit-scrollbar-track,
+.app-body::-webkit-scrollbar-track,
+.components-sidebar::-webkit-scrollbar-track,
+.react-flow::-webkit-scrollbar-track,
+.react-flow__renderer::-webkit-scrollbar-track,
+.react-flow__pane::-webkit-scrollbar-track,
+.react-flow__viewport::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.96);
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb,
+.app-layout::-webkit-scrollbar-thumb,
+.app-body::-webkit-scrollbar-thumb,
+.components-sidebar::-webkit-scrollbar-thumb,
+.react-flow::-webkit-scrollbar-thumb,
+.react-flow__renderer::-webkit-scrollbar-thumb,
+.react-flow__pane::-webkit-scrollbar-thumb,
+.react-flow__viewport::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  border: 2px solid rgba(15, 23, 42, 0.96);
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.76), rgba(59, 130, 246, 0.72));
+}
+
+html::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover,
+.app-layout::-webkit-scrollbar-thumb:hover,
+.app-body::-webkit-scrollbar-thumb:hover,
+.components-sidebar::-webkit-scrollbar-thumb:hover,
+.react-flow::-webkit-scrollbar-thumb:hover,
+.react-flow__renderer::-webkit-scrollbar-thumb:hover,
+.react-flow__pane::-webkit-scrollbar-thumb:hover,
+.react-flow__viewport::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(129, 140, 248, 0.9), rgba(96, 165, 250, 0.86));
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.92);
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  border: 2px solid rgba(15, 23, 42, 0.92);
+  background: linear-gradient(180deg, rgba(129, 140, 248, 0.72), rgba(96, 165, 250, 0.68));
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(165, 180, 252, 0.88), rgba(125, 211, 252, 0.82));
+}
+
+*::-webkit-scrollbar-corner {
+  background: rgba(15, 23, 42, 0.92);
+}
+
 .flow-handle {
   height: 10px !important;
   width: 10px !important;

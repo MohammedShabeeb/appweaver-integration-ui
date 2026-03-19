@@ -146,8 +146,11 @@ export default function FlowCanvas() {
 
       const sourceHandle = params.sourceHandle ?? null;
       const targetHandle = params.targetHandle ?? null;
+      const sourceNode = nodes.find((node) => node.id === params.source);
+      const allowSourceFanOut = sourceNode?.type === "start";
 
       if (
+        !allowSourceFanOut &&
         edges.some(
           (edge) =>
             edge.source === params.source && (edge.sourceHandle ?? null) === sourceHandle,
@@ -167,7 +170,7 @@ export default function FlowCanvas() {
 
       return true;
     },
-    [edges]
+    [edges, nodes]
   );
 
   const onConnect = useCallback(

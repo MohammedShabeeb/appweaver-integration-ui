@@ -12,7 +12,17 @@ export default function TopNav() {
     isSidebarOpen,
     openSidebar,
     sidebarView,
+    toggleSidebar,
   } = useFlowStore();
+
+  const handleSidebarToggle = (view: "workflows" | "components") => {
+    if (isSidebarOpen && sidebarView === view) {
+      toggleSidebar();
+      return;
+    }
+
+    openSidebar(view);
+  };
 
   const handleSaveWorkflow = () => {
     const workflow = exportWorkflow();
@@ -85,7 +95,7 @@ export default function TopNav() {
             type="button"
             aria-label="Open workflows"
             className={`topnav-btn ${isSidebarOpen && sidebarView === "workflows" ? "topnav-btn-active" : ""}`}
-            onClick={() => openSidebar("workflows")}
+            onClick={() => handleSidebarToggle("workflows")}
           >
             <svg
               viewBox="0 0 24 24"
@@ -108,7 +118,7 @@ export default function TopNav() {
             type="button"
             aria-label="Open components"
             className={`topnav-btn ${isSidebarOpen && sidebarView === "components" ? "topnav-btn-active" : ""}`}
-            onClick={() => openSidebar("components")}
+            onClick={() => handleSidebarToggle("components")}
           >
             <svg
               viewBox="0 0 24 24"
