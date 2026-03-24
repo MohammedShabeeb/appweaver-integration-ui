@@ -22,8 +22,10 @@ import FromNode from "./nodes/StartNode";
 import HttpNode from "./nodes/HttpNode";
 import DelayNode from "./nodes/DelayNode";
 import ContainerNode from "./nodes/ContainerNode";
+import SwitchNode from "./nodes/SwitchNode";
 import CustomNode from "./nodes/CustomNode";
 import InsertableEdge from "./edges/InsertableEdge";
+import ConditionEdge from "./edges/ConditionEdge";
 import { componentDefinitions, componentGroups } from "@/config/componentCatalog";
 import { nodeTypeMeta } from "./node-icons";
 
@@ -32,11 +34,13 @@ const nodeTypes = {
   http: HttpNode,
   delay: DelayNode,
   container: ContainerNode,
+  switch: SwitchNode,
   custom: CustomNode,
 };
 
 const edgeTypes = {
   insertable: InsertableEdge,
+  condition: ConditionEdge,
 };
 
 export default function FlowCanvas() {
@@ -147,7 +151,7 @@ export default function FlowCanvas() {
       const sourceHandle = params.sourceHandle ?? null;
       const targetHandle = params.targetHandle ?? null;
       const sourceNode = nodes.find((node) => node.id === params.source);
-      const allowSourceFanOut = sourceNode?.type === "start";
+      const allowSourceFanOut = sourceNode?.type === "start" || sourceNode?.type === "switch";
 
       if (
         !allowSourceFanOut &&
@@ -179,17 +183,28 @@ export default function FlowCanvas() {
         return;
       }
 
+      const sourceNode = nodes.find((node) => node.id === params.source);
+      const isFromSwitch = sourceNode?.type === "switch";
+      const caseIndex = params.sourceHandle?.startsWith("source-case-")
+        ? Number(params.sourceHandle.replace("source-case-", ""))
+        : -1;
+      const cases = (sourceNode?.data?.config as { cases?: { label: string }[] })?.cases ?? [];
+      const conditionLabel = caseIndex >= 0 && caseIndex < cases.length
+        ? cases[caseIndex].label
+        : "";
+
       setEdges(
         addEdge(
           {
             ...params,
-            type: "insertable",
+            type: isFromSwitch ? "condition" : "insertable",
+            ...(isFromSwitch ? { data: { conditionLabel } } : {}),
           },
           edges
         )
       );
     },
-    [canUseEndpoint, edges, setEdges]
+    [canUseEndpoint, edges, nodes, setEdges]
   );
 
   const onNodesChange = useCallback(

@@ -1,7 +1,7 @@
 import componentCatalogJson from "./component-catalog.json";
 
 export type ComponentGroupId = "component" | "processor" | "entity" | "kamelet";
-export type BuiltInComponentType = "start" | "http" | "delay" | "container";
+export type BuiltInComponentType = "start" | "http" | "delay" | "container" | "switch";
 export type ComponentType = string;
 
 type ComponentGroupDefinition = {

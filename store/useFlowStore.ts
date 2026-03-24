@@ -119,6 +119,7 @@ function createFlowNode(
     http: "HTTP",
     delay: "Delay",
     container: "Container",
+    switch: "Switch",
   };
   const customComponent = customComponents.find((component) => component.key === componentKey);
 
@@ -128,7 +129,7 @@ function createFlowNode(
     position,
     data: {
       label: builtInType ? labelMap[builtInType] : customComponent?.label ?? "Custom",
-      config: {},
+      config: builtInType === "switch" ? { cases: [{ label: "default" }] } : {},
       componentKey,
       description: customComponent?.description,
       accentColor: customComponent?.color,
@@ -461,6 +462,9 @@ interface FlowState {
   importWorkflow: (raw: unknown, fallbackName?: string) => boolean;
   selectWorkflow: (workflowId: string) => void;
   deleteWorkflow: (workflowId: string) => void;
+  addSwitchCase: (nodeId: string) => void;
+  removeSwitchCase: (nodeId: string, caseIndex: number) => void;
+  updateEdgeData: (edgeId: string, data: Record<string, unknown>) => void;
 }
 
 const initialWorkflow = createInitialWorkflow();
@@ -1117,15 +1121,155 @@ export const useFlowStore = create<FlowState>()(
             selectedEdge: null,
           };
         }),
+
+      addSwitchCase: (nodeId) =>
+        set((state) => {
+          const activeWorkflow = state.workflows[state.activeWorkflowId];
+
+          if (!activeWorkflow) {
+            return state;
+          }
+
+          const currentCanvas = activeWorkflow.canvases[activeWorkflow.currentCanvasId];
+          const node = currentCanvas.nodes.find((n) => n.id === nodeId);
+
+          if (!node || node.type !== "switch") {
+            return state;
+          }
+
+          const currentCases = (node.data.config as { cases?: { label: string }[] }).cases ?? [];
+          const newCaseIndex = currentCases.length;
+          const nextNodes = currentCanvas.nodes.map((n) =>
+            n.id === nodeId
+              ? {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    config: {
+                      ...n.data.config,
+                      cases: [...currentCases, { label: `case-${newCaseIndex}` }],
+                    },
+                  },
+                }
+              : n,
+          );
+
+          const updatedNode = nextNodes.find((n) => n.id === nodeId) ?? null;
+
+          return {
+            ...syncActiveWorkflow(state, {
+              ...activeWorkflow,
+              canvases: {
+                ...activeWorkflow.canvases,
+                [activeWorkflow.currentCanvasId]: {
+                  ...currentCanvas,
+                  nodes: nextNodes,
+                },
+              },
+            }),
+            selectedNode: state.selectedNode?.id === nodeId ? updatedNode : state.selectedNode,
+          };
+        }),
+
+      removeSwitchCase: (nodeId, caseIndex) =>
+        set((state) => {
+          const activeWorkflow = state.workflows[state.activeWorkflowId];
+
+          if (!activeWorkflow) {
+            return state;
+          }
+
+          const currentCanvas = activeWorkflow.canvases[activeWorkflow.currentCanvasId];
+          const node = currentCanvas.nodes.find((n) => n.id === nodeId);
+
+          if (!node || node.type !== "switch") {
+            return state;
+          }
+
+          const currentCases = (node.data.config as { cases?: { label: string }[] }).cases ?? [];
+
+          if (currentCases.length <= 1 || caseIndex < 0 || caseIndex >= currentCases.length) {
+            return state;
+          }
+
+          const nextCases = currentCases.filter((_, i) => i !== caseIndex);
+          const removedHandleId = `source-case-${caseIndex}`;
+
+          const nextNodes = currentCanvas.nodes.map((n) =>
+            n.id === nodeId
+              ? {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    config: { ...n.data.config, cases: nextCases },
+                  },
+                }
+              : n,
+          );
+
+          const nextEdges = currentCanvas.edges.filter(
+            (edge) => !(edge.source === nodeId && edge.sourceHandle === removedHandleId),
+          );
+
+          const updatedNode = nextNodes.find((n) => n.id === nodeId) ?? null;
+
+          return {
+            ...syncActiveWorkflow(state, {
+              ...activeWorkflow,
+              canvases: {
+                ...activeWorkflow.canvases,
+                [activeWorkflow.currentCanvasId]: {
+                  ...currentCanvas,
+                  nodes: nextNodes,
+                  edges: nextEdges,
+                },
+              },
+            }),
+            selectedNode: state.selectedNode?.id === nodeId ? updatedNode : state.selectedNode,
+          };
+        }),
+
+      updateEdgeData: (edgeId, data) =>
+        set((state) => {
+          const activeWorkflow = state.workflows[state.activeWorkflowId];
+
+          if (!activeWorkflow) {
+            return state;
+          }
+
+          const currentCanvas = activeWorkflow.canvases[activeWorkflow.currentCanvasId];
+          const nextEdges = currentCanvas.edges.map((edge) =>
+            edge.id === edgeId
+              ? { ...edge, data: { ...(edge.data ?? {}), ...data } }
+              : edge,
+          );
+
+          return {
+            ...syncActiveWorkflow(state, {
+              ...activeWorkflow,
+              canvases: {
+                ...activeWorkflow.canvases,
+                [activeWorkflow.currentCanvasId]: {
+                  ...currentCanvas,
+                  edges: nextEdges,
+                },
+              },
+            }),
+            selectedEdge:
+              state.selectedEdge?.id === edgeId
+                ? { ...state.selectedEdge, data: { ...(state.selectedEdge.data ?? {}), ...data } }
+                : state.selectedEdge,
+          };
+        }),
     }),
     {
       name: "nextui-flow-store",
-      version: 4,
+      version: 5,
       migrate: (persistedState, version) =>
         normalizePersistedState(
           persistedState as PersistedFlowState,
           typeof version === "number" && version < 4,
-        ),
+        ) as any,
       partialize: (state) => ({
         workflows: state.workflows,
         workflowOrder: state.workflowOrder,

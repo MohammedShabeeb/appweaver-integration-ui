@@ -10,6 +10,7 @@ const defaultDescriptions: Record<string, string> = {
   http: "Call an HTTP endpoint from the flow.",
   delay: "Pause execution before the next step runs.",
   container: "Open a nested canvas for grouped flow logic.",
+  switch: "Route to different branches based on conditions.",
 };
 
 function toTag(label?: string | null) {

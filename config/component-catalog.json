@@ -49,6 +49,13 @@
       "singleEndpointOnly": false,
       "color": "#c084fc",
       "bgClass": "sidebar-item-container"
+    },
+    {
+      "type": "switch",
+      "defaultGroup": "processor",
+      "singleEndpointOnly": false,
+      "color": "#f472b6",
+      "bgClass": "sidebar-item-switch"
     }
   ]
 }

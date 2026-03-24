@@ -67,6 +67,16 @@ export function ActionIcon(props: IconProps) {
   );
 }
 
+export function SwitchIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M12 4 L20 12 L12 20 L4 12 Z" />
+      <path d="M12 9v6" />
+      <path d="M9 12h6" />
+    </BaseIcon>
+  );
+}
+
 export function ConnectorIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>
@@ -93,5 +103,9 @@ export const nodeTypeMeta = {
   container: {
     label: "Container",
     Icon: ContainerIcon,
+  },
+  switch: {
+    label: "Switch",
+    Icon: SwitchIcon,
   },
 } as const;
