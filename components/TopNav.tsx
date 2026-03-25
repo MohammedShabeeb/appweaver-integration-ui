@@ -8,6 +8,7 @@ export default function TopNav() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const {
     exportWorkflow,
+    exportPomXml,
     importWorkflow,
     isSidebarOpen,
     openSidebar,
@@ -46,6 +47,20 @@ export default function TopNav() {
     URL.revokeObjectURL(url);
   };
 
+  const handleSavePom = () => {
+    const pomXml = exportPomXml();
+    const blob = new Blob([pomXml], { type: "application/xml" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = "pom.xml";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const handleImportChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
 
@@ -59,7 +74,9 @@ export default function TopNav() {
       const imported = importWorkflow(parsed, file.name.replace(/\.json$/i, ""));
 
       if (!imported) {
-        window.alert("The selected JSON file is not a valid workflow export.");
+        window.alert(
+          "The selected JSON file is not a valid workflow export or supported route definition.",
+        );
       } else {
         openSidebar("workflows");
       }
@@ -166,6 +183,31 @@ export default function TopNav() {
             </svg>
           </button>
           <span className="topnav-tooltip">Import workflow</span>
+        </div>
+        <div className="topnav-action">
+          <button
+            type="button"
+            aria-label="Export pom.xml"
+            className="topnav-btn"
+            onClick={handleSavePom}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="topnav-btn-icon"
+            >
+              <path d="M7 3h7l5 5v13H7z" />
+              <path d="M14 3v5h5" />
+              <path d="M10 13h6" />
+              <path d="M10 17h6" />
+              <path d="M10 9h1" />
+            </svg>
+          </button>
+          <span className="topnav-tooltip">Export pom.xml</span>
         </div>
         <div className="topnav-action">
           <button

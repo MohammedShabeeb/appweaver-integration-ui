@@ -19,37 +19,30 @@ import "reactflow/dist/style.css";
 import { useFlowStore } from "@/store/useFlowStore";
 
 import FromNode from "./nodes/StartNode";
-import HttpNode from "./nodes/HttpNode";
-import DelayNode from "./nodes/DelayNode";
-import ContainerNode from "./nodes/ContainerNode";
-import SwitchNode from "./nodes/SwitchNode";
-import CustomNode from "./nodes/CustomNode";
+import StepNode from "./nodes/StepNode";
 import InsertableEdge from "./edges/InsertableEdge";
-import ConditionEdge from "./edges/ConditionEdge";
-import { componentDefinitions, componentGroups } from "@/config/componentCatalog";
+import { componentDefinitions } from "@/config/componentCatalog";
 import { nodeTypeMeta } from "./node-icons";
 
 const nodeTypes = {
   start: FromNode,
-  http: HttpNode,
-  delay: DelayNode,
-  container: ContainerNode,
-  switch: SwitchNode,
-  custom: CustomNode,
+  marshal: StepNode,
+  unmarshal: StepNode,
+  process: StepNode,
 };
 
 const edgeTypes = {
   insertable: InsertableEdge,
-  condition: ConditionEdge,
 };
+
+const EMPTY_NODES = [] as const;
+const EMPTY_EDGES = [] as const;
 
 export default function FlowCanvas() {
   const {
     canvases,
     currentCanvasId,
     canvasStack,
-    componentGroupAssignments,
-    customComponents,
     selectedNode,
     selectedEdge,
     setNodes,
@@ -61,7 +54,6 @@ export default function FlowCanvas() {
     deleteNode,
     deleteEdge,
     clearCurrentCanvas,
-    openContainer,
     goBackCanvas,
     openCanvasFromBreadcrumb,
     openSidebar,
@@ -70,8 +62,8 @@ export default function FlowCanvas() {
   const reactFlowRef = useRef<ReactFlowInstance | null>(null);
   const [searchValue, setSearchValue] = useState("");
   const currentCanvas = canvases[currentCanvasId];
-  const nodes = currentCanvas?.nodes ?? [];
-  const edges = currentCanvas?.edges ?? [];
+  const nodes = currentCanvas?.nodes ?? EMPTY_NODES;
+  const edges = currentCanvas?.edges ?? EMPTY_EDGES;
   const searchResults = useMemo(() => {
     const query = searchValue.trim().toLowerCase();
 
@@ -79,24 +71,8 @@ export default function FlowCanvas() {
       return [];
     }
 
-    const categoryResults = componentGroups
-      .filter(
-        (group) =>
-          group.label.toLowerCase().includes(query) ||
-          group.description.toLowerCase().includes(query),
-      )
-      .map((group) => ({
-        id: `category-${group.id}`,
-        kind: "Category" as const,
-        title: group.label,
-        subtitle: group.description,
-        target: {
-          kind: "group" as const,
-          groupId: group.id,
-        },
-      }));
-
     const builtInResults = componentDefinitions
+      .filter((component) => component.type !== "start")
       .filter((component) => {
         const meta = nodeTypeMeta[component.type];
 
@@ -116,27 +92,8 @@ export default function FlowCanvas() {
         },
       }));
 
-    const customResults = customComponents
-      .filter(
-        (component) =>
-          component.label.toLowerCase().includes(query) ||
-          component.key.toLowerCase().includes(query) ||
-          component.description.toLowerCase().includes(query),
-      )
-      .map((component) => ({
-        id: `component-${component.key}`,
-        kind: "Component" as const,
-        title: component.label,
-        subtitle: component.description || component.key,
-        target: {
-          kind: "component" as const,
-          groupId: componentGroupAssignments[component.key],
-          componentKey: component.key,
-        },
-      }));
-
-    return [...categoryResults, ...builtInResults, ...customResults].slice(0, 8);
-  }, [componentGroupAssignments, customComponents, searchValue]);
+    return builtInResults.slice(0, 8);
+  }, [searchValue]);
 
   const canUseEndpoint = useCallback(
     (params: Connection) => {
@@ -151,7 +108,7 @@ export default function FlowCanvas() {
       const sourceHandle = params.sourceHandle ?? null;
       const targetHandle = params.targetHandle ?? null;
       const sourceNode = nodes.find((node) => node.id === params.source);
-      const allowSourceFanOut = sourceNode?.type === "start" || sourceNode?.type === "switch";
+      const allowSourceFanOut = sourceNode?.type === "start";
 
       if (
         !allowSourceFanOut &&
@@ -183,28 +140,17 @@ export default function FlowCanvas() {
         return;
       }
 
-      const sourceNode = nodes.find((node) => node.id === params.source);
-      const isFromSwitch = sourceNode?.type === "switch";
-      const caseIndex = params.sourceHandle?.startsWith("source-case-")
-        ? Number(params.sourceHandle.replace("source-case-", ""))
-        : -1;
-      const cases = (sourceNode?.data?.config as { cases?: { label: string }[] })?.cases ?? [];
-      const conditionLabel = caseIndex >= 0 && caseIndex < cases.length
-        ? cases[caseIndex].label
-        : "";
-
       setEdges(
         addEdge(
           {
             ...params,
-            type: isFromSwitch ? "condition" : "insertable",
-            ...(isFromSwitch ? { data: { conditionLabel } } : {}),
+            type: "insertable",
           },
           edges
         )
       );
     },
-    [canUseEndpoint, edges, nodes, setEdges]
+    [canUseEndpoint, edges, setEdges]
   );
 
   const onNodesChange = useCallback(
@@ -487,11 +433,6 @@ export default function FlowCanvas() {
         onNodeClick={(_, node) => {
           setSelectedNode(node);
           setSelectedEdge(null);
-        }}
-        onNodeDoubleClick={(_, node) => {
-          if (node.type === "container") {
-            openContainer(node.id);
-          }
         }}
         onEdgeClick={(_, edge) => {
           setSelectedEdge(edge);

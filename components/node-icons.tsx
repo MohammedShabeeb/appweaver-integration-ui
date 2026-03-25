@@ -26,32 +26,35 @@ export function FromIcon(props: IconProps) {
   );
 }
 
-export function HttpIcon(props: IconProps) {
+export function MarshalIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>
-      <rect x="3.5" y="5" width="17" height="14" rx="3" />
+      <path d="M7 6h10" />
       <path d="M7 10h10" />
-      <path d="M7 14h6" />
-      <circle cx="17" cy="14" r="1" fill="currentColor" stroke="none" />
+      <path d="M7 14h7" />
+      <path d="m14 17 3 3 3-3" />
     </BaseIcon>
   );
 }
 
-export function DelayIcon(props: IconProps) {
+export function UnmarshalIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>
-      <circle cx="12" cy="12" r="8" />
-      <path d="M12 8v4l2.5 2.5" />
+      <path d="M7 8h10" />
+      <path d="M7 12h10" />
+      <path d="M7 16h7" />
+      <path d="m14 7 3-3 3 3" />
     </BaseIcon>
   );
 }
 
-export function ContainerIcon(props: IconProps) {
+export function ProcessIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>
-      <rect x="4" y="6" width="16" height="12" rx="2" />
-      <path d="M4 10h16" />
-      <path d="M9 6V4.5h6V6" />
+      <rect x="4" y="5" width="16" height="14" rx="3" />
+      <path d="M8 9.5h8" />
+      <path d="M8 13h5" />
+      <circle cx="16.5" cy="13" r="1" fill="currentColor" stroke="none" />
     </BaseIcon>
   );
 }
@@ -92,20 +95,16 @@ export const nodeTypeMeta = {
     label: "From",
     Icon: FromIcon,
   },
-  http: {
-    label: "HTTP Request",
-    Icon: HttpIcon,
+  marshal: {
+    label: "Marshal",
+    Icon: MarshalIcon,
   },
-  delay: {
-    label: "Delay",
-    Icon: DelayIcon,
+  unmarshal: {
+    label: "Unmarshal",
+    Icon: UnmarshalIcon,
   },
-  container: {
-    label: "Container",
-    Icon: ContainerIcon,
-  },
-  switch: {
-    label: "Switch",
-    Icon: SwitchIcon,
+  process: {
+    label: "Process",
+    Icon: ProcessIcon,
   },
 } as const;

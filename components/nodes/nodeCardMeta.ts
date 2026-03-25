@@ -7,10 +7,9 @@ import type { CustomComponentDefinition } from "@/store/useFlowStore";
 
 const defaultDescriptions: Record<string, string> = {
   start: "Entry point for your workflow.",
-  http: "Call an HTTP endpoint from the flow.",
-  delay: "Pause execution before the next step runs.",
-  container: "Open a nested canvas for grouped flow logic.",
-  switch: "Route to different branches based on conditions.",
+  marshal: "Serialize the message body with a selected class type.",
+  unmarshal: "Deserialize the message body with a selected class type.",
+  process: "Invoke a processor bean using its ref value.",
 };
 
 function toTag(label?: string | null) {
@@ -34,7 +33,7 @@ export function getBuiltInNodeCardMeta(componentKey: string) {
     accentColor: definition.color,
     subtitle: componentKey,
     description: defaultDescriptions[componentKey],
-    topTags: [group?.label ?? "Component", "Stable"],
+    topTags: [group?.label ?? "Component", "Camel"],
     bottomTags,
   };
 }

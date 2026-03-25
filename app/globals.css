@@ -264,7 +264,7 @@ body::-webkit-scrollbar-thumb:hover,
 
 /* ── Components Sidebar ────────────────────────────── */
 .components-sidebar {
-  width: 260px;
+  width: 280px;
   flex-shrink: 0;
   background: rgba(15, 23, 42, 0.92);
   backdrop-filter: blur(16px);
@@ -293,7 +293,7 @@ body::-webkit-scrollbar-thumb:hover,
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 20px 16px 12px;
+  padding: 20px 18px 10px;
 }
 
 .sidebar-header > div {
@@ -342,8 +342,8 @@ body::-webkit-scrollbar-thumb:hover,
 .sidebar-tabs {
   display: flex;
   gap: 10px;
-  padding: 0 16px 12px;
-  margin-bottom: 6px;
+  padding: 0 18px 10px;
+  margin-bottom: 4px;
 }
 
 .sidebar-tab {
@@ -382,7 +382,7 @@ body::-webkit-scrollbar-thumb:hover,
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 4px 14px 18px;
+  padding: 8px 18px 20px;
 }
 
 .sidebar-filter-panel {
@@ -457,8 +457,8 @@ body::-webkit-scrollbar-thumb:hover,
 .sidebar-group {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 2px 0 4px;
+  gap: 8px;
+  padding: 2px 0 6px;
   position: relative;
 }
 
@@ -596,7 +596,8 @@ body::-webkit-scrollbar-thumb:hover,
 .sidebar-group-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  padding-top: 2px;
 }
 
 .sidebar-group-header {
@@ -626,7 +627,7 @@ body::-webkit-scrollbar-thumb:hover,
 .sidebar-group-items {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .sidebar-group-empty {
@@ -753,14 +754,14 @@ button.sidebar-item {
 .sidebar-workflow-item {
   cursor: default;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   padding: 14px 16px;
 }
 
 .sidebar-workflow-main {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   flex: 1;
   min-width: 0;
@@ -789,6 +790,41 @@ button.sidebar-item {
 .sidebar-workflow-icon {
   background: rgba(129, 140, 248, 0.14);
   color: #a5b4fc;
+  margin-top: 2px;
+}
+
+.sidebar-workflow-copy {
+  gap: 6px;
+  padding-top: 1px;
+}
+
+.sidebar-workflow-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sidebar-workflow-label {
+  display: -webkit-box;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.25;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+
+.sidebar-workflow-meta {
+  display: block;
+  overflow: hidden;
+  color: #64748b;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .sidebar-workflow-badge {
@@ -796,20 +832,24 @@ button.sidebar-item {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  padding: 5px 10px;
+  min-height: 26px;
+  padding: 4px 10px;
   border-radius: 999px;
   background: rgba(99, 102, 241, 0.16);
   color: #c7d2fe;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.03em;
+  white-space: nowrap;
 }
 
 .sidebar-workflow-actions {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0;
   flex-shrink: 0;
+  padding-top: 2px;
 }
 
 .sidebar-workflow-delete {

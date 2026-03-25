@@ -1,8 +1,10 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import type { Edge, Node, XYPosition } from "reactflow";
 import {
   createDefaultComponentAssignments,
+  getComponentDependencies,
+  type MavenDependencyDefinition,
   type ComponentGroupId,
   type ComponentType,
   type BuiltInComponentType,
@@ -59,6 +61,22 @@ type WorkflowExport = {
   canvases: Record<string, CanvasState>;
 };
 
+type RouteImportStep = {
+  type?: string;
+  name?: string;
+  library?: string;
+  clazz?: string;
+  ref?: string;
+  dependencies?: unknown;
+};
+
+type RouteImportDefinition = {
+  routeId?: string;
+  from?: string;
+  contentType?: string;
+  steps?: RouteImportStep[];
+};
+
 type SidebarView = "components" | "workflows";
 
 type PersistedFlowState = {
@@ -71,6 +89,8 @@ type PersistedFlowState = {
   componentGroupAssignments?: Partial<Record<ComponentType, ComponentGroupId>>;
   customComponents?: CustomComponentDefinition[];
 };
+
+type WorkflowPomDependency = MavenDependencyDefinition;
 
 const DEFAULT_WORKFLOW_ID = "workflow-root";
 const ROOT_CANVAS_ID = "root-canvas";
@@ -116,12 +136,26 @@ function createFlowNode(
   const id = `${componentKey}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const labelMap: Record<BuiltInComponentType, string> = {
     start: "From",
-    http: "HTTP",
-    delay: "Delay",
-    container: "Container",
-    switch: "Switch",
+    marshal: "Marshal",
+    unmarshal: "Unmarshal",
+    process: "Process",
   };
   const customComponent = customComponents.find((component) => component.key === componentKey);
+  const defaultConfigMap: Partial<Record<BuiltInComponentType, Record<string, unknown>>> = {
+    marshal: {
+      name: "json",
+      library: "Jackson",
+      clazz: "java.util.Map",
+    },
+    unmarshal: {
+      name: "json",
+      library: "Jackson",
+      clazz: "java.util.Map",
+    },
+    process: {
+      ref: "processorRef",
+    },
+  };
 
   const node: AppNode = {
     id,
@@ -129,16 +163,12 @@ function createFlowNode(
     position,
     data: {
       label: builtInType ? labelMap[builtInType] : customComponent?.label ?? "Custom",
-      config: builtInType === "switch" ? { cases: [{ label: "default" }] } : {},
+      config: builtInType ? (defaultConfigMap[builtInType] ?? {}) : {},
       componentKey,
       description: customComponent?.description,
       accentColor: customComponent?.color,
     },
   };
-
-  if (builtInType === "container") {
-    node.data.childCanvasId = `canvas-${id}`;
-  }
 
   return node;
 }
@@ -335,6 +365,206 @@ function normalizeImportedWorkflow(
   };
 }
 
+function normalizeDependencyList(raw: unknown): WorkflowPomDependency[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw.filter((item): item is WorkflowPomDependency => {
+    if (!item || typeof item !== "object") {
+      return false;
+    }
+
+    const candidate = item as Partial<WorkflowPomDependency>;
+
+    return (
+      typeof candidate.groupId === "string" &&
+      candidate.groupId.trim().length > 0 &&
+      typeof candidate.artifactId === "string" &&
+      candidate.artifactId.trim().length > 0 &&
+      typeof candidate.version === "string" &&
+      candidate.version.trim().length > 0
+    );
+  });
+}
+
+function collectWorkflowDependencies(workflow: WorkflowRecord): WorkflowPomDependency[] {
+  const dependencyMap = new Map<string, WorkflowPomDependency>();
+
+  for (const canvas of Object.values(workflow.canvases)) {
+    for (const node of canvas.nodes) {
+      const componentKey = node.data?.componentKey;
+
+      if (!componentKey || !isBuiltInComponent(componentKey)) {
+        continue;
+      }
+
+      for (const dependency of getComponentDependencies(componentKey)) {
+        const key = `${dependency.groupId}:${dependency.artifactId}`;
+
+        if (!dependencyMap.has(key)) {
+          dependencyMap.set(key, dependency);
+        }
+      }
+
+      const configDependencies = normalizeDependencyList(node.data?.config?.dependencies);
+
+      for (const dependency of configDependencies) {
+        const key = `${dependency.groupId}:${dependency.artifactId}`;
+
+        if (!dependencyMap.has(key)) {
+          dependencyMap.set(key, dependency);
+        }
+      }
+    }
+  }
+
+  return [...dependencyMap.values()];
+}
+
+function createPomXml(workflow: WorkflowRecord) {
+  const artifactId =
+    workflow.name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "camel-workflow";
+  const dependencies = collectWorkflowDependencies(workflow);
+  const dependencyBlocks =
+    dependencies.length > 0
+      ? dependencies
+          .map(
+            (dependency) => `    <dependency>
+      <groupId>${dependency.groupId}</groupId>
+      <artifactId>${dependency.artifactId}</artifactId>
+      <version>${dependency.version}</version>
+    </dependency>`,
+          )
+          .join("\n")
+      : "    <!-- No additional component dependencies required -->";
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.example</groupId>
+  <artifactId>${artifactId}</artifactId>
+  <version>1.0.0-SNAPSHOT</version>
+  <name>${workflow.name}</name>
+
+  <dependencies>
+${dependencyBlocks}
+  </dependencies>
+</project>
+`;
+}
+
+function buildWorkflowFromRouteDefinition(
+  raw: unknown,
+  existingWorkflows: Record<string, WorkflowRecord>,
+  fallbackName: string,
+): WorkflowRecord | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const route = raw as RouteImportDefinition;
+
+  if (!Array.isArray(route.steps)) {
+    return null;
+  }
+
+  const supportedSteps = route.steps.filter(
+    (step): step is RouteImportStep & { type: "marshal" | "unmarshal" | "process" } =>
+      step?.type === "marshal" || step?.type === "unmarshal" || step?.type === "process",
+  );
+
+  if (supportedSteps.length !== route.steps.length) {
+    return null;
+  }
+
+  const workflowNameSource =
+    (typeof route.routeId === "string" && route.routeId.trim()) ||
+    (typeof fallbackName === "string" && fallbackName.trim()) ||
+    "Imported Route";
+  const workflowName = dedupeWorkflowName(workflowNameSource, existingWorkflows);
+  const workflowId = createWorkflowId(workflowName);
+  const rootCanvasId = `canvas-${workflowId}`;
+  const startNodeId = `${rootCanvasId}-start`;
+  const startNode = createStartNode(startNodeId, { x: 160, y: 140 });
+
+  startNode.data = {
+    ...startNode.data,
+    label: typeof route.from === "string" && route.from.trim() ? route.from : "From",
+    config: {
+      from: route.from ?? "",
+      routeId: route.routeId ?? "",
+      contentType: route.contentType ?? "",
+    },
+  };
+
+  const nodes: AppNode[] = [startNode];
+  const edges: AppEdge[] = [];
+  let previousNodeId = startNodeId;
+
+  supportedSteps.forEach((step, index) => {
+    const componentKey = step.type;
+    const node = createFlowNode(
+      componentKey,
+      { x: 160 + (index + 1) * 240, y: 140 },
+      [],
+    );
+
+    node.data = {
+      ...node.data,
+      label:
+        componentKey === "process"
+          ? step.ref?.trim() || "Process"
+          : componentKey === "marshal"
+            ? "Marshal"
+            : "Unmarshal",
+      config:
+        componentKey === "process"
+          ? {
+              ref: step.ref ?? "",
+              dependencies: normalizeDependencyList(step.dependencies),
+            }
+          : {
+              name: step.name ?? "json",
+              library: step.library ?? "Jackson",
+              clazz: step.clazz ?? "java.util.Map",
+              dependencies: normalizeDependencyList(step.dependencies),
+            },
+    };
+
+    nodes.push(node);
+    edges.push({
+      id: `${previousNodeId}-${node.id}`,
+      source: previousNodeId,
+      target: node.id,
+      type: "insertable",
+    });
+    previousNodeId = node.id;
+  });
+
+  return {
+    id: workflowId,
+    name: workflowName,
+    rootCanvasId,
+    currentCanvasId: rootCanvasId,
+    canvasStack: [rootCanvasId],
+    canvases: {
+      [rootCanvasId]: {
+        id: rootCanvasId,
+        name: workflowName,
+        nodes,
+        edges,
+      },
+    },
+  };
+}
+
 function normalizePersistedState(
   persistedState?: PersistedFlowState,
   resetLegacyCustomizations = false,
@@ -347,6 +577,9 @@ function normalizePersistedState(
   const customComponents = resetLegacyCustomizations
     ? []
     : persistedState?.customComponents ?? [];
+
+  const shouldPruneLegacyNode = (node: AppNode) =>
+    !["start", "marshal", "unmarshal", "process"].includes(node.type ?? "");
 
   if (persistedState?.workflows && Object.keys(persistedState.workflows).length > 0) {
     const workflowOrder =
@@ -366,7 +599,7 @@ function normalizePersistedState(
               ...workflow,
               canvases: pruneDeprecatedNodesFromCanvases(
                 workflow.canvases,
-                (node) => node.type === "action" || node.type === "custom",
+                shouldPruneLegacyNode,
               ),
             },
           ]),
@@ -394,7 +627,7 @@ function normalizePersistedState(
     legacyWorkflow.canvases = resetLegacyCustomizations
       ? pruneDeprecatedNodesFromCanvases(
           legacyCanvases,
-          (node) => node.type === "action" || node.type === "custom",
+          shouldPruneLegacyNode,
         )
       : legacyCanvases;
     legacyWorkflow.currentCanvasId =
@@ -459,6 +692,7 @@ interface FlowState {
   ) => { ok: true } | { ok: false; reason: string };
   removeCustomComponent: (componentKey: string) => void;
   exportWorkflow: () => WorkflowExport;
+  exportPomXml: () => string;
   importWorkflow: (raw: unknown, fallbackName?: string) => boolean;
   selectWorkflow: (workflowId: string) => void;
   deleteWorkflow: (workflowId: string) => void;
@@ -562,13 +796,6 @@ export const useFlowStore = create<FlowState>()(
               nodes: [...currentCanvas.nodes, newNode],
             },
           };
-
-          if (componentKey === "container" && newNode.data.childCanvasId) {
-            nextCanvases[newNode.data.childCanvasId] = createCanvas(
-              newNode.data.childCanvasId,
-              newNode.data.label,
-            );
-          }
 
           return {
             ...syncActiveWorkflow(state, {
@@ -692,13 +919,18 @@ export const useFlowStore = create<FlowState>()(
           canvases: activeWorkflow.canvases,
         };
       },
+      exportPomXml: () => {
+        const state = get();
+        const activeWorkflow = state.workflows[state.activeWorkflowId];
+
+        return createPomXml(activeWorkflow);
+      },
 
       importWorkflow: (raw, fallbackName = "Imported Workflow") => {
-        const importedWorkflow = normalizeImportedWorkflow(
-          raw,
-          get().workflows,
-          fallbackName,
-        );
+        const currentWorkflows = get().workflows;
+        const importedWorkflow =
+          normalizeImportedWorkflow(raw, currentWorkflows, fallbackName) ??
+          buildWorkflowFromRouteDefinition(raw, currentWorkflows, fallbackName);
 
         if (!importedWorkflow) {
           return false;
@@ -1024,13 +1256,6 @@ export const useFlowStore = create<FlowState>()(
             },
           };
 
-          if (componentKey === "container" && newNode.data.childCanvasId) {
-            nextCanvases[newNode.data.childCanvasId] = createCanvas(
-              newNode.data.childCanvasId,
-              newNode.data.label,
-            );
-          }
-
           return {
             ...syncActiveWorkflow(state, {
               ...activeWorkflow,
@@ -1264,16 +1489,20 @@ export const useFlowStore = create<FlowState>()(
     }),
     {
       name: "nextui-flow-store",
-      version: 5,
+      storage: createJSONStorage(() => localStorage),
+      version: 6,
       migrate: (persistedState, version) =>
         normalizePersistedState(
           persistedState as PersistedFlowState,
-          typeof version === "number" && version < 4,
-        ) as any,
+          typeof version === "number" && version < 6,
+        ),
       partialize: (state) => ({
         workflows: state.workflows,
         workflowOrder: state.workflowOrder,
         activeWorkflowId: state.activeWorkflowId,
+        canvases: state.canvases,
+        currentCanvasId: state.currentCanvasId,
+        canvasStack: state.canvasStack,
         componentGroupAssignments: state.componentGroupAssignments,
         customComponents: state.customComponents,
       }),

@@ -121,7 +121,7 @@ export default function InsertableEdge({
                     color: "#818cf8",
                   }}
                 >+</span>
-                <span>Drag component here</span>
+                <span>Drag step here</span>
               </div>
             </div>
           </div>

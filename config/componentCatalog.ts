@@ -1,7 +1,7 @@
 import componentCatalogJson from "./component-catalog.json";
 
-export type ComponentGroupId = "component" | "processor" | "entity" | "kamelet";
-export type BuiltInComponentType = "start" | "http" | "delay" | "container" | "switch";
+export type ComponentGroupId = "processor";
+export type BuiltInComponentType = "start" | "marshal" | "unmarshal" | "process";
 export type ComponentType = string;
 
 type ComponentGroupDefinition = {
@@ -10,12 +10,19 @@ type ComponentGroupDefinition = {
   description: string;
 };
 
+export type MavenDependencyDefinition = {
+  groupId: string;
+  artifactId: string;
+  version: string;
+};
+
 type ComponentDefinition = {
   type: BuiltInComponentType;
   defaultGroup: ComponentGroupId;
   singleEndpointOnly: boolean;
   color: string;
   bgClass: string;
+  dependencies: MavenDependencyDefinition[];
 };
 
 type ComponentCatalog = {
@@ -30,6 +37,10 @@ export const builtInComponentKeys = componentDefinitions.map((component) => comp
 export const builtInComponentMap = Object.fromEntries(
   componentDefinitions.map((component) => [component.type, component]),
 ) as Record<BuiltInComponentType, ComponentDefinition>;
+
+export function getComponentDependencies(type: BuiltInComponentType): MavenDependencyDefinition[] {
+  return builtInComponentMap[type].dependencies;
+}
 
 export function createDefaultComponentAssignments(): Record<string, ComponentGroupId> {
   return componentDefinitions.reduce(

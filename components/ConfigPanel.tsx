@@ -1,7 +1,18 @@
 "use client";
 
 import { useFlowStore } from "@/store/useFlowStore";
-import { ConnectorIcon, SwitchIcon, nodeTypeMeta } from "./node-icons";
+import { ConnectorIcon, nodeTypeMeta } from "./node-icons";
+
+const JAVA_CLASS_OPTIONS = [
+  { label: "Map", value: "java.util.Map", hint: "Generic key-value JSON object" },
+  { label: "String", value: "java.lang.String", hint: "Plain text payload" },
+  {
+    label: "JsonNode",
+    value: "com.fasterxml.jackson.databind.JsonNode",
+    hint: "Jackson tree model",
+  },
+  { label: "List", value: "java.util.List", hint: "Ordered JSON array" },
+] as const;
 
 const panelStyle: React.CSSProperties = {
   position: "absolute",
@@ -29,6 +40,38 @@ const inputStyle: React.CSSProperties = {
   outline: "none",
 };
 
+const helperTextStyle: React.CSSProperties = {
+  marginTop: 6,
+  fontSize: 11,
+  lineHeight: 1.45,
+  color: "#94a3b8",
+};
+
+const fieldHintStyle: React.CSSProperties = {
+  marginBottom: 8,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  borderRadius: 999,
+  border: "1px solid rgba(96, 165, 250, 0.24)",
+  background: "rgba(30, 64, 175, 0.16)",
+  padding: "4px 8px",
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: "0.02em",
+  color: "#bfdbfe",
+};
+
+const sectionStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+  borderRadius: 10,
+  border: "1px solid rgba(71, 85, 105, 0.35)",
+  background: "rgba(15, 23, 42, 0.45)",
+  padding: 12,
+};
+
 const deleteBtnStyle: React.CSSProperties = {
   width: "100%",
   borderRadius: 8,
@@ -42,115 +85,59 @@ const deleteBtnStyle: React.CSSProperties = {
   fontFamily: "'Inter', sans-serif",
 };
 
-const addBtnStyle: React.CSSProperties = {
-  width: "100%",
-  borderRadius: 8,
-  border: "1px dashed rgba(244, 114, 182, 0.4)",
-  background: "rgba(244, 114, 182, 0.08)",
-  padding: "8px 12px",
+const labelStyle: React.CSSProperties = {
   fontSize: 13,
-  fontWeight: 500,
-  color: "#f9a8d4",
-  cursor: "pointer",
-  fontFamily: "'Inter', sans-serif",
+  fontWeight: 700,
+  color: "#e2e8f0",
+  marginBottom: 4,
+  display: "block",
 };
 
-const smallRemoveBtnStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: 20,
-  height: 20,
-  borderRadius: 999,
-  border: "1px solid rgba(248, 113, 113, 0.22)",
-  background: "rgba(127, 29, 29, 0.8)",
-  fontSize: 11,
-  color: "#fecaca",
+const selectWrapStyle: React.CSSProperties = {
+  position: "relative",
+};
+
+const selectStyle: React.CSSProperties = {
+  ...inputStyle,
+  appearance: "none",
+  WebkitAppearance: "none",
+  MozAppearance: "none",
+  paddingRight: 42,
   cursor: "pointer",
-  flexShrink: 0,
+  minHeight: 44,
+  border: "1px solid rgba(96, 165, 250, 0.6)",
+  background: "linear-gradient(180deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.96))",
+  boxShadow: "inset 0 0 0 1px rgba(96, 165, 250, 0.12), 0 0 0 1px rgba(30, 64, 175, 0.08)",
+  fontWeight: 600,
+};
+
+const optionStyle: React.CSSProperties = {
+  background: "#0f172a",
+  color: "#e2e8f0",
+};
+
+const selectIconStyle: React.CSSProperties = {
+  position: "absolute",
+  right: 10,
+  top: "50%",
+  transform: "translateY(-50%)",
+  pointerEvents: "none",
+  color: "#93c5fd",
+  width: 26,
+  height: 26,
+  padding: 5,
+  borderRadius: 999,
+  background: "rgba(59, 130, 246, 0.14)",
+  border: "1px solid rgba(96, 165, 250, 0.22)",
 };
 
 export default function ConfigPanel() {
-  const {
-    selectedNode,
-    selectedEdge,
-    updateNodeData,
-    deleteEdge,
-    addSwitchCase,
-    removeSwitchCase,
-    updateEdgeData,
-  } = useFlowStore();
+  const { selectedNode, selectedEdge, updateNodeData, deleteEdge, deleteNode } = useFlowStore();
 
   if (!selectedNode && !selectedEdge) {
     return null;
   }
 
-  // Condition edge selected — show condition label editor
-  if (selectedEdge && selectedEdge.type === "condition") {
-    const conditionLabel =
-      (selectedEdge.data as { conditionLabel?: string } | undefined)
-        ?.conditionLabel ?? "";
-
-    return (
-      <div style={panelStyle}>
-        <h2
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            fontWeight: 700,
-            color: "#e2e8f0",
-            marginBottom: 12,
-            fontSize: 14,
-          }}
-        >
-          <SwitchIcon style={{ width: 16, height: 16, color: "#f472b6" }} />
-          Condition
-        </h2>
-        <label>
-          <span
-            style={{
-              fontSize: 13,
-              fontWeight: 500,
-              color: "#cbd5e1",
-              marginBottom: 4,
-              display: "block",
-            }}
-          >
-            Condition label
-          </span>
-          <input
-            value={conditionLabel}
-            placeholder="e.g. status === 200"
-            style={inputStyle}
-            onChange={(e) =>
-              updateEdgeData(selectedEdge.id, {
-                conditionLabel: e.target.value,
-              })
-            }
-          />
-        </label>
-        <p
-          style={{
-            fontSize: 11,
-            color: "#64748b",
-            marginTop: 8,
-          }}
-        >
-          {selectedEdge.source} → {selectedEdge.target}
-        </p>
-        <button
-          type="button"
-          style={{ ...deleteBtnStyle, marginTop: 12 }}
-          onClick={() => deleteEdge(selectedEdge.id)}
-        >
-          Delete connector
-        </button>
-      </div>
-    );
-  }
-
-  // Regular edge selected
   if (selectedEdge) {
     return (
       <div style={panelStyle}>
@@ -169,13 +156,9 @@ export default function ConfigPanel() {
           Connector
         </h2>
         <p style={{ fontSize: 13, color: "#94a3b8", marginBottom: 16 }}>
-          {selectedEdge.source} → {selectedEdge.target}
+          {selectedEdge.source} to {selectedEdge.target}
         </p>
-        <button
-          type="button"
-          style={deleteBtnStyle}
-          onClick={() => deleteEdge(selectedEdge.id)}
-        >
+        <button type="button" style={deleteBtnStyle} onClick={() => deleteEdge(selectedEdge.id)}>
           Delete connector
         </button>
       </div>
@@ -187,10 +170,22 @@ export default function ConfigPanel() {
   }
 
   const type = selectedNode.type;
-  const nodeMeta =
-    type && type in nodeTypeMeta
-      ? nodeTypeMeta[type as keyof typeof nodeTypeMeta]
-      : null;
+
+  if (type === "start") {
+    return null;
+  }
+
+  const nodeMeta = nodeTypeMeta[type as keyof typeof nodeTypeMeta];
+  const config = (selectedNode.data.config as Record<string, unknown> | undefined) ?? {};
+  const selectedClazzValue = String(config.clazz ?? "java.util.Map");
+  const selectedClazzOption =
+    JAVA_CLASS_OPTIONS.find((option) => option.value === selectedClazzValue) ?? JAVA_CLASS_OPTIONS[0];
+  const panelDescription =
+    type === "marshal"
+      ? "Convert the body into JSON using the selected Java class."
+      : type === "unmarshal"
+        ? "Read incoming JSON into the selected Java class."
+        : "Run a processor bean by its Spring or Camel reference name.";
 
   return (
     <div style={panelStyle}>
@@ -205,221 +200,132 @@ export default function ConfigPanel() {
           fontSize: 14,
         }}
       >
-        {nodeMeta ? (
-          <nodeMeta.Icon style={{ width: 16, height: 16, color: "#818cf8" }} />
-        ) : null}
+        {nodeMeta ? <nodeMeta.Icon style={{ width: 16, height: 16, color: "#818cf8" }} /> : null}
         {nodeMeta ? nodeMeta.label : type} Config
       </h2>
 
-      {type === "http" && (
-        <input
-          placeholder="URL"
-          style={inputStyle}
-          onChange={(e) =>
-            updateNodeData(selectedNode.id, {
-              config: { url: e.target.value },
-            })
-          }
-        />
-      )}
+      <p style={{ ...helperTextStyle, marginTop: -4, marginBottom: 14 }}>{panelDescription}</p>
 
-      {type === "delay" && (
-        <input
-          type="number"
-          placeholder="Milliseconds"
-          style={inputStyle}
-          onChange={(e) =>
-            updateNodeData(selectedNode.id, {
-              config: { ms: Number(e.target.value) },
-            })
-          }
-        />
-      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <label>
+          <span style={labelStyle}>Display label</span>
+          <input
+            value={selectedNode.data.label || ""}
+            placeholder={nodeMeta?.label || "Component"}
+            style={inputStyle}
+            onChange={(event) =>
+              updateNodeData(selectedNode.id, {
+                label: event.target.value,
+              })
+            }
+          />
+          <p style={helperTextStyle}>This is the name shown on the node card in the canvas.</p>
+        </label>
 
-      {type === "container" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <label>
-            <span
-              style={{
-                fontSize: 13,
-                fontWeight: 500,
-                color: "#cbd5e1",
-                marginBottom: 4,
-                display: "block",
-              }}
-            >
-              Container name
-            </span>
-            <input
-              value={selectedNode.data.label || ""}
-              placeholder="Container name"
-              style={inputStyle}
-              onChange={(e) =>
-                updateNodeData(selectedNode.id, {
-                  label: e.target.value,
-                })
-              }
-            />
-          </label>
-          <p style={{ fontSize: 13, color: "#94a3b8" }}>
-            Double-click this container on the canvas to open its nested
-            workflow.
-          </p>
-        </div>
-      )}
-
-      {type === "switch" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <label>
-            <span
-              style={{
-                fontSize: 13,
-                fontWeight: 500,
-                color: "#cbd5e1",
-                marginBottom: 4,
-                display: "block",
-              }}
-            >
-              Switch name
-            </span>
-            <input
-              value={selectedNode.data.label || ""}
-              placeholder="Switch"
-              style={inputStyle}
-              onChange={(e) =>
-                updateNodeData(selectedNode.id, {
-                  label: e.target.value,
-                })
-              }
-            />
-          </label>
-
-          <div>
-            <span
-              style={{
-                fontSize: 13,
-                fontWeight: 500,
-                color: "#cbd5e1",
-                marginBottom: 8,
-                display: "block",
-              }}
-            >
-              Cases
-            </span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {(
-                (
-                  selectedNode.data.config as {
-                    cases?: { label: string }[];
-                  }
-                )?.cases ?? []
-              ).map((c: { label: string }, index: number) => (
-                <div
-                  key={index}
-                  style={{ display: "flex", alignItems: "center", gap: 6 }}
+        {(type === "marshal" || type === "unmarshal") && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Data format library</span>
+              <input
+                value={String(config.library ?? "Jackson")}
+                placeholder="Jackson"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { library: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Example: `Jackson`.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Target class</span>
+              <div style={fieldHintStyle}>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ width: 12, height: 12 }}
+                  aria-hidden="true"
                 >
-                  <div
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      background: "#f472b6",
-                      flexShrink: 0,
-                    }}
-                  />
-                  <span
-                    style={{
-                      flex: 1,
-                      fontSize: 12,
-                      color: "#cbd5e1",
-                      fontFamily: "'Inter', sans-serif",
-                    }}
-                  >
-                    {c.label}
-                  </span>
-                  {index > 0 && (
-                    <button
-                      type="button"
-                      style={smallRemoveBtnStyle}
-                      onClick={() =>
-                        removeSwitchCase(selectedNode.id, index)
-                      }
-                      title="Remove case"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+                Select from dropdown
+              </div>
+              <p style={{ ...helperTextStyle, marginTop: 0, marginBottom: 8 }}>
+                Current selection: <strong>{selectedClazzOption.label}</strong>
+                {" · "}
+                <span style={{ color: "#cbd5e1" }}>{selectedClazzOption.value}</span>
+              </p>
+              <div style={selectWrapStyle}>
+                <select
+                  value={selectedClazzValue}
+                  style={selectStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { clazz: event.target.value },
+                    })
+                  }
+                >
+                  {JAVA_CLASS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value} style={optionStyle}>
+                      {option.label} - {option.value}
+                    </option>
+                  ))}
+                </select>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={selectIconStyle}
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+              <p style={helperTextStyle}>
+                Pick the Java class for the `clazz` attribute. The shorter label is shown first,
+                followed by the full class name.
+              </p>
+              <p style={{ ...helperTextStyle, marginTop: 2 }}>
+                {selectedClazzOption.hint}
+              </p>
+            </label>
           </div>
+        )}
 
-          <button
-            type="button"
-            style={addBtnStyle}
-            onClick={() => addSwitchCase(selectedNode.id)}
-          >
-            + Add Case
-          </button>
+        {type === "process" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Processor reference</span>
+              <input
+                value={String(config.ref ?? "")}
+                placeholder="llmContextProcessor"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { ref: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>
+                This value is saved as the `ref` attribute, for example
+                `multiChatProcessor`.
+              </p>
+            </label>
+          </div>
+        )}
 
-          <p style={{ fontSize: 11, color: "#64748b" }}>
-            Connect each case handle to a target block. Select a condition
-            connector to edit its label.
-          </p>
-        </div>
-      )}
-
-      {type === "custom" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <label>
-            <span
-              style={{
-                fontSize: 13,
-                fontWeight: 500,
-                color: "#cbd5e1",
-                marginBottom: 4,
-                display: "block",
-              }}
-            >
-              Component name
-            </span>
-            <input
-              value={selectedNode.data.label || ""}
-              placeholder="Component name"
-              style={inputStyle}
-              onChange={(e) =>
-                updateNodeData(selectedNode.id, {
-                  label: e.target.value,
-                })
-              }
-            />
-          </label>
-          <label>
-            <span
-              style={{
-                fontSize: 13,
-                fontWeight: 500,
-                color: "#cbd5e1",
-                marginBottom: 4,
-                display: "block",
-              }}
-            >
-              Description
-            </span>
-            <input
-              value={String(selectedNode.data.description || "")}
-              placeholder="Short description"
-              style={inputStyle}
-              onChange={(e) =>
-                updateNodeData(selectedNode.id, {
-                  description: e.target.value,
-                })
-              }
-            />
-          </label>
-        </div>
-      )}
+        <button type="button" style={deleteBtnStyle} onClick={() => deleteNode(selectedNode.id)}>
+          Delete component
+        </button>
+      </div>
     </div>
   );
 }
-

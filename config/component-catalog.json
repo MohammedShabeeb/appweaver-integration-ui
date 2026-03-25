@@ -1,61 +1,55 @@
 {
   "groups": [
     {
-      "id": "component",
-      "label": "Component",
-      "description": "Reusable building blocks for your integration flow."
-    },
-    {
       "id": "processor",
-      "label": "Processor",
-      "description": "Steps that transform, route, or act on messages."
-    },
-    {
-      "id": "entity",
-      "label": "Entity",
-      "description": "Domain objects and data-oriented building blocks."
-    },
-    {
-      "id": "kamelet",
-      "label": "Kamelet",
-      "description": "Packaged connectors and integration templates."
+      "label": "Route Steps",
+      "description": "Camel steps available in the flow builder."
     }
   ],
   "components": [
     {
       "type": "start",
-      "defaultGroup": "component",
+      "defaultGroup": "processor",
       "singleEndpointOnly": false,
       "color": "#34d399",
-      "bgClass": "sidebar-item-from"
+      "bgClass": "sidebar-item-from",
+      "dependencies": []
     },
     {
-      "type": "http",
+      "type": "marshal",
       "defaultGroup": "processor",
       "singleEndpointOnly": false,
       "color": "#60a5fa",
-      "bgClass": "sidebar-item-http"
+      "bgClass": "sidebar-item-http",
+      "dependencies": [
+        {
+          "groupId": "org.apache.camel",
+          "artifactId": "camel-jackson",
+          "version": "4.8.0"
+        }
+      ]
     },
     {
-      "type": "delay",
+      "type": "unmarshal",
       "defaultGroup": "processor",
       "singleEndpointOnly": false,
-      "color": "#fbbf24",
-      "bgClass": "sidebar-item-delay"
+      "color": "#f59e0b",
+      "bgClass": "sidebar-item-delay",
+      "dependencies": [
+        {
+          "groupId": "org.apache.camel",
+          "artifactId": "camel-jackson",
+          "version": "4.8.0"
+        }
+      ]
     },
     {
-      "type": "container",
-      "defaultGroup": "entity",
-      "singleEndpointOnly": false,
-      "color": "#c084fc",
-      "bgClass": "sidebar-item-container"
-    },
-    {
-      "type": "switch",
+      "type": "process",
       "defaultGroup": "processor",
       "singleEndpointOnly": false,
       "color": "#f472b6",
-      "bgClass": "sidebar-item-switch"
+      "bgClass": "sidebar-item-switch",
+      "dependencies": []
     }
   ]
 }
