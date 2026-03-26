@@ -32,6 +32,3 @@ export const dataSourceCatalog: DataSourceTemplate[] = Object.entries(datasource
     ...value,
   }),
 );
-
-export const dataSourceTenantDefaults = datasourceCatalog.tenants;
-export const dataSourceEmfPerTenantDefault = datasourceCatalog.emfPerTenant;

@@ -42,16 +42,6 @@ export function getComponentDependencies(type: BuiltInComponentType): MavenDepen
   return builtInComponentMap[type].dependencies;
 }
 
-export function createDefaultComponentAssignments(): Record<string, ComponentGroupId> {
-  return componentDefinitions.reduce(
-    (assignments, component) => ({
-      ...assignments,
-      [component.type]: component.defaultGroup,
-    }),
-    {} as Record<string, ComponentGroupId>,
-  );
-}
-
 export function isBuiltInComponent(type: string): type is BuiltInComponentType {
   return builtInComponentKeys.includes(type as BuiltInComponentType);
 }

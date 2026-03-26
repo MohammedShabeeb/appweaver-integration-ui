@@ -59,27 +59,6 @@ export function ProcessIcon(props: IconProps) {
   );
 }
 
-export function ActionIcon(props: IconProps) {
-  return (
-    <BaseIcon {...props}>
-      <rect x="4" y="5" width="16" height="14" rx="3" />
-      <path d="M8 9.5h8" />
-      <path d="M8 13h5" />
-      <circle cx="16.5" cy="13" r="1" fill="currentColor" stroke="none" />
-    </BaseIcon>
-  );
-}
-
-export function SwitchIcon(props: IconProps) {
-  return (
-    <BaseIcon {...props}>
-      <path d="M12 4 L20 12 L12 20 L4 12 Z" />
-      <path d="M12 9v6" />
-      <path d="M9 12h6" />
-    </BaseIcon>
-  );
-}
-
 export function ConnectorIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>

@@ -3,7 +3,6 @@ import {
   componentGroups,
   isBuiltInComponent,
 } from "@/config/componentCatalog";
-import type { CustomComponentDefinition } from "@/store/useFlowStore";
 
 const defaultDescriptions: Record<string, string> = {
   start: "Entry point for your workflow.",
@@ -34,36 +33,6 @@ export function getBuiltInNodeCardMeta(componentKey: string) {
     subtitle: componentKey,
     description: defaultDescriptions[componentKey],
     topTags: [group?.label ?? "Component", "Camel"],
-    bottomTags,
-  };
-}
-
-export function getCustomNodeCardMeta(
-  componentKey: string | undefined,
-  customComponents: CustomComponentDefinition[],
-  componentGroupAssignments: Record<string, string>,
-) {
-  const customComponent = componentKey
-    ? customComponents.find((item) => item.key === componentKey)
-    : null;
-
-  if (!customComponent) {
-    return null;
-  }
-
-  const groupId = componentGroupAssignments[customComponent.key];
-  const group = componentGroups.find((item) => item.id === groupId);
-  const bottomTags = [
-    toTag(groupId),
-    toTag(customComponent.key),
-    "single-connector",
-  ].filter((value): value is string => Boolean(value));
-
-  return {
-    accentColor: customComponent.color,
-    subtitle: customComponent.key,
-    description: customComponent.description || "Reusable custom component.",
-    topTags: [group?.label ?? "Custom", "Custom"],
     bottomTags,
   };
 }
