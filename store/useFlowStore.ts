@@ -484,11 +484,7 @@ function buildWorkflowFromRouteDefinition(
 
   supportedSteps.forEach((step, index) => {
     const componentKey = step.type;
-    const node = createFlowNode(
-      componentKey,
-      { x: 160 + (index + 1) * 240, y: 140 },
-      [],
-    );
+    const node = createFlowNode(componentKey, { x: 160 + (index + 1) * 240, y: 140 });
 
     node.data = {
       ...node.data,
