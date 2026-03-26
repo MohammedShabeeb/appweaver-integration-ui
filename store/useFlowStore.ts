@@ -691,11 +691,11 @@ interface FlowState {
   ) => { ok: true } | { ok: false; reason: string };
   removeDataSource: (dataSourceId: string) => void;
   addSecurityConfig: (
-    config: Omit<CreatedSecurityConfig, "id" | "fileName">,
+    config: Omit<CreatedSecurityConfig, "id">,
   ) => { ok: true } | { ok: false; reason: string };
   updateSecurityConfig: (
     configId: string,
-    config: Omit<CreatedSecurityConfig, "id" | "fileName">,
+    config: Omit<CreatedSecurityConfig, "id">,
   ) => { ok: true } | { ok: false; reason: string };
   removeSecurityConfig: (configId: string) => void;
   exportWorkflow: () => WorkflowExport;
