@@ -1138,20 +1138,14 @@ export default function ConfigurationWorkspace() {
     () =>
       selectedConfigSection === "beans"
         ? {
-            title: "Bean Configuration",
-            subtitle:
-              "Beans now open in their own workspace so configuration work stays separate from the route canvas.",
+            title: "Bean Configuration"
           }
         : selectedConfigSection === "datasources"
           ? {
-            title: "Datasource Configuration",
-            subtitle:
-              "Datasource definitions now live in their own workspace instead of sharing the workflow canvas.",
+            title: "Datasource Configuration"
           }
           : {
-            title: "Security Configuration",
-            subtitle:
-              "Security definitions now live in their own workspace with auth and authorize subsections.",
+            title: "Security Configuration"
           },
     [selectedConfigSection],
   );
@@ -1176,9 +1170,6 @@ export default function ConfigurationWorkspace() {
           <h1 style={{ margin: 0, color: "#f8fafc", fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em" }}>
             {pageMeta.title}
           </h1>
-          <p style={{ margin: 0, maxWidth: 760, color: "#94a3b8", fontSize: 13, lineHeight: 1.5 }}>
-            {pageMeta.subtitle}
-          </p>
         </div>
         <button
           type="button"
