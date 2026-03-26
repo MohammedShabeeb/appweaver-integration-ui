@@ -34,11 +34,8 @@ export default function StepNode({ id, type, data, selected }: StepNodeProps) {
   return (
     <FlowNodeCard
       id={id}
-      title={data?.label || meta.subtitle}
-      subtitle={meta.subtitle}
+      title={data?.label || nodeTypeMeta[type].label}
       description={getNodeDescription(type, data?.config)}
-      topTags={meta.topTags}
-      bottomTags={meta.bottomTags}
       accentColor={meta.accentColor}
       Icon={Icon}
       selected={selected}

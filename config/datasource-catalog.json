@@ -1,0 +1,51 @@
+{
+  "dataSources": {
+    "datasource1": {
+      "driver": "org.h2.Driver",
+      "username": "sa",
+      "password": "",
+      "maxPool": 10,
+      "minPool": 2,
+      "url": "jdbc:h2:mem:testdb1",
+      "packageToScan": "",
+      "l2CacheProvider": "org.ehcache.jsr107.EhcacheCachingProvider",
+      "strategy": {
+        "name": "DISCRIMINATOR",
+        "schema": "TEST"
+      }
+    },
+    "datasource2": {
+      "driver": "org.h2.Driver",
+      "username": "sa",
+      "password": "",
+      "maxPool": 10,
+      "minPool": 2,
+      "url": "jdbc:h2:mem:testdb2",
+      "packageToScan": "",
+      "l2CacheProvider": "org.ehcache.jsr107.EhcacheCachingProvider",
+      "strategy": {
+        "name": "DATABASE"
+      }
+    },
+    "datasource3": {
+      "driver": "org.h2.Driver",
+      "username": "sa",
+      "password": "",
+      "maxPool": 10,
+      "minPool": 2,
+      "url": "jdbc:h2:mem:timesheet",
+      "packageToScan": "com.bytestrone.timesheet.adapter.out.persistence.entity",
+      "l2CacheProvider": "org.ehcache.jsr107.EhcacheCachingProvider",
+      "strategy": {
+        "name": "DATABASE"
+      }
+    }
+  },
+  "tenants": {
+    "default": "datasource1",
+    "tenantA": "datasource1",
+    "tenantB": "datasource2",
+    "bytestrone": "datasource3"
+  },
+  "emfPerTenant": false
+}

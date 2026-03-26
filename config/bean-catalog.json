@@ -1,0 +1,114 @@
+[
+  {
+    "name": "sqlQuery",
+    "className": "com.bytestrone.appweaver.integration.core.bean.SqlQueryBean",
+    "constructorArgs": ["route-data/query/migration.sql"]
+  },
+  {
+    "name": "memoryIdempotentRepo",
+    "className": "org.apache.camel.support.processor.idempotent.MemoryIdempotentRepository",
+    "constructorArgs": []
+  },
+  {
+    "name": "file",
+    "className": "java.io.File",
+    "constructorArgs": ["route-data/idempotent-repo.txt"]
+  },
+  {
+    "name": "fileIdempotentRepo",
+    "className": "org.apache.camel.support.processor.idempotent.FileIdempotentRepository",
+    "constructorArgs": ["@file", {}]
+  },
+  {
+    "name": "jdbcIdempotentRepo",
+    "className": "org.apache.camel.processor.idempotent.jdbc.JdbcMessageIdRepository",
+    "constructorArgs": ["@dataSource", "jdbcIdempotencyProcessor"]
+  },
+  {
+    "name": "defaultTokenProvider",
+    "className": "com.bytestrone.appweaver.integration.core.auth.credentials.DefaultTokenProvider",
+    "constructorArgs": [
+      "https://dummyjson.com/auth/login",
+      {
+        "username": "emilys",
+        "password": "emilyspass"
+      },
+      "accessToken",
+      "https://dummyjson.com/auth/refresh",
+      {
+        "refreshToken": "${refreshToken}"
+      },
+      "@camelContext"
+    ]
+  },
+  {
+    "name": "bearerAuthProvider",
+    "className": "com.bytestrone.appweaver.integration.core.auth.credentials.BearerTokenClientProvider",
+    "constructorArgs": ["@defaultTokenProvider"]
+  },
+  {
+    "name": "apiKeyAuthProvider",
+    "className": "com.bytestrone.appweaver.integration.core.auth.credentials.ApiKeyClientProvider",
+    "constructorArgs": ["key", "secret"]
+  },
+  {
+    "name": "basicAuthProvider",
+    "className": "com.bytestrone.appweaver.integration.core.auth.credentials.BasicAuthClientProvider",
+    "constructorArgs": ["username", "password"]
+  },
+  {
+    "name": "hmacAuthProvider",
+    "className": "com.bytestrone.appweaver.integration.core.auth.credentials.HmacClientProvider",
+    "constructorArgs": ["signature", "X_SIGNATURE"]
+  },
+  {
+    "name": "mockStreamingProcessor",
+    "className": "com.bytestrone.appweaver.integration.core.processor.MockStreamingProcessor",
+    "constructorArgs": ["LLMStreamingProcessor"]
+  },
+  {
+    "name": "chunkingProcessor",
+    "className": "com.bytestrone.appweaver.integration.core.llm.rag.processor.ChunkingProcessor",
+    "constructorArgs": ["recursive", 800, 150, "@dataSanitizer"]
+  },
+  {
+    "name": "ragResultProcessor",
+    "className": "com.bytestrone.appweaver.integration.core.llm.rag.processor.RagResultProcessor",
+    "constructorArgs": []
+  },
+  {
+    "name": "ragMetadataFilter",
+    "className": "com.bytestrone.appweaver.integration.core.llm.rag.processor.MetaDataFilterProcessor",
+    "constructorArgs": []
+  },
+  {
+    "name": "hashProcessor",
+    "className": "com.bytestrone.appweaver.integration.core.processor.HashProcessor",
+    "constructorArgs": []
+  },
+  {
+    "name": "noiseReductionProcessor",
+    "className": "com.bytestrone.appweaver.integration.core.llm.rag.processor.NoiseReductionProcessor",
+    "constructorArgs": []
+  },
+  {
+    "name": "semanticChunkBuilderProcessor",
+    "className": "com.bytestrone.appweaver.integration.core.llm.rag.processor.SemanticChunkBuilderProcessor",
+    "constructorArgs": []
+  },
+  {
+    "name": "textChunkBuilderProcessor",
+    "className": "com.bytestrone.appweaver.integration.core.llm.rag.processor.TextChunkBuilderProcessor",
+    "constructorArgs": []
+  },
+  {
+    "name": "csvChunkBuilderProcessor",
+    "className": "com.bytestrone.appweaver.integration.core.llm.rag.processor.CsvChunkBuilderProcessor",
+    "constructorArgs": []
+  },
+  {
+    "name": "ragResultSummaryProcessor",
+    "className": "com.bytestrone.appweaver.integration.core.llm.rag.processor.RagResultSummaryProcessor",
+    "constructorArgs": []
+  }
+]

@@ -10,6 +10,7 @@ import {
   type BuiltInComponentType,
   isBuiltInComponent,
 } from "@/config/componentCatalog";
+import type { DataSourceStrategy } from "@/config/datasourceCatalog";
 
 type AppNodeType = BuiltInComponentType | "custom";
 type InsertableNodeType = Exclude<ComponentType, "start">;
@@ -20,6 +21,27 @@ export type CustomComponentDefinition = {
   description: string;
   color: string;
   singleEndpointOnly: boolean;
+};
+
+export type CreatedBean = {
+  id: string;
+  name: string;
+  className: string;
+  constructorArgs: unknown[];
+};
+
+export type CreatedDataSource = {
+  id: string;
+  key: string;
+  driver: string;
+  username: string;
+  password: string;
+  maxPool: number;
+  minPool: number;
+  url: string;
+  packageToScan: string;
+  l2CacheProvider: string;
+  strategy: DataSourceStrategy;
 };
 
 type AppNodeData = {
@@ -77,7 +99,8 @@ type RouteImportDefinition = {
   steps?: RouteImportStep[];
 };
 
-type SidebarView = "components" | "workflows";
+type SidebarView = "components" | "workflows" | "configs";
+type ConfigSection = "beans" | "datasources";
 
 type PersistedFlowState = {
   workflows?: Record<string, WorkflowRecord>;
@@ -88,6 +111,8 @@ type PersistedFlowState = {
   canvasStack?: string[];
   componentGroupAssignments?: Partial<Record<ComponentType, ComponentGroupId>>;
   customComponents?: CustomComponentDefinition[];
+  beans?: CreatedBean[];
+  dataSources?: CreatedDataSource[];
 };
 
 type WorkflowPomDependency = MavenDependencyDefinition;
@@ -577,6 +602,8 @@ function normalizePersistedState(
   const customComponents = resetLegacyCustomizations
     ? []
     : persistedState?.customComponents ?? [];
+  const beans = persistedState?.beans ?? [];
+  const dataSources = persistedState?.dataSources ?? [];
 
   const shouldPruneLegacyNode = (node: AppNode) =>
     !["start", "marshal", "unmarshal", "process"].includes(node.type ?? "");
@@ -617,6 +644,8 @@ function normalizePersistedState(
       canvasStack: normalizedActiveWorkflow.canvasStack,
       componentGroupAssignments,
       customComponents,
+      beans,
+      dataSources,
     };
   }
 
@@ -653,6 +682,8 @@ function normalizePersistedState(
     canvasStack: legacyWorkflow.canvasStack,
     componentGroupAssignments,
     customComponents,
+    beans,
+    dataSources,
   };
 }
 
@@ -667,8 +698,11 @@ interface FlowState {
   selectedEdge: AppEdge | null;
   isSidebarOpen: boolean;
   sidebarView: SidebarView;
+  selectedConfigSection: ConfigSection;
   componentGroupAssignments: Record<string, ComponentGroupId>;
   customComponents: CustomComponentDefinition[];
+  beans: CreatedBean[];
+  dataSources: CreatedDataSource[];
   setNodes: (nodes: AppNode[]) => void;
   setEdges: (edges: AppEdge[]) => void;
   addNode: (componentKey: ComponentType, position: XYPosition) => void;
@@ -685,7 +719,17 @@ interface FlowState {
   openCanvasFromBreadcrumb: (canvasId: string) => void;
   toggleSidebar: () => void;
   openSidebar: (view: SidebarView) => void;
+  openConfigSection: (section: ConfigSection) => void;
   assignComponentToGroup: (type: ComponentType, groupId: ComponentGroupId) => void;
+  addBean: (bean: Omit<CreatedBean, "id">) => { ok: true } | { ok: false; reason: string };
+  updateBean: (beanId: string, bean: Omit<CreatedBean, "id">) => { ok: true } | { ok: false; reason: string };
+  removeBean: (beanId: string) => void;
+  addDataSource: (dataSource: Omit<CreatedDataSource, "id">) => { ok: true } | { ok: false; reason: string };
+  updateDataSource: (
+    dataSourceId: string,
+    dataSource: Omit<CreatedDataSource, "id">,
+  ) => { ok: true } | { ok: false; reason: string };
+  removeDataSource: (dataSourceId: string) => void;
   addCustomComponent: (
     component: CustomComponentDefinition,
     groupId: ComponentGroupId,
@@ -736,8 +780,11 @@ export const useFlowStore = create<FlowState>()(
       selectedEdge: null,
       isSidebarOpen: false,
       sidebarView: "components",
+      selectedConfigSection: "beans",
       componentGroupAssignments: createDefaultComponentAssignments(),
       customComponents: [],
+      beans: [],
+      dataSources: [],
 
       setNodes: (nodes) =>
         set((state) => {
@@ -812,6 +859,12 @@ export const useFlowStore = create<FlowState>()(
       clearSelection: () => set({ selectedNode: null, selectedEdge: null }),
       toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
       openSidebar: (view) => set({ isSidebarOpen: true, sidebarView: view }),
+      openConfigSection: (section) =>
+        set({
+          isSidebarOpen: true,
+          sidebarView: "configs",
+          selectedConfigSection: section,
+        }),
       assignComponentToGroup: (type, groupId) =>
         set((state) => ({
           componentGroupAssignments: {
@@ -819,6 +872,126 @@ export const useFlowStore = create<FlowState>()(
             [type]: groupId,
           },
         })),
+      addBean: (bean) => {
+        const trimmedName = bean.name.trim();
+
+        if (!trimmedName) {
+          return { ok: false, reason: "Bean name is required." };
+        }
+
+        const currentState = get();
+
+        if (currentState.beans.some((item) => item.name === trimmedName)) {
+          return { ok: false, reason: "A bean with that name already exists." };
+        }
+
+        set((state) => ({
+          beans: [
+            ...state.beans,
+            {
+              id: `bean-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              ...bean,
+              name: trimmedName,
+            },
+          ],
+        }));
+
+        return { ok: true };
+      },
+      removeBean: (beanId) =>
+        set((state) => ({
+          beans: state.beans.filter((bean) => bean.id !== beanId),
+        })),
+      updateBean: (beanId, bean) => {
+        const trimmedName = bean.name.trim();
+
+        if (!trimmedName) {
+          return { ok: false, reason: "Bean name is required." };
+        }
+
+        const currentState = get();
+
+        if (
+          currentState.beans.some((item) => item.id !== beanId && item.name === trimmedName)
+        ) {
+          return { ok: false, reason: "A bean with that name already exists." };
+        }
+
+        set((state) => ({
+          beans: state.beans.map((item) =>
+            item.id === beanId
+              ? {
+                  ...item,
+                  ...bean,
+                  name: trimmedName,
+                }
+              : item,
+          ),
+        }));
+
+        return { ok: true };
+      },
+      addDataSource: (dataSource) => {
+        const trimmedKey = dataSource.key.trim();
+
+        if (!trimmedKey) {
+          return { ok: false, reason: "Datasource key is required." };
+        }
+
+        const currentState = get();
+
+        if (currentState.dataSources.some((item) => item.key === trimmedKey)) {
+          return { ok: false, reason: "A datasource with that key already exists." };
+        }
+
+        set((state) => ({
+          dataSources: [
+            ...state.dataSources,
+            {
+              id: `datasource-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              ...dataSource,
+              key: trimmedKey,
+            },
+          ],
+        }));
+
+        return { ok: true };
+      },
+      removeDataSource: (dataSourceId) =>
+        set((state) => ({
+          dataSources: state.dataSources.filter((dataSource) => dataSource.id !== dataSourceId),
+        })),
+      updateDataSource: (dataSourceId, dataSource) => {
+        const trimmedKey = dataSource.key.trim();
+
+        if (!trimmedKey) {
+          return { ok: false, reason: "Datasource key is required." };
+        }
+
+        const currentState = get();
+
+        if (
+          currentState.dataSources.some(
+            (item) => item.id !== dataSourceId && item.key === trimmedKey,
+          )
+        ) {
+          return { ok: false, reason: "A datasource with that key already exists." };
+        }
+
+        set((state) => ({
+          dataSources: state.dataSources.map((item) =>
+            item.id === dataSourceId
+              ? {
+                  ...item,
+                  ...dataSource,
+                  key: trimmedKey,
+                }
+              : item,
+          ),
+        }));
+
+        return { ok: true };
+      },
       addCustomComponent: (component, groupId) => {
         const trimmedKey = component.key.trim();
 
@@ -1505,6 +1678,8 @@ export const useFlowStore = create<FlowState>()(
         canvasStack: state.canvasStack,
         componentGroupAssignments: state.componentGroupAssignments,
         customComponents: state.customComponents,
+        beans: state.beans,
+        dataSources: state.dataSources,
       }),
     },
   ),

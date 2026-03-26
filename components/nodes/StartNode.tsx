@@ -12,10 +12,7 @@ export default function FromNode({ selected }: { selected?: boolean }) {
   return (
     <FlowNodeCard
       title="From"
-      subtitle={meta.subtitle}
       description={meta.description}
-      topTags={meta.topTags}
-      bottomTags={meta.bottomTags}
       accentColor={meta.accentColor}
       Icon={FromIcon}
       selected={selected}

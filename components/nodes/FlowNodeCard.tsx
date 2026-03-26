@@ -6,10 +6,7 @@ type IconProps = SVGProps<SVGSVGElement>;
 type FlowNodeCardProps = {
   id?: string;
   title: string;
-  subtitle?: string;
   description?: string;
-  topTags: string[];
-  bottomTags: string[];
   accentColor: string;
   Icon: (props: IconProps) => ReactNode;
   selected?: boolean;
@@ -42,9 +39,9 @@ const deleteBtnStyle: CSSProperties = {
 function buildCardStyle(accentColor: string, selected?: boolean): CSSProperties {
   return {
     position: "relative",
-    width: 188,
-    minHeight: 116,
-    padding: "12px 12px 10px",
+    width: 220,
+    minHeight: 132,
+    padding: "14px 14px 12px",
     borderRadius: 18,
     border: `1px solid ${selected ? `${accentColor}8a` : "rgba(255, 255, 255, 0.16)"}`,
     background:
@@ -58,37 +55,10 @@ function buildCardStyle(accentColor: string, selected?: boolean): CSSProperties 
   };
 }
 
-function FlowNodeTag({ label, tone = "neutral" }: { label: string; tone?: "neutral" | "accent" }) {
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        minHeight: 20,
-        borderRadius: 999,
-        padding: "0 8px",
-        background: tone === "accent" ? "#b7ef87" : "rgba(88, 89, 97, 0.9)",
-        color: tone === "accent" ? "#16210d" : "#f8fafc",
-        fontSize: 10,
-        fontWeight: 500,
-        letterSpacing: "-0.01em",
-        whiteSpace: "nowrap",
-        fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
-      }}
-    >
-      {label}
-    </span>
-  );
-}
-
 export default function FlowNodeCard({
   id,
   title,
-  subtitle,
   description,
-  topTags,
-  bottomTags,
   accentColor,
   Icon,
   selected,
@@ -112,88 +82,66 @@ export default function FlowNodeCard({
         </button>
       ) : null}
 
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          paddingRight: selected ? 22 : 0,
+        }}
+      >
         <div
           style={{
             display: "inline-flex",
-            height: 24,
-            width: 24,
+            height: 34,
+            width: 34,
             alignItems: "center",
             justifyContent: "center",
-            borderRadius: 5,
+            borderRadius: 12,
             background: accentColor,
             color: "#fff",
             boxShadow: `0 12px 28px ${accentColor}55`,
             flexShrink: 0,
           }}
         >
-          <Icon style={{ width: 14, height: 14 }} />
+          <Icon style={{ width: 18, height: 18 }} />
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 4 }}>
-          {topTags.map((tag, index) => (
-            <FlowNodeTag
-              key={`${tag}-${index}`}
-              label={tag}
-              tone={index === topTags.length - 1 ? "accent" : "neutral"}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div style={{ marginTop: 10 }}>
         <div
           style={{
-            fontSize: 13,
+            flex: 1,
+            minWidth: 0,
+            fontSize: 15,
             fontWeight: 700,
-            lineHeight: 1.15,
-            letterSpacing: "-0.04em",
+            lineHeight: 1.28,
+            letterSpacing: "-0.02em",
+            color: "#f8fafc",
+            overflow: "hidden",
+            display: "-webkit-box",
+            WebkitBoxOrient: "vertical",
+            WebkitLineClamp: 2,
             fontFamily: "var(--font-display), var(--font-body), Arial, Helvetica, sans-serif",
           }}
+          title={title}
         >
           {title}
         </div>
-        {subtitle ? (
-          <div
-            style={{
-              marginTop: 2,
-              fontSize: 10,
-              fontWeight: 700,
-              color: "rgba(248, 250, 252, 0.92)",
-              letterSpacing: "0.01em",
-              fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
-            }}
-          >
-            ({subtitle})
-          </div>
-        ) : null}
-        {description ? (
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: 10,
-              lineHeight: 1.4,
-              color: "rgba(226, 232, 240, 0.88)",
-              maxWidth: 150,
-              fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
-            }}
-          >
-            {description}
-          </div>
-        ) : null}
       </div>
 
-      {bottomTags.length > 0 ? (
+      {description ? (
         <div
           style={{
-            marginTop: 10,
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 6,
+            marginTop: 14,
+            fontSize: 12,
+            fontWeight: 500,
+            lineHeight: 1.65,
+            color: "rgba(226, 232, 240, 0.82)",
+            maxWidth: "100%",
+            overflowWrap: "anywhere",
+            letterSpacing: "-0.01em",
+            fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
           }}
         >
-          {bottomTags.map((tag) => (
-            <FlowNodeTag key={tag} label={tag} />
-          ))}
+          {description}
         </div>
       ) : null}
 

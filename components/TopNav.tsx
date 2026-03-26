@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 
 import { useFlowStore } from "@/store/useFlowStore";
 
@@ -11,12 +11,15 @@ export default function TopNav() {
     exportPomXml,
     importWorkflow,
     isSidebarOpen,
+    openConfigSection,
     openSidebar,
     sidebarView,
     toggleSidebar,
   } = useFlowStore();
+  const [isConfigMenuOpen, setIsConfigMenuOpen] = useState(false);
+  const configMenuRef = useRef<HTMLDivElement | null>(null);
 
-  const handleSidebarToggle = (view: "workflows" | "components") => {
+  const handleSidebarToggle = (view: "workflows" | "components" | "configs") => {
     if (isSidebarOpen && sidebarView === view) {
       toggleSidebar();
       return;
@@ -24,6 +27,21 @@ export default function TopNav() {
 
     openSidebar(view);
   };
+
+  useEffect(() => {
+    if (!isConfigMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!configMenuRef.current?.contains(event.target as Node)) {
+        setIsConfigMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [isConfigMenuOpen]);
 
   const handleSaveWorkflow = () => {
     const workflow = exportWorkflow();
@@ -129,6 +147,56 @@ export default function TopNav() {
             </svg>
           </button>
           <span className="topnav-tooltip">Open workflows</span>
+        </div>
+        <div className="topnav-action" ref={configMenuRef}>
+          <button
+            type="button"
+            aria-label="Open configs"
+            className={`topnav-btn ${isSidebarOpen && sidebarView === "configs" ? "topnav-btn-active" : ""}`}
+            onClick={() => setIsConfigMenuOpen((current) => !current)}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="topnav-btn-icon"
+            >
+              <path d="M7 21h10" />
+              <path d="M10 21v-4" />
+              <path d="M14 21v-4" />
+              <path d="M8 4h8l3 5-7 9-7-9 3-5Z" />
+            </svg>
+          </button>
+          <span className={`topnav-tooltip ${isConfigMenuOpen ? "topnav-tooltip-hidden" : ""}`}>
+            Open configs
+          </span>
+          {isConfigMenuOpen ? (
+            <div className="sidebar-group-menu" style={{ top: "calc(100% + 10px)", left: 0, right: "auto" }}>
+              <button
+                type="button"
+                className="sidebar-group-menu-item"
+                onClick={() => {
+                  openConfigSection("beans");
+                  setIsConfigMenuOpen(false);
+                }}
+              >
+                Beans
+              </button>
+              <button
+                type="button"
+                className="sidebar-group-menu-item"
+                onClick={() => {
+                  openConfigSection("datasources");
+                  setIsConfigMenuOpen(false);
+                }}
+              >
+                Datasources
+              </button>
+            </div>
+          ) : null}
         </div>
         <div className="topnav-action">
           <button
