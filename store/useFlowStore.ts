@@ -11,6 +11,10 @@ import {
 import type { DataSourceStrategy } from "@/config/datasourceCatalog";
 
 type InsertableNodeType = Exclude<ComponentType, "start">;
+type SidebarView = "components" | "workflows" | "configs";
+type ConfigSection = "beans" | "datasources" | "security";
+
+export type SecuritySubsection = "auth" | "authorize";
 
 export type CreatedBean = {
   id: string;
@@ -31,6 +35,13 @@ export type CreatedDataSource = {
   packageToScan: string;
   l2CacheProvider: string;
   strategy: DataSourceStrategy;
+};
+
+export type CreatedSecurityConfig = {
+  id: string;
+  subsection: SecuritySubsection;
+  fileName: string;
+  content: string;
 };
 
 type AppNodeData = {
@@ -88,9 +99,6 @@ type RouteImportDefinition = {
   steps?: RouteImportStep[];
 };
 
-type SidebarView = "components" | "workflows" | "configs";
-type ConfigSection = "beans" | "datasources";
-
 type PersistedFlowState = {
   workflows?: Record<string, WorkflowRecord>;
   workflowOrder?: string[];
@@ -98,8 +106,13 @@ type PersistedFlowState = {
   canvases?: Record<string, CanvasState>;
   currentCanvasId?: string;
   canvasStack?: string[];
+  isSidebarOpen?: boolean;
+  sidebarView?: SidebarView;
+  selectedConfigSection?: ConfigSection;
+  selectedSecuritySubsection?: SecuritySubsection;
   beans?: CreatedBean[];
   dataSources?: CreatedDataSource[];
+  securityConfigs?: CreatedSecurityConfig[];
 };
 
 type WorkflowPomDependency = MavenDependencyDefinition;
@@ -541,6 +554,11 @@ function normalizePersistedState(
 ) {
   const beans = persistedState?.beans ?? [];
   const dataSources = persistedState?.dataSources ?? [];
+  const securityConfigs = persistedState?.securityConfigs ?? [];
+  const isSidebarOpen = persistedState?.isSidebarOpen ?? false;
+  const sidebarView = persistedState?.sidebarView ?? "components";
+  const selectedConfigSection = persistedState?.selectedConfigSection ?? "beans";
+  const selectedSecuritySubsection = persistedState?.selectedSecuritySubsection ?? "auth";
 
   const shouldPruneLegacyNode = (node: AppNode) =>
     !["start", "marshal", "unmarshal", "process"].includes(node.type ?? "");
@@ -579,8 +597,13 @@ function normalizePersistedState(
       canvases: normalizedActiveWorkflow.canvases,
       currentCanvasId: normalizedActiveWorkflow.currentCanvasId,
       canvasStack: normalizedActiveWorkflow.canvasStack,
+      isSidebarOpen,
+      sidebarView,
+      selectedConfigSection,
+      selectedSecuritySubsection,
       beans,
       dataSources,
+      securityConfigs,
     };
   }
 
@@ -615,8 +638,13 @@ function normalizePersistedState(
     canvases: legacyWorkflow.canvases,
     currentCanvasId: legacyWorkflow.currentCanvasId,
     canvasStack: legacyWorkflow.canvasStack,
+    isSidebarOpen,
+    sidebarView,
+    selectedConfigSection,
+    selectedSecuritySubsection,
     beans,
     dataSources,
+    securityConfigs,
   };
 }
 
@@ -632,8 +660,10 @@ interface FlowState {
   isSidebarOpen: boolean;
   sidebarView: SidebarView;
   selectedConfigSection: ConfigSection;
+  selectedSecuritySubsection: SecuritySubsection;
   beans: CreatedBean[];
   dataSources: CreatedDataSource[];
+  securityConfigs: CreatedSecurityConfig[];
   setNodes: (nodes: AppNode[]) => void;
   setEdges: (edges: AppEdge[]) => void;
   addNode: (componentKey: ComponentType, position: XYPosition) => void;
@@ -650,6 +680,7 @@ interface FlowState {
   toggleSidebar: () => void;
   openSidebar: (view: SidebarView) => void;
   openConfigSection: (section: ConfigSection) => void;
+  selectSecuritySubsection: (section: SecuritySubsection) => void;
   addBean: (bean: Omit<CreatedBean, "id">) => { ok: true } | { ok: false; reason: string };
   updateBean: (beanId: string, bean: Omit<CreatedBean, "id">) => { ok: true } | { ok: false; reason: string };
   removeBean: (beanId: string) => void;
@@ -659,6 +690,14 @@ interface FlowState {
     dataSource: Omit<CreatedDataSource, "id">,
   ) => { ok: true } | { ok: false; reason: string };
   removeDataSource: (dataSourceId: string) => void;
+  addSecurityConfig: (
+    config: Omit<CreatedSecurityConfig, "id" | "fileName">,
+  ) => { ok: true } | { ok: false; reason: string };
+  updateSecurityConfig: (
+    configId: string,
+    config: Omit<CreatedSecurityConfig, "id" | "fileName">,
+  ) => { ok: true } | { ok: false; reason: string };
+  removeSecurityConfig: (configId: string) => void;
   exportWorkflow: () => WorkflowExport;
   exportPomXml: () => string;
   importWorkflow: (raw: unknown, fallbackName?: string) => boolean;
@@ -703,8 +742,10 @@ export const useFlowStore = create<FlowState>()(
       isSidebarOpen: false,
       sidebarView: "components",
       selectedConfigSection: "beans",
+      selectedSecuritySubsection: "auth",
       beans: [],
       dataSources: [],
+      securityConfigs: [],
 
       setNodes: (nodes) =>
         set((state) => {
@@ -785,6 +826,7 @@ export const useFlowStore = create<FlowState>()(
           sidebarView: "configs",
           selectedConfigSection: section,
         }),
+      selectSecuritySubsection: (section) => set({ selectedSecuritySubsection: section }),
       addBean: (bean) => {
         const trimmedName = bean.name.trim();
 
@@ -905,6 +947,78 @@ export const useFlowStore = create<FlowState>()(
 
         return { ok: true };
       },
+      addSecurityConfig: (config) => {
+        const currentState = get();
+        const normalizedFileName = config.fileName.trim().toLowerCase().endsWith(".json")
+          ? config.fileName.trim()
+          : `${config.fileName.trim()}.json`;
+
+        if (!normalizedFileName || normalizedFileName === ".json") {
+          return { ok: false, reason: "Security file name is required." };
+        }
+
+        if (
+          currentState.securityConfigs.some(
+            (item) =>
+              item.subsection === config.subsection &&
+              item.fileName.toLowerCase() === normalizedFileName.toLowerCase(),
+          )
+        ) {
+          return { ok: false, reason: "A security config for that file already exists." };
+        }
+
+        set((state) => ({
+          securityConfigs: [
+            ...state.securityConfigs,
+            {
+              id: `security-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              ...config,
+              fileName: normalizedFileName,
+            },
+          ],
+        }));
+
+        return { ok: true };
+      },
+      updateSecurityConfig: (configId, config) => {
+        const currentState = get();
+        const normalizedFileName = config.fileName.trim().toLowerCase().endsWith(".json")
+          ? config.fileName.trim()
+          : `${config.fileName.trim()}.json`;
+
+        if (!normalizedFileName || normalizedFileName === ".json") {
+          return { ok: false, reason: "Security file name is required." };
+        }
+
+        if (
+          currentState.securityConfigs.some(
+            (item) =>
+              item.id !== configId &&
+              item.subsection === config.subsection &&
+              item.fileName.toLowerCase() === normalizedFileName.toLowerCase(),
+          )
+        ) {
+          return { ok: false, reason: "A security config for that file already exists." };
+        }
+
+        set((state) => ({
+          securityConfigs: state.securityConfigs.map((item) =>
+            item.id === configId
+              ? {
+                  ...item,
+                  ...config,
+                  fileName: normalizedFileName,
+                }
+              : item,
+          ),
+        }));
+
+        return { ok: true };
+      },
+      removeSecurityConfig: (configId) =>
+        set((state) => ({
+          securityConfigs: state.securityConfigs.filter((item) => item.id !== configId),
+        })),
       exportWorkflow: () => {
         const state = get();
         const activeWorkflow = state.workflows[state.activeWorkflowId];
@@ -1348,7 +1462,7 @@ export const useFlowStore = create<FlowState>()(
     {
       name: "nextui-flow-store",
       storage: createJSONStorage(() => localStorage),
-      version: 6,
+      version: 8,
       migrate: (persistedState, version) =>
         normalizePersistedState(
           persistedState as PersistedFlowState,
@@ -1361,8 +1475,13 @@ export const useFlowStore = create<FlowState>()(
         canvases: state.canvases,
         currentCanvasId: state.currentCanvasId,
         canvasStack: state.canvasStack,
+        isSidebarOpen: state.isSidebarOpen,
+        sidebarView: state.sidebarView,
+        selectedConfigSection: state.selectedConfigSection,
+        selectedSecuritySubsection: state.selectedSecuritySubsection,
         beans: state.beans,
         dataSources: state.dataSources,
+        securityConfigs: state.securityConfigs,
       }),
     },
   ),

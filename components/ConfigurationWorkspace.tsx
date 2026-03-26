@@ -2,7 +2,13 @@
 
 import { useMemo, useState } from "react";
 
-import { useFlowStore, type CreatedBean, type CreatedDataSource } from "@/store/useFlowStore";
+import {
+  useFlowStore,
+  type CreatedBean,
+  type CreatedDataSource,
+  type CreatedSecurityConfig,
+  type SecuritySubsection,
+} from "@/store/useFlowStore";
 
 type BeanEditorState = {
   name: string;
@@ -23,11 +29,16 @@ type DataSourceEditorState = {
   strategy: string;
 };
 
+type SecurityEditorState = {
+  fileName: string;
+  content: string;
+};
+
 function createBeanEditorState(): BeanEditorState {
   return {
     name: "",
     className: "",
-    constructorArgs: [""],
+    constructorArgs: ["", ""],
   };
 }
 
@@ -40,7 +51,7 @@ function createBeanEditorFromItem(bean: CreatedBean): BeanEditorState {
         ? bean.constructorArgs.map((arg) =>
             typeof arg === "string" ? arg : JSON.stringify(arg),
           )
-        : [""],
+        : ["", ""],
   };
 }
 
@@ -74,14 +85,45 @@ function createDataSourceEditorFromItem(dataSource: CreatedDataSource): DataSour
   };
 }
 
+const SECURITY_DEFAULTS: Record<
+  SecuritySubsection,
+  { fileName: string; content: string }
+> = {
+  auth: {
+    fileName: "apikey.json",
+    content: '{\n  "type": "apikey",\n  "header": "X-API-Key",\n  "value": ""\n}',
+  },
+  authorize: {
+    fileName: "policy.json",
+    content: '{\n  "type": "policy",\n  "effect": "allow",\n  "resource": "*",\n  "actions": []\n}',
+  },
+};
+
+function createSecurityEditorState(subsection: SecuritySubsection): SecurityEditorState {
+  const defaults = SECURITY_DEFAULTS[subsection];
+
+  return {
+    fileName: defaults.fileName,
+    content: defaults.content,
+  };
+}
+
+function createSecurityEditorFromItem(item: CreatedSecurityConfig): SecurityEditorState {
+  return {
+    fileName: item.fileName,
+    content: item.content,
+  };
+}
+
 const pageStyle: React.CSSProperties = {
   flex: 1,
   minWidth: 0,
+  minHeight: 0,
   display: "flex",
   flexDirection: "column",
-  gap: 24,
-  padding: "28px 28px 32px",
-  overflow: "auto",
+  gap: 16,
+  padding: "18px 20px 22px",
+  overflow: "hidden",
 };
 
 const panelStyle: React.CSSProperties = {
@@ -126,11 +168,45 @@ const iconButtonStyle: React.CSSProperties = {
   flexShrink: 0,
 };
 
+const deleteIconButtonStyle: React.CSSProperties = {
+  ...iconButtonStyle,
+  width: 26,
+  height: 26,
+  borderRadius: 9,
+  border: "1px solid rgba(252, 165, 165, 0.34)",
+  background: "linear-gradient(180deg, rgba(185, 28, 28, 0.96), rgba(153, 27, 27, 0.9))",
+  color: "#fee2e2",
+  boxShadow: "0 6px 14px rgba(127, 29, 29, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
+};
+
+const workspaceGridStyle: React.CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 340px)",
+  gap: 20,
+  alignItems: "stretch",
+  overflow: "hidden",
+};
+
+const workspacePanelStyle: React.CSSProperties = {
+  ...panelStyle,
+  padding: 20,
+  minHeight: 0,
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden",
+};
+
 function parseConstructorArgValue(value: string): unknown {
   const trimmed = value.trim();
 
   if (!trimmed) {
     return "";
+  }
+
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return trimmed;
   }
 
   if (
@@ -139,8 +215,7 @@ function parseConstructorArgValue(value: string): unknown {
     trimmed === "null" ||
     /^-?\d+(\.\d+)?$/.test(trimmed) ||
     ((trimmed.startsWith("{") && trimmed.endsWith("}")) ||
-      (trimmed.startsWith("[") && trimmed.endsWith("]")) ||
-      (trimmed.startsWith('"') && trimmed.endsWith('"')))
+      (trimmed.startsWith("[") && trimmed.endsWith("]")))
   ) {
     try {
       return JSON.parse(trimmed);
@@ -154,7 +229,7 @@ function parseConstructorArgValue(value: string): unknown {
 
 function normalizeConstructorArgs(value: BeanEditorState["constructorArgs"]): string[] {
   if (Array.isArray(value)) {
-    return value.length > 0 ? value : [""];
+    return value.length > 0 ? value : ["", ""];
   }
 
   if (typeof value === "string") {
@@ -164,36 +239,16 @@ function normalizeConstructorArgs(value: BeanEditorState["constructorArgs"]): st
       if (Array.isArray(parsed)) {
         return parsed.length > 0
           ? parsed.map((item) => (typeof item === "string" ? item : JSON.stringify(item)))
-          : [""];
+          : ["", ""];
       }
     } catch {
-      return value.trim().length > 0 ? [value] : [""];
+      return value.trim().length > 0 ? [value] : ["", ""];
     }
 
-    return value.trim().length > 0 ? [value] : [""];
+    return value.trim().length > 0 ? [value] : ["", ""];
   }
 
-  return [""];
-}
-
-function ActionBadge({ label }: { label: string }) {
-  return (
-    <span
-      style={{
-        borderRadius: 999,
-        border: "1px solid rgba(96, 165, 250, 0.22)",
-        background: "rgba(30, 41, 59, 0.7)",
-        padding: "8px 12px",
-        fontSize: 11,
-        fontWeight: 700,
-        letterSpacing: "0.06em",
-        textTransform: "uppercase",
-        color: "#cbd5e1",
-      }}
-    >
-      {label}
-    </span>
-  );
+  return ["", ""];
 }
 
 function SectionTitle({
@@ -269,93 +324,34 @@ function BeansWorkspace() {
     }
   };
 
-  const handleDelete = () => {
-    if (!selectedBeanId) {
-      setError("Select a bean from the list to delete it.");
-      return;
-    }
+  const handleDelete = (beanId: string) => {
+    removeBean(beanId);
 
-    removeBean(selectedBeanId);
-    setSelectedBeanId(null);
-    setEditor(createBeanEditorState());
-    setError(null);
+    if (selectedBeanId === beanId) {
+      setSelectedBeanId(null);
+      setEditor(createBeanEditorState());
+      setError(null);
+    }
   };
 
   return (
     <>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-        <ActionBadge label="Create Bean" />
-        <ActionBadge label="Edit Bean" />
-        <ActionBadge label="Delete Bean" />
-        <ActionBadge label="List Beans" />
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(280px, 340px) minmax(0, 1fr)",
-          gap: 20,
-        }}
-      >
-        <section style={{ ...panelStyle, padding: 20 }}>
-          <SectionTitle
-            title="List Beans"
-            subtitle="Select an existing bean to edit it, or enter a new bean manually."
-          />
-          <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 10 }}>
-            {beans.length > 0 ? (
-              beans.map((bean) => (
-                <button
-                  key={bean.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedBeanId(bean.id);
-                    setEditor(createBeanEditorFromItem(bean));
-                    setError(null);
-                  }}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    borderRadius: 16,
-                    border:
-                      bean.id === selectedBeanId
-                        ? "1px solid rgba(96, 165, 250, 0.5)"
-                        : "1px solid rgba(71, 85, 105, 0.3)",
-                    background:
-                      bean.id === selectedBeanId
-                        ? "rgba(30, 64, 175, 0.18)"
-                        : "rgba(15, 23, 42, 0.65)",
-                    padding: "14px 16px",
-                    color: "#e2e8f0",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div style={{ fontSize: 14, fontWeight: 700, overflowWrap: "anywhere" }}>{bean.name}</div>
-                  <div style={listItemMetaStyle}>{bean.className}</div>
-                </button>
-              ))
-            ) : (
-              <div
-                style={{
-                  borderRadius: 16,
-                  border: "1px dashed rgba(71, 85, 105, 0.45)",
-                  padding: "18px 16px",
-                  color: "#64748b",
-                  textAlign: "center",
-                }}
-              >
-                No beans created yet.
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section style={{ ...panelStyle, padding: 20 }}>
+      <div style={workspaceGridStyle}>
+        <section style={workspacePanelStyle}>
           <SectionTitle
             title={selectedBean ? "Edit Bean" : "Create Bean"}
             subtitle="Enter bean values manually, then save a new bean or update the selected one."
           />
-          <div style={{ marginTop: 18, display: "grid", gap: 14 }}>
+          <div
+            style={{
+              marginTop: 18,
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+              flex: 1,
+              minHeight: 0,
+            }}
+          >
             <label style={{ display: "grid", gap: 6 }}>
               <span style={{ color: "#cbd5e1", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
                 Name
@@ -399,7 +395,15 @@ function BeansWorkspace() {
               </div>
               <div style={{ display: "grid", gap: 10 }}>
                 {constructorArgs.map((arg, index) => (
-                  <div key={`${index}-${arg}`} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div
+                    key={index}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr) auto",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
                     <input
                       value={arg}
                       placeholder={`Argument ${index + 1}`}
@@ -425,14 +429,14 @@ function BeansWorkspace() {
                               : [""],
                         }))
                       }
-                      style={iconButtonStyle}
+                      style={{ ...iconButtonStyle, width: 32, height: 32, borderRadius: 10 }}
                     >
                       -
                     </button>
                   </div>
                 ))}
               </div>
-              <p style={{ margin: 0, color: "#94a3b8", fontSize: 12, lineHeight: 1.55 }}>
+              <p style={{ margin: "8px 0 0", color: "#94a3b8", fontSize: 12, lineHeight: 1.55 }}>
                 Enter plain text for string arguments. If an argument looks like valid JSON such as
                 `123`, `true`, `{}` or `[]`, it will be converted before saving.
               </p>
@@ -440,17 +444,112 @@ function BeansWorkspace() {
 
             {error ? <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{error}</p> : null}
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: "auto", paddingTop: 8 }}>
               <button type="button" onClick={handleCreate} style={primaryButtonStyle}>
                 Create Bean
               </button>
               <button type="button" onClick={handleUpdate} style={secondaryButtonStyle}>
                 Edit Bean
               </button>
-              <button type="button" onClick={handleDelete} style={dangerButtonStyle}>
-                Delete Bean
-              </button>
             </div>
+          </div>
+        </section>
+
+        <section style={workspacePanelStyle}>
+          <SectionTitle
+            title="List Beans"
+            subtitle="Select an existing bean to edit it, or enter a new bean manually."
+          />
+          <div
+            style={{
+              marginTop: 18,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              flex: 1,
+              minHeight: 0,
+              overflow: "auto",
+              paddingRight: 6,
+            }}
+          >
+            {beans.length > 0 ? (
+              beans.map((bean) => (
+                <div
+                  key={bean.id}
+                  style={{
+                    position: "relative",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedBeanId(bean.id);
+                      setEditor(createBeanEditorFromItem(bean));
+                      setError(null);
+                    }}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      borderRadius: 16,
+                      border:
+                        bean.id === selectedBeanId
+                          ? "1px solid rgba(96, 165, 250, 0.5)"
+                          : "1px solid rgba(71, 85, 105, 0.3)",
+                      background:
+                        bean.id === selectedBeanId
+                          ? "rgba(30, 64, 175, 0.18)"
+                          : "rgba(15, 23, 42, 0.65)",
+                      padding: "12px 46px 12px 16px",
+                      color: "#e2e8f0",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 700, overflowWrap: "anywhere" }}>{bean.name}</div>
+                    <div style={listItemMetaStyle}>{bean.className}</div>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Delete ${bean.name}`}
+                    onClick={() => handleDelete(bean.id)}
+                    style={{
+                      ...deleteIconButtonStyle,
+                      position: "absolute",
+                      top: "50%",
+                      right: 12,
+                      transform: "translateY(-50%)",
+                    }}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      style={{ width: 14, height: 14 }}
+                    >
+                      <path d="M9 3.75h6a1 1 0 0 1 1 1V6H8V4.75a1 1 0 0 1 1-1Z" />
+                      <path d="M4.75 6h14.5" />
+                      <path d="M6.75 6.75 7.6 19a2 2 0 0 0 2 1.86h4.8a2 2 0 0 0 2-1.86l.85-12.25" />
+                      <path d="M10 10.25v6.5" />
+                      <path d="M14 10.25v6.5" />
+                    </svg>
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div
+                style={{
+                  borderRadius: 16,
+                  border: "1px dashed rgba(71, 85, 105, 0.45)",
+                  padding: "18px 16px",
+                  color: "#64748b",
+                  textAlign: "center",
+                }}
+              >
+                No beans created yet.
+              </div>
+            )}
           </div>
         </section>
       </div>
@@ -511,78 +610,36 @@ function DatasourcesWorkspace() {
     }
   };
 
+  const handleDelete = (dataSourceId: string) => {
+    removeDataSource(dataSourceId);
+
+    if (selectedId === dataSourceId) {
+      setSelectedId(null);
+      setEditor(createDataSourceEditorState());
+      setError(null);
+    }
+  };
+
   return (
     <>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-        <ActionBadge label="Create Datasource" />
-        <ActionBadge label="Edit Datasource" />
-        <ActionBadge label="Delete Datasource" />
-        <ActionBadge label="List Datasources" />
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(280px, 340px) minmax(0, 1fr)",
-          gap: 20,
-        }}
-      >
-        <section style={{ ...panelStyle, padding: 20 }}>
-          <SectionTitle title="List Datasources" subtitle="Select a datasource to edit it, or enter a new one manually." />
-          <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 10 }}>
-            {dataSources.length > 0 ? (
-              dataSources.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedId(item.id);
-                    setEditor(createDataSourceEditorFromItem(item));
-                    setError(null);
-                  }}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    borderRadius: 16,
-                    border:
-                      item.id === selectedId
-                        ? "1px solid rgba(96, 165, 250, 0.5)"
-                        : "1px solid rgba(71, 85, 105, 0.3)",
-                    background:
-                      item.id === selectedId
-                        ? "rgba(30, 64, 175, 0.18)"
-                        : "rgba(15, 23, 42, 0.65)",
-                    padding: "14px 16px",
-                    color: "#e2e8f0",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div style={{ fontSize: 14, fontWeight: 700, overflowWrap: "anywhere" }}>{item.key}</div>
-                  <div style={listItemMetaStyle}>{item.url}</div>
-                </button>
-              ))
-            ) : (
-              <div
-                style={{
-                  borderRadius: 16,
-                  border: "1px dashed rgba(71, 85, 105, 0.45)",
-                  padding: "18px 16px",
-                  color: "#64748b",
-                  textAlign: "center",
-                }}
-              >
-                No datasources created yet.
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section style={{ ...panelStyle, padding: 20 }}>
+      <div style={workspaceGridStyle}>
+        <section style={workspacePanelStyle}>
           <SectionTitle
             title={selectedItem ? "Edit Datasource" : "Create Datasource"}
             subtitle="Create and manage datasource definitions outside the workflow canvas."
           />
-          <div style={{ marginTop: 18, display: "grid", gap: 14 }}>
+          <div
+            style={{
+              marginTop: 18,
+              display: "grid",
+              gap: 14,
+              flex: 1,
+              minHeight: 0,
+              alignContent: "start",
+              overflow: "auto",
+              paddingRight: 6,
+            }}
+          >
             {(
               [
                 ["Key", "key"],
@@ -650,24 +707,382 @@ function DatasourcesWorkspace() {
               >
                 Edit Datasource
               </button>
+            </div>
+          </div>
+        </section>
+
+        <section style={workspacePanelStyle}>
+          <SectionTitle title="List Datasources" subtitle="Select a datasource to edit it, or enter a new one manually." />
+          <div
+            style={{
+              marginTop: 18,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              flex: 1,
+              minHeight: 0,
+              overflow: "auto",
+              paddingRight: 6,
+            }}
+          >
+            {dataSources.length > 0 ? (
+              dataSources.map((item) => (
+                <div
+                  key={item.id}
+                  style={{
+                    position: "relative",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedId(item.id);
+                      setEditor(createDataSourceEditorFromItem(item));
+                      setError(null);
+                    }}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      borderRadius: 16,
+                      border:
+                        item.id === selectedId
+                          ? "1px solid rgba(96, 165, 250, 0.5)"
+                          : "1px solid rgba(71, 85, 105, 0.3)",
+                      background:
+                        item.id === selectedId
+                          ? "rgba(30, 64, 175, 0.18)"
+                          : "rgba(15, 23, 42, 0.65)",
+                      padding: "12px 46px 12px 16px",
+                      color: "#e2e8f0",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ fontSize: 14, fontWeight: 700, overflowWrap: "anywhere" }}>{item.key}</div>
+                    <div style={listItemMetaStyle}>{item.url}</div>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Delete ${item.key}`}
+                    onClick={() => handleDelete(item.id)}
+                    style={{
+                      ...deleteIconButtonStyle,
+                      position: "absolute",
+                      top: "50%",
+                      right: 12,
+                      transform: "translateY(-50%)",
+                    }}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      style={{ width: 14, height: 14 }}
+                    >
+                      <path d="M9 3.75h6a1 1 0 0 1 1 1V6H8V4.75a1 1 0 0 1 1-1Z" />
+                      <path d="M4.75 6h14.5" />
+                      <path d="M6.75 6.75 7.6 19a2 2 0 0 0 2 1.86h4.8a2 2 0 0 0 2-1.86l.85-12.25" />
+                      <path d="M10 10.25v6.5" />
+                      <path d="M14 10.25v6.5" />
+                    </svg>
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div
+                style={{
+                  borderRadius: 16,
+                  border: "1px dashed rgba(71, 85, 105, 0.45)",
+                  padding: "18px 16px",
+                  color: "#64748b",
+                  textAlign: "center",
+                }}
+              >
+                No datasources created yet.
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    </>
+  );
+}
+
+function SecurityWorkspace() {
+  const {
+    selectedSecuritySubsection,
+    selectSecuritySubsection,
+    securityConfigs,
+    addSecurityConfig,
+    updateSecurityConfig,
+    removeSecurityConfig,
+  } = useFlowStore();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editor, setEditor] = useState<SecurityEditorState>(() =>
+    createSecurityEditorState(selectedSecuritySubsection),
+  );
+  const [error, setError] = useState<string | null>(null);
+  const filteredConfigs = securityConfigs.filter(
+    (item) => item.subsection === selectedSecuritySubsection,
+  );
+  const selectedItem = filteredConfigs.find((item) => item.id === selectedId) ?? null;
+
+  const handleSubsectionChange = (section: SecuritySubsection) => {
+    selectSecuritySubsection(section);
+    setSelectedId(null);
+    setEditor(createSecurityEditorState(section));
+    setError(null);
+  };
+
+  const runAction = (
+    action: (
+      payload: Omit<CreatedSecurityConfig, "id">,
+    ) => { ok: true } | { ok: false; reason: string },
+  ) => {
+    try {
+      JSON.parse(editor.content);
+    } catch {
+      setError("Security config content must be valid JSON.");
+      return;
+    }
+
+    const result = action({
+      subsection: selectedSecuritySubsection,
+      fileName: editor.fileName,
+      content: editor.content,
+    });
+
+    if (!result.ok) {
+      setError(result.reason);
+      return;
+    }
+
+    setError(null);
+  };
+
+  const handleDelete = (configId: string) => {
+    removeSecurityConfig(configId);
+
+    if (selectedId === configId) {
+      setSelectedId(null);
+      setEditor(createSecurityEditorState(selectedSecuritySubsection));
+      setError(null);
+    }
+  };
+
+  return (
+    <>
+      <div style={workspaceGridStyle}>
+        <section style={workspacePanelStyle}>
+          <SectionTitle
+            title={selectedItem ? "Edit Security Config" : "Create Security Config"}
+            subtitle="Manage auth and authorize JSON files for security configuration."
+          />
+          <div
+            style={{
+              marginTop: 18,
+              display: "grid",
+              gap: 14,
+              flex: 1,
+              minHeight: 0,
+              alignContent: "start",
+              overflow: "auto",
+              paddingRight: 6,
+            }}
+          >
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              {(["auth", "authorize"] as const).map((section) => (
+                <button
+                  key={section}
+                  type="button"
+                  onClick={() => handleSubsectionChange(section)}
+                  style={{
+                    ...securitySubsectionButtonStyle,
+                    background:
+                      selectedSecuritySubsection === section
+                        ? "rgba(37, 99, 235, 0.2)"
+                        : securitySubsectionButtonStyle.background,
+                    border:
+                      selectedSecuritySubsection === section
+                        ? "1px solid rgba(96, 165, 250, 0.45)"
+                        : securitySubsectionButtonStyle.border,
+                    color:
+                      selectedSecuritySubsection === section ? "#dbeafe" : "#cbd5e1",
+                  }}
+                >
+                  {section}
+                </button>
+              ))}
+            </div>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={fieldLabelStyle}>File</span>
+              <input
+                value={editor.fileName}
+                onChange={(event) =>
+                  setEditor((current) => ({ ...current, fileName: event.target.value }))
+                }
+                placeholder={selectedSecuritySubsection === "auth" ? "apikey.json" : "policy.json"}
+                style={fieldStyle}
+              />
+            </label>
+
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={fieldLabelStyle}>JSON Content</span>
+              <textarea
+                value={editor.content}
+                onChange={(event) =>
+                  setEditor((current) => ({ ...current, content: event.target.value }))
+                }
+                style={{ ...fieldStyle, minHeight: 220, resize: "vertical", fontFamily: "monospace" }}
+              />
+            </label>
+
+            {error ? <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{error}</p> : null}
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              <button type="button" onClick={() => runAction(addSecurityConfig)} style={primaryButtonStyle}>
+                Create Security Config
+              </button>
               <button
                 type="button"
                 onClick={() => {
                   if (!selectedId) {
-                    setError("Select a datasource from the list to delete it.");
+                    setError("Select a security config from the list to edit it.");
                     return;
                   }
 
-                  removeDataSource(selectedId);
-                  setSelectedId(null);
-                  setEditor(createDataSourceEditorState());
-                  setError(null);
+                  runAction((payload) => updateSecurityConfig(selectedId, payload));
                 }}
-                style={dangerButtonStyle}
+                style={secondaryButtonStyle}
               >
-                Delete Datasource
+                Edit Security Config
               </button>
             </div>
+          </div>
+        </section>
+
+        <section style={workspacePanelStyle}>
+          <SectionTitle
+            title="List Security Configs"
+            subtitle="Auth and authorize files are grouped by subsection, like a config tree."
+          />
+          <div
+            style={{
+              marginTop: 18,
+              display: "flex",
+              flexDirection: "column",
+              gap: 16,
+              flex: 1,
+              minHeight: 0,
+              overflow: "auto",
+              paddingRight: 6,
+            }}
+          >
+            {(["auth", "authorize"] as const).map((section) => {
+              const sectionItems = securityConfigs.filter((item) => item.subsection === section);
+
+              return (
+                <div key={section} style={{ display: "grid", gap: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => handleSubsectionChange(section)}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      color: selectedSecuritySubsection === section ? "#e2e8f0" : "#cbd5e1",
+                      padding: 0,
+                      textAlign: "left",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      textTransform: "lowercase",
+                    }}
+                  >
+                    {section}
+                  </button>
+                  {sectionItems.length > 0 ? (
+                    sectionItems.map((item) => (
+                      <div key={item.id} style={{ position: "relative", marginLeft: 12 }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            selectSecuritySubsection(item.subsection);
+                            setSelectedId(item.id);
+                            setEditor(createSecurityEditorFromItem(item));
+                            setError(null);
+                          }}
+                          style={{
+                            width: "100%",
+                            textAlign: "left",
+                            borderRadius: 16,
+                            border:
+                              item.id === selectedId
+                                ? "1px solid rgba(96, 165, 250, 0.5)"
+                                : "1px solid rgba(71, 85, 105, 0.3)",
+                            background:
+                              item.id === selectedId
+                                ? "rgba(30, 64, 175, 0.18)"
+                                : "rgba(15, 23, 42, 0.65)",
+                            padding: "12px 46px 12px 16px",
+                            color: "#e2e8f0",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <div style={{ fontSize: 14, fontWeight: 700, overflowWrap: "anywhere" }}>
+                            {item.fileName}
+                          </div>
+                          <div style={listItemMetaStyle}>{item.subsection}</div>
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Delete ${item.fileName}`}
+                          onClick={() => handleDelete(item.id)}
+                          style={{
+                            ...deleteIconButtonStyle,
+                            position: "absolute",
+                            top: "50%",
+                            right: 12,
+                            transform: "translateY(-50%)",
+                          }}
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            style={{ width: 14, height: 14 }}
+                          >
+                            <path d="M9 3.75h6a1 1 0 0 1 1 1V6H8V4.75a1 1 0 0 1 1-1Z" />
+                            <path d="M4.75 6h14.5" />
+                            <path d="M6.75 6.75 7.6 19a2 2 0 0 0 2 1.86h4.8a2 2 0 0 0 2-1.86l.85-12.25" />
+                            <path d="M10 10.25v6.5" />
+                            <path d="M14 10.25v6.5" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <div
+                      style={{
+                        marginLeft: 12,
+                        borderRadius: 14,
+                        border: "1px dashed rgba(71, 85, 105, 0.4)",
+                        padding: "14px 16px",
+                        color: "#64748b",
+                        fontSize: 12,
+                      }}
+                    >
+                      No {section} configs created yet.
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </section>
       </div>
@@ -705,15 +1120,16 @@ const secondaryButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const dangerButtonStyle: React.CSSProperties = {
-  border: "1px solid rgba(248, 113, 113, 0.25)",
+const securitySubsectionButtonStyle: React.CSSProperties = {
+  border: "1px solid rgba(71, 85, 105, 0.4)",
   borderRadius: 12,
-  background: "rgba(127, 29, 29, 0.78)",
-  color: "#fee2e2",
-  padding: "12px 16px",
-  fontSize: 13,
+  background: "rgba(15, 23, 42, 0.58)",
+  color: "#cbd5e1",
+  padding: "10px 14px",
+  fontSize: 12,
   fontWeight: 700,
   cursor: "pointer",
+  textTransform: "lowercase",
 };
 
 export default function ConfigurationWorkspace() {
@@ -726,10 +1142,16 @@ export default function ConfigurationWorkspace() {
             subtitle:
               "Beans now open in their own workspace so configuration work stays separate from the route canvas.",
           }
-        : {
+        : selectedConfigSection === "datasources"
+          ? {
             title: "Datasource Configuration",
             subtitle:
               "Datasource definitions now live in their own workspace instead of sharing the workflow canvas.",
+          }
+          : {
+            title: "Security Configuration",
+            subtitle:
+              "Security definitions now live in their own workspace with auth and authorize subsections.",
           },
     [selectedConfigSection],
   );
@@ -739,31 +1161,45 @@ export default function ConfigurationWorkspace() {
       <section
         style={{
           ...panelStyle,
-          padding: 24,
+          padding: "16px 18px",
           display: "flex",
-          alignItems: "flex-start",
+          alignItems: "center",
           justifyContent: "space-between",
-          gap: 16,
+          gap: 12,
           flexWrap: "wrap",
         }}
       >
-        <div style={{ display: "grid", gap: 10 }}>
-          <span style={{ color: "#60a5fa", fontSize: 12, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+        <div style={{ display: "grid", gap: 6 }}>
+          <span style={{ color: "#60a5fa", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
             Configuration Workspace
           </span>
-          <h1 style={{ margin: 0, color: "#f8fafc", fontSize: 28, fontWeight: 800, letterSpacing: "-0.03em" }}>
+          <h1 style={{ margin: 0, color: "#f8fafc", fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em" }}>
             {pageMeta.title}
           </h1>
-          <p style={{ margin: 0, maxWidth: 760, color: "#94a3b8", fontSize: 15, lineHeight: 1.7 }}>
+          <p style={{ margin: 0, maxWidth: 760, color: "#94a3b8", fontSize: 13, lineHeight: 1.5 }}>
             {pageMeta.subtitle}
           </p>
         </div>
-        <button type="button" onClick={() => openSidebar("components")} style={secondaryButtonStyle}>
+        <button
+          type="button"
+          onClick={() => openSidebar("components")}
+          style={{
+            ...secondaryButtonStyle,
+            padding: "10px 14px",
+            fontSize: 12,
+          }}
+        >
           Back To Builder
         </button>
       </section>
 
-      {selectedConfigSection === "beans" ? <BeansWorkspace /> : <DatasourcesWorkspace />}
+      {selectedConfigSection === "beans" ? (
+        <BeansWorkspace />
+      ) : selectedConfigSection === "datasources" ? (
+        <DatasourcesWorkspace />
+      ) : (
+        <SecurityWorkspace />
+      )}
     </div>
   );
 }

@@ -82,7 +82,6 @@ export default function ComponentsSidebar() {
     beans,
     dataSources,
     isSidebarOpen,
-    removeBean,
     removeDataSource,
     selectedConfigSection,
     selectWorkflow,
@@ -541,30 +540,6 @@ export default function ComponentsSidebar() {
                                   {bean.constructorArgs.length} field{bean.constructorArgs.length === 1 ? "" : "s"}
                                 </span>
                               </div>
-                            </div>
-                            <div className="sidebar-workflow-actions">
-                              <button
-                                type="button"
-                                className="sidebar-workflow-delete"
-                                aria-label={`Delete ${bean.name}`}
-                                onClick={() => removeBean(bean.id)}
-                              >
-                                <svg
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="1.8"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  className="h-4 w-4"
-                                >
-                                  <path d="M9 3.75h6a1 1 0 0 1 1 1V6H8V4.75a1 1 0 0 1 1-1Z" />
-                                  <path d="M4.75 6h14.5" />
-                                  <path d="M6.75 6.75 7.6 19a2 2 0 0 0 2 1.86h4.8a2 2 0 0 0 2-1.86l.85-12.25" />
-                                  <path d="M10 10.25v6.5" />
-                                  <path d="M14 10.25v6.5" />
-                                </svg>
-                              </button>
                             </div>
                           </div>
                         ))

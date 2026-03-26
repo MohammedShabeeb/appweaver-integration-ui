@@ -195,6 +195,16 @@ export default function TopNav() {
               >
                 Datasources
               </button>
+              <button
+                type="button"
+                className="sidebar-group-menu-item"
+                onClick={() => {
+                  openConfigSection("security");
+                  setIsConfigMenuOpen(false);
+                }}
+              >
+                Security
+              </button>
             </div>
           ) : null}
         </div>
