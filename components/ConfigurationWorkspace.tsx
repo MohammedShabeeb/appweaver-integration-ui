@@ -32,6 +32,22 @@ type DataSourceEditorState = {
 type SecurityEditorState = {
   fileName: string;
   content: string;
+  authTenants: AuthTenantEditorState[];
+};
+
+type AuthClientEditorState = {
+  id: string;
+  name: string;
+  secret: string;
+  enabled: boolean;
+};
+
+type AuthTenantEditorState = {
+  id: string;
+  name: string;
+  keyHeader: string;
+  secretHeader: string;
+  clients: AuthClientEditorState[];
 };
 
 function createBeanEditorState(): BeanEditorState {
@@ -85,17 +101,123 @@ function createDataSourceEditorFromItem(dataSource: CreatedDataSource): DataSour
   };
 }
 
+function createAuthClientEditorState(
+  overrides: Partial<Omit<AuthClientEditorState, "id">> = {},
+): AuthClientEditorState {
+  return {
+    id: `client-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: overrides.name ?? "",
+    secret: overrides.secret ?? "",
+    enabled: overrides.enabled ?? true,
+  };
+}
+
+function createAuthTenantEditorState(
+  overrides: Partial<Omit<AuthTenantEditorState, "id" | "clients">> & {
+    clients?: AuthClientEditorState[];
+  } = {},
+): AuthTenantEditorState {
+  return {
+    id: `tenant-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: overrides.name ?? "",
+    keyHeader: overrides.keyHeader ?? "x-api-key",
+    secretHeader: overrides.secretHeader ?? "x-api-secret",
+    clients: overrides.clients ?? [createAuthClientEditorState()],
+  };
+}
+
+function createDefaultAuthTenants(): AuthTenantEditorState[] {
+  return [
+    createAuthTenantEditorState({
+      name: "default",
+      clients: [createAuthClientEditorState({ name: "apikey1" })],
+    }),
+  ];
+}
+
+function buildAuthConfig(tenants: AuthTenantEditorState[]) {
+  return {
+    tenants: Object.fromEntries(
+      tenants.map((tenant) => [
+        tenant.name.trim(),
+        {
+          keyHeader: tenant.keyHeader.trim(),
+          secretHeader: tenant.secretHeader.trim(),
+          clients: Object.fromEntries(
+            tenant.clients.map((client) => [
+              client.name.trim(),
+              {
+                secret: client.secret,
+                enabled: client.enabled,
+              },
+            ]),
+          ),
+        },
+      ]),
+    ),
+  };
+}
+
+function serializeAuthConfig(tenants: AuthTenantEditorState[]) {
+  return JSON.stringify(buildAuthConfig(tenants), null, 2);
+}
+
+function parseAuthTenants(content: string): AuthTenantEditorState[] {
+  try {
+    const parsed = JSON.parse(content) as {
+      tenants?: Record<
+        string,
+        {
+          keyHeader?: string;
+          secretHeader?: string;
+          clients?: Record<string, { secret?: string; enabled?: boolean }>;
+        }
+      >;
+    };
+
+    const tenants = parsed?.tenants;
+
+    if (!tenants || typeof tenants !== "object" || Array.isArray(tenants)) {
+      return createDefaultAuthTenants();
+    }
+
+    const mappedTenants = Object.entries(tenants).map(([tenantName, tenantValue]) =>
+      createAuthTenantEditorState({
+        name: tenantName,
+        keyHeader: tenantValue?.keyHeader ?? "x-api-key",
+        secretHeader: tenantValue?.secretHeader ?? "x-api-secret",
+        clients:
+          tenantValue?.clients && typeof tenantValue.clients === "object" && !Array.isArray(tenantValue.clients)
+            ? Object.entries(tenantValue.clients).map(([clientName, clientValue]) =>
+                createAuthClientEditorState({
+                  name: clientName,
+                  secret: clientValue?.secret ?? "",
+                  enabled: clientValue?.enabled ?? true,
+                }),
+              )
+            : [createAuthClientEditorState()],
+      }),
+    );
+
+    return mappedTenants.length > 0 ? mappedTenants : createDefaultAuthTenants();
+  } catch {
+    return createDefaultAuthTenants();
+  }
+}
+
 const SECURITY_DEFAULTS: Record<
   SecuritySubsection,
-  { fileName: string; content: string }
+  { fileName: string; content: string; authTenants: AuthTenantEditorState[] }
 > = {
   auth: {
     fileName: "apikey.json",
-    content: '{\n  "type": "apikey",\n  "header": "X-API-Key",\n  "value": ""\n}',
+    content: serializeAuthConfig(createDefaultAuthTenants()),
+    authTenants: createDefaultAuthTenants(),
   },
   authorize: {
     fileName: "policy.json",
     content: '{\n  "type": "policy",\n  "effect": "allow",\n  "resource": "*",\n  "actions": []\n}',
+    authTenants: createDefaultAuthTenants(),
   },
 };
 
@@ -105,6 +227,8 @@ function createSecurityEditorState(subsection: SecuritySubsection): SecurityEdit
   return {
     fileName: defaults.fileName,
     content: defaults.content,
+    authTenants:
+      subsection === "auth" ? defaults.authTenants : createDefaultAuthTenants(),
   };
 }
 
@@ -112,6 +236,8 @@ function createSecurityEditorFromItem(item: CreatedSecurityConfig): SecurityEdit
   return {
     fileName: item.fileName,
     content: item.content,
+    authTenants:
+      item.subsection === "auth" ? parseAuthTenants(item.content) : createDefaultAuthTenants(),
   };
 }
 
@@ -828,6 +954,7 @@ function SecurityWorkspace() {
     (item) => item.subsection === selectedSecuritySubsection,
   );
   const selectedItem = filteredConfigs.find((item) => item.id === selectedId) ?? null;
+  const authPreview = useMemo(() => serializeAuthConfig(editor.authTenants), [editor.authTenants]);
 
   const handleSubsectionChange = (section: SecuritySubsection) => {
     selectSecuritySubsection(section);
@@ -836,30 +963,96 @@ function SecurityWorkspace() {
     setError(null);
   };
 
+  const validateAuthEditor = () => {
+    if (editor.authTenants.length === 0) {
+      throw new Error("Add at least one tenant.");
+    }
+
+    const tenantNames = new Set<string>();
+
+    for (const tenant of editor.authTenants) {
+      const tenantName = tenant.name.trim();
+
+      if (!tenantName) {
+        throw new Error("Each tenant needs a name.");
+      }
+
+      const normalizedTenantName = tenantName.toLowerCase();
+
+      if (tenantNames.has(normalizedTenantName)) {
+        throw new Error(`Duplicate tenant name: ${tenantName}`);
+      }
+
+      tenantNames.add(normalizedTenantName);
+
+      if (!tenant.keyHeader.trim() || !tenant.secretHeader.trim()) {
+        throw new Error(`Tenant ${tenantName} must include both key and secret headers.`);
+      }
+
+      if (tenant.clients.length === 0) {
+        throw new Error(`Tenant ${tenantName} needs at least one client.`);
+      }
+
+      const clientNames = new Set<string>();
+
+      for (const client of tenant.clients) {
+        const clientName = client.name.trim();
+
+        if (!clientName) {
+          throw new Error(`Every client under ${tenantName} needs a name.`);
+        }
+
+        const normalizedClientName = clientName.toLowerCase();
+
+        if (clientNames.has(normalizedClientName)) {
+          throw new Error(`Duplicate client name "${clientName}" under tenant ${tenantName}.`);
+        }
+
+        clientNames.add(normalizedClientName);
+      }
+    }
+  };
+
+  const getEditorContent = () => {
+    if (selectedSecuritySubsection === "auth") {
+      validateAuthEditor();
+      return authPreview;
+    }
+
+    JSON.parse(editor.content);
+    return editor.content;
+  };
+
   const runAction = (
     action: (
       payload: Omit<CreatedSecurityConfig, "id">,
     ) => { ok: true } | { ok: false; reason: string },
   ) => {
     try {
-      JSON.parse(editor.content);
-    } catch {
-      setError("Security config content must be valid JSON.");
+      const nextContent = getEditorContent();
+
+      const result = action({
+        subsection: selectedSecuritySubsection,
+        fileName: editor.fileName,
+        content: nextContent,
+      });
+
+      if (!result.ok) {
+        setError(result.reason);
+        return;
+      }
+
+      setError(null);
+    } catch (issue) {
+      setError(
+        issue instanceof Error
+          ? issue.message
+          : selectedSecuritySubsection === "auth"
+            ? "Auth config is incomplete. Fill in the tenant and client details."
+            : "Security config content must be valid JSON.",
+      );
       return;
     }
-
-    const result = action({
-      subsection: selectedSecuritySubsection,
-      fileName: editor.fileName,
-      content: editor.content,
-    });
-
-    if (!result.ok) {
-      setError(result.reason);
-      return;
-    }
-
-    setError(null);
   };
 
   const handleDelete = (configId: string) => {
@@ -929,16 +1122,312 @@ function SecurityWorkspace() {
               />
             </label>
 
-            <label style={{ display: "grid", gap: 6 }}>
-              <span style={fieldLabelStyle}>JSON Content</span>
-              <textarea
-                value={editor.content}
-                onChange={(event) =>
-                  setEditor((current) => ({ ...current, content: event.target.value }))
-                }
-                style={{ ...fieldStyle, minHeight: 220, resize: "vertical", fontFamily: "monospace" }}
-              />
-            </label>
+            {selectedSecuritySubsection === "auth" ? (
+              <div style={{ display: "grid", gap: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <span style={fieldLabelStyle}>Tenants</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditor((current) => ({
+                        ...current,
+                        authTenants: [
+                          ...current.authTenants,
+                          createAuthTenantEditorState({
+                            name: `tenant${current.authTenants.length + 1}`,
+                            clients: [
+                              createAuthClientEditorState({
+                                name: `apikey${current.authTenants.length + 1}`,
+                              }),
+                            ],
+                          }),
+                        ],
+                      }))
+                    }
+                    style={iconButtonStyle}
+                  >
+                    +
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gap: 12 }}>
+                  {editor.authTenants.map((tenant, tenantIndex) => (
+                    <div
+                      key={tenant.id}
+                      style={{
+                        borderRadius: 16,
+                        border: "1px solid rgba(71, 85, 105, 0.35)",
+                        background: "rgba(15, 23, 42, 0.45)",
+                        padding: 16,
+                        display: "grid",
+                        gap: 12,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                        <span style={{ color: "#e2e8f0", fontSize: 14, fontWeight: 700 }}>
+                          Tenant {tenantIndex + 1}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Remove tenant ${tenantIndex + 1}`}
+                          onClick={() =>
+                            setEditor((current) => ({
+                              ...current,
+                              authTenants:
+                                current.authTenants.length > 1
+                                  ? current.authTenants.filter((item) => item.id !== tenant.id)
+                                  : [createAuthTenantEditorState()],
+                            }))
+                          }
+                          style={{ ...iconButtonStyle, width: 32, height: 32, borderRadius: 10 }}
+                        >
+                          -
+                        </button>
+                      </div>
+
+                      <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+                        <label style={{ display: "grid", gap: 6 }}>
+                          <span style={fieldLabelStyle}>Tenant Name</span>
+                          <input
+                            value={tenant.name}
+                            onChange={(event) =>
+                              setEditor((current) => ({
+                                ...current,
+                                authTenants: current.authTenants.map((item) =>
+                                  item.id === tenant.id ? { ...item, name: event.target.value } : item,
+                                ),
+                              }))
+                            }
+                            placeholder="default"
+                            style={fieldStyle}
+                          />
+                        </label>
+                        <label style={{ display: "grid", gap: 6 }}>
+                          <span style={fieldLabelStyle}>Key Header</span>
+                          <input
+                            value={tenant.keyHeader}
+                            onChange={(event) =>
+                              setEditor((current) => ({
+                                ...current,
+                                authTenants: current.authTenants.map((item) =>
+                                  item.id === tenant.id ? { ...item, keyHeader: event.target.value } : item,
+                                ),
+                              }))
+                            }
+                            placeholder="x-api-key"
+                            style={fieldStyle}
+                          />
+                        </label>
+                        <label style={{ display: "grid", gap: 6 }}>
+                          <span style={fieldLabelStyle}>Secret Header</span>
+                          <input
+                            value={tenant.secretHeader}
+                            onChange={(event) =>
+                              setEditor((current) => ({
+                                ...current,
+                                authTenants: current.authTenants.map((item) =>
+                                  item.id === tenant.id ? { ...item, secretHeader: event.target.value } : item,
+                                ),
+                              }))
+                            }
+                            placeholder="x-api-secret"
+                            style={fieldStyle}
+                          />
+                        </label>
+                      </div>
+
+                      <div style={{ display: "grid", gap: 10 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                          <span style={fieldLabelStyle}>Clients</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditor((current) => ({
+                                ...current,
+                                authTenants: current.authTenants.map((item) =>
+                                  item.id === tenant.id
+                                    ? {
+                                        ...item,
+                                        clients: [
+                                          ...item.clients,
+                                          createAuthClientEditorState({
+                                            name: `apikey${item.clients.length + 1}`,
+                                          }),
+                                        ],
+                                      }
+                                    : item,
+                                ),
+                              }))
+                            }
+                            style={iconButtonStyle}
+                          >
+                            +
+                          </button>
+                        </div>
+
+                        <div style={{ display: "grid", gap: 10 }}>
+                          {tenant.clients.map((client, clientIndex) => (
+                            <div
+                              key={client.id}
+                              style={{
+                                borderRadius: 14,
+                                border: "1px solid rgba(71, 85, 105, 0.3)",
+                                background: "rgba(15, 23, 42, 0.55)",
+                                padding: 14,
+                                display: "grid",
+                                gap: 10,
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                                <span style={{ color: "#cbd5e1", fontSize: 13, fontWeight: 700 }}>
+                                  Client {clientIndex + 1}
+                                </span>
+                                <button
+                                  type="button"
+                                  aria-label={`Remove client ${clientIndex + 1}`}
+                                  onClick={() =>
+                                    setEditor((current) => ({
+                                      ...current,
+                                      authTenants: current.authTenants.map((item) =>
+                                        item.id === tenant.id
+                                          ? {
+                                              ...item,
+                                              clients:
+                                                item.clients.length > 1
+                                                  ? item.clients.filter((clientItem) => clientItem.id !== client.id)
+                                                  : [createAuthClientEditorState()],
+                                            }
+                                          : item,
+                                      ),
+                                    }))
+                                  }
+                                  style={{ ...iconButtonStyle, width: 30, height: 30, borderRadius: 10 }}
+                                >
+                                  -
+                                </button>
+                              </div>
+
+                              <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+                                <label style={{ display: "grid", gap: 6 }}>
+                                  <span style={fieldLabelStyle}>Client Name</span>
+                                  <input
+                                    value={client.name}
+                                    onChange={(event) =>
+                                      setEditor((current) => ({
+                                        ...current,
+                                        authTenants: current.authTenants.map((item) =>
+                                          item.id === tenant.id
+                                            ? {
+                                                ...item,
+                                                clients: item.clients.map((clientItem) =>
+                                                  clientItem.id === client.id
+                                                    ? { ...clientItem, name: event.target.value }
+                                                    : clientItem,
+                                                ),
+                                              }
+                                            : item,
+                                        ),
+                                      }))
+                                    }
+                                    placeholder="apikey1"
+                                    style={fieldStyle}
+                                  />
+                                </label>
+                                <label style={{ display: "grid", gap: 6 }}>
+                                  <span style={fieldLabelStyle}>Secret</span>
+                                  <input
+                                    value={client.secret}
+                                    onChange={(event) =>
+                                      setEditor((current) => ({
+                                        ...current,
+                                        authTenants: current.authTenants.map((item) =>
+                                          item.id === tenant.id
+                                            ? {
+                                                ...item,
+                                                clients: item.clients.map((clientItem) =>
+                                                  clientItem.id === client.id
+                                                    ? { ...clientItem, secret: event.target.value }
+                                                    : clientItem,
+                                                ),
+                                              }
+                                            : item,
+                                        ),
+                                      }))
+                                    }
+                                    placeholder="client secret"
+                                    style={fieldStyle}
+                                  />
+                                </label>
+                                <label style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 28, color: "#cbd5e1", fontSize: 13 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={client.enabled}
+                                    onChange={(event) =>
+                                      setEditor((current) => ({
+                                        ...current,
+                                        authTenants: current.authTenants.map((item) =>
+                                          item.id === tenant.id
+                                            ? {
+                                                ...item,
+                                                clients: item.clients.map((clientItem) =>
+                                                  clientItem.id === client.id
+                                                    ? { ...clientItem, enabled: event.target.checked }
+                                                    : clientItem,
+                                                ),
+                                              }
+                                            : item,
+                                        ),
+                                      }))
+                                    }
+                                  />
+                                  Enabled
+                                </label>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <span style={fieldLabelStyle}>Generated JSON Preview</span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(authPreview);
+                          setError(null);
+                        } catch {
+                          setError("Could not copy the generated JSON preview.");
+                        }
+                      }}
+                      style={{ ...secondaryButtonStyle, padding: "8px 12px", fontSize: 12 }}
+                    >
+                      Copy JSON
+                    </button>
+                  </div>
+                  <textarea
+                    value={authPreview}
+                    readOnly
+                    style={{ ...fieldStyle, minHeight: 220, resize: "vertical", fontFamily: "monospace" }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={fieldLabelStyle}>JSON Content</span>
+                <textarea
+                  value={editor.content}
+                  onChange={(event) =>
+                    setEditor((current) => ({ ...current, content: event.target.value }))
+                  }
+                  style={{ ...fieldStyle, minHeight: 220, resize: "vertical", fontFamily: "monospace" }}
+                />
+              </label>
+            )}
 
             {error ? <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{error}</p> : null}
 
