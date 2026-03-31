@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import LlmConfigurationWorkspace from "./LlmConfigurationWorkspace";
 
 import {
   useFlowStore,
@@ -253,20 +254,20 @@ const pageStyle: React.CSSProperties = {
 };
 
 const panelStyle: React.CSSProperties = {
-  borderRadius: 22,
-  border: "1px solid rgba(71, 85, 105, 0.32)",
-  background: "linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(15, 23, 42, 0.82))",
-  boxShadow: "0 24px 46px rgba(2, 6, 23, 0.22)",
+  borderRadius: 24,
+  border: "1px solid rgba(226, 232, 240, 0.95)",
+  background: "linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96))",
+  boxShadow: "0 24px 46px rgba(15, 23, 42, 0.08)",
 };
 
 const fieldStyle: React.CSSProperties = {
   width: "100%",
-  borderRadius: 12,
-  border: "1px solid rgba(71, 85, 105, 0.45)",
-  background: "rgba(15, 23, 42, 0.72)",
+  borderRadius: 14,
+  border: "1px solid rgba(203, 213, 225, 0.95)",
+  background: "#ffffff",
   padding: "12px 14px",
   fontSize: 14,
-  color: "#e2e8f0",
+  color: "#0f172a",
   fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
   outline: "none",
 };
@@ -274,7 +275,7 @@ const fieldStyle: React.CSSProperties = {
 const listItemMetaStyle: React.CSSProperties = {
   marginTop: 4,
   fontSize: 12,
-  color: "#94a3b8",
+  color: "#64748b",
   overflowWrap: "anywhere",
   wordBreak: "break-word",
   lineHeight: 1.55,
@@ -287,9 +288,9 @@ const iconButtonStyle: React.CSSProperties = {
   width: 28,
   height: 28,
   borderRadius: 999,
-  border: "1px solid rgba(96, 165, 250, 0.28)",
-  background: "rgba(30, 41, 59, 0.74)",
-  color: "#dbeafe",
+  border: "1px solid rgba(203, 213, 225, 0.95)",
+  background: "#ffffff",
+  color: "#334155",
   cursor: "pointer",
   flexShrink: 0,
 };
@@ -300,9 +301,9 @@ const deleteIconButtonStyle: React.CSSProperties = {
   height: 26,
   borderRadius: 9,
   border: "1px solid rgba(252, 165, 165, 0.34)",
-  background: "linear-gradient(180deg, rgba(185, 28, 28, 0.96), rgba(153, 27, 27, 0.9))",
-  color: "#fee2e2",
-  boxShadow: "0 6px 14px rgba(127, 29, 29, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
+  background: "#fff5f5",
+  color: "#dc2626",
+  boxShadow: "0 6px 14px rgba(127, 29, 29, 0.08)",
 };
 
 const workspaceGridStyle: React.CSSProperties = {
@@ -386,10 +387,10 @@ function SectionTitle({
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.02em" }}>
+      <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em" }}>
         {title}
       </h2>
-      <p style={{ margin: 0, color: "#94a3b8", fontSize: 14, lineHeight: 1.6 }}>{subtitle}</p>
+      <p style={{ margin: 0, color: "#64748b", fontSize: 14, lineHeight: 1.6 }}>{subtitle}</p>
     </div>
   );
 }
@@ -479,7 +480,7 @@ function BeansWorkspace() {
             }}
           >
             <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ color: "#cbd5e1", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+              <span style={{ color: "#475569", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
                 Name
               </span>
               <input
@@ -490,7 +491,7 @@ function BeansWorkspace() {
             </label>
 
             <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ color: "#cbd5e1", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+              <span style={{ color: "#475569", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
                 Class Name
               </span>
               <input
@@ -502,7 +503,7 @@ function BeansWorkspace() {
 
             <div style={{ display: "grid", gap: 10 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ color: "#cbd5e1", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                <span style={{ color: "#475569", fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
                   Constructor Args
                 </span>
                 <button
@@ -562,7 +563,7 @@ function BeansWorkspace() {
                   </div>
                 ))}
               </div>
-              <p style={{ margin: "8px 0 0", color: "#94a3b8", fontSize: 12, lineHeight: 1.55 }}>
+              <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: 12, lineHeight: 1.55 }}>
                 Enter plain text for string arguments. If an argument looks like valid JSON such as
                 `123`, `true`, `{}` or `[]`, it will be converted before saving.
               </p>
@@ -624,9 +625,9 @@ function BeansWorkspace() {
                       background:
                         bean.id === selectedBeanId
                           ? "rgba(30, 64, 175, 0.18)"
-                          : "rgba(15, 23, 42, 0.65)",
+                          : "rgba(255, 255, 255, 0.96)",
                       padding: "12px 46px 12px 16px",
-                      color: "#e2e8f0",
+                      color: "#0f172a",
                       cursor: "pointer",
                     }}
                   >
@@ -877,9 +878,9 @@ function DatasourcesWorkspace() {
                       background:
                         item.id === selectedId
                           ? "rgba(30, 64, 175, 0.18)"
-                          : "rgba(15, 23, 42, 0.65)",
+                          : "rgba(255, 255, 255, 0.96)",
                       padding: "12px 46px 12px 16px",
-                      color: "#e2e8f0",
+                      color: "#0f172a",
                       cursor: "pointer",
                     }}
                   >
@@ -1102,7 +1103,7 @@ function SecurityWorkspace() {
                         ? "1px solid rgba(96, 165, 250, 0.45)"
                         : securitySubsectionButtonStyle.border,
                     color:
-                      selectedSecuritySubsection === section ? "#dbeafe" : "#cbd5e1",
+                      selectedSecuritySubsection === section ? "#0f172a" : "#475569",
                   }}
                 >
                   {section}
@@ -1157,14 +1158,14 @@ function SecurityWorkspace() {
                       style={{
                         borderRadius: 16,
                         border: "1px solid rgba(71, 85, 105, 0.35)",
-                        background: "rgba(15, 23, 42, 0.45)",
+                        background: "rgba(248, 250, 252, 0.95)",
                         padding: 16,
                         display: "grid",
                         gap: 12,
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                        <span style={{ color: "#e2e8f0", fontSize: 14, fontWeight: 700 }}>
+                        <span style={{ color: "#0f172a", fontSize: 14, fontWeight: 700 }}>
                           Tenant {tenantIndex + 1}
                         </span>
                         <button
@@ -1272,14 +1273,14 @@ function SecurityWorkspace() {
                               style={{
                                 borderRadius: 14,
                                 border: "1px solid rgba(71, 85, 105, 0.3)",
-                                background: "rgba(15, 23, 42, 0.55)",
+                                background: "rgba(255, 255, 255, 0.98)",
                                 padding: 14,
                                 display: "grid",
                                 gap: 10,
                               }}
                             >
                               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                                <span style={{ color: "#cbd5e1", fontSize: 13, fontWeight: 700 }}>
+                                <span style={{ color: "#334155", fontSize: 13, fontWeight: 700 }}>
                                   Client {clientIndex + 1}
                                 </span>
                                 <button
@@ -1358,7 +1359,7 @@ function SecurityWorkspace() {
                                     style={fieldStyle}
                                   />
                                 </label>
-                                <label style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 28, color: "#cbd5e1", fontSize: 13 }}>
+                                <label style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 28, color: "#334155", fontSize: 13 }}>
                                   <input
                                     type="checkbox"
                                     checked={client.enabled}
@@ -1481,7 +1482,7 @@ function SecurityWorkspace() {
                     style={{
                       border: "none",
                       background: "transparent",
-                      color: selectedSecuritySubsection === section ? "#e2e8f0" : "#cbd5e1",
+                      color: selectedSecuritySubsection === section ? "#0f172a" : "#475569",
                       padding: 0,
                       textAlign: "left",
                       fontSize: 14,
@@ -1514,9 +1515,9 @@ function SecurityWorkspace() {
                             background:
                               item.id === selectedId
                                 ? "rgba(30, 64, 175, 0.18)"
-                                : "rgba(15, 23, 42, 0.65)",
+                                : "rgba(255, 255, 255, 0.96)",
                             padding: "12px 46px 12px 16px",
-                            color: "#e2e8f0",
+                            color: "#0f172a",
                             cursor: "pointer",
                           }}
                         >
@@ -1580,7 +1581,7 @@ function SecurityWorkspace() {
 }
 
 const fieldLabelStyle: React.CSSProperties = {
-  color: "#cbd5e1",
+  color: "#475569",
   fontSize: 12,
   fontWeight: 700,
   letterSpacing: "0.04em",
@@ -1590,8 +1591,8 @@ const fieldLabelStyle: React.CSSProperties = {
 const primaryButtonStyle: React.CSSProperties = {
   border: "none",
   borderRadius: 12,
-  background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-  color: "#eff6ff",
+  background: "linear-gradient(135deg, #0f172a, #1e293b)",
+  color: "#f8fafc",
   padding: "12px 16px",
   fontSize: 13,
   fontWeight: 700,
@@ -1599,10 +1600,10 @@ const primaryButtonStyle: React.CSSProperties = {
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
-  border: "1px solid rgba(96, 165, 250, 0.28)",
+  border: "1px solid rgba(203, 213, 225, 0.95)",
   borderRadius: 12,
-  background: "rgba(30, 41, 59, 0.74)",
-  color: "#dbeafe",
+  background: "#ffffff",
+  color: "#0f172a",
   padding: "12px 16px",
   fontSize: 13,
   fontWeight: 700,
@@ -1610,10 +1611,10 @@ const secondaryButtonStyle: React.CSSProperties = {
 };
 
 const securitySubsectionButtonStyle: React.CSSProperties = {
-  border: "1px solid rgba(71, 85, 105, 0.4)",
+  border: "1px solid rgba(203, 213, 225, 0.95)",
   borderRadius: 12,
-  background: "rgba(15, 23, 42, 0.58)",
-  color: "#cbd5e1",
+  background: "#f8fafc",
+  color: "#475569",
   padding: "10px 14px",
   fontSize: 12,
   fontWeight: 700,
@@ -1622,7 +1623,7 @@ const securitySubsectionButtonStyle: React.CSSProperties = {
 };
 
 export default function ConfigurationWorkspace() {
-  const { openSidebar, selectedConfigSection } = useFlowStore();
+  const { openSidebar, selectedConfigSection, selectedLlmSubsection } = useFlowStore();
   const pageMeta = useMemo(
     () =>
       selectedConfigSection === "beans"
@@ -1631,12 +1632,19 @@ export default function ConfigurationWorkspace() {
           }
         : selectedConfigSection === "datasources"
           ? {
-            title: "Datasource Configuration"
-          }
+              title: "Datasource Configuration"
+            }
+          : selectedConfigSection === "llms"
+            ? {
+                title:
+                  selectedLlmSubsection === "rag"
+                    ? "LLM / RAG Configuration"
+                    : "LLM / Provider Configuration"
+              }
           : {
-            title: "Security Configuration"
-          },
-    [selectedConfigSection],
+              title: "Security Configuration"
+            },
+    [selectedConfigSection, selectedLlmSubsection],
   );
 
   return (
@@ -1656,7 +1664,7 @@ export default function ConfigurationWorkspace() {
           <span style={{ color: "#60a5fa", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
             Configuration Workspace
           </span>
-          <h1 style={{ margin: 0, color: "#f8fafc", fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em" }}>
+          <h1 style={{ margin: 0, color: "#0f172a", fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em" }}>
             {pageMeta.title}
           </h1>
         </div>
@@ -1677,6 +1685,8 @@ export default function ConfigurationWorkspace() {
         <BeansWorkspace />
       ) : selectedConfigSection === "datasources" ? (
         <DatasourcesWorkspace />
+      ) : selectedConfigSection === "llms" ? (
+        <LlmConfigurationWorkspace />
       ) : (
         <SecurityWorkspace />
       )}

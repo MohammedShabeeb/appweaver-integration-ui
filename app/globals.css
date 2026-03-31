@@ -7,8 +7,10 @@ body {
 
 body {
   margin: 0;
-  background: #0f172a;
-  color: #e2e8f0;
+  background:
+    radial-gradient(circle at top left, rgba(191, 219, 254, 0.55), transparent 28%),
+    linear-gradient(180deg, #f8fafc 0%, #eef4fb 100%);
+  color: #0f172a;
   font-family: var(--font-body), Arial, Helvetica, sans-serif;
 }
 
@@ -17,7 +19,7 @@ body {
 }
 
 html {
-  scrollbar-color: rgba(129, 140, 248, 0.55) rgba(15, 23, 42, 0.92);
+  scrollbar-color: rgba(148, 163, 184, 0.8) rgba(226, 232, 240, 0.9);
   scrollbar-width: thin;
 }
 
@@ -30,7 +32,7 @@ body,
 .react-flow__renderer,
 .react-flow__pane,
 .react-flow__viewport {
-  scrollbar-color: rgba(129, 140, 248, 0.55) rgba(15, 23, 42, 0.92);
+  scrollbar-color: rgba(148, 163, 184, 0.8) rgba(226, 232, 240, 0.9);
   scrollbar-width: thin;
 }
 
@@ -56,7 +58,7 @@ body::-webkit-scrollbar-track,
 .react-flow__renderer::-webkit-scrollbar-track,
 .react-flow__pane::-webkit-scrollbar-track,
 .react-flow__viewport::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.96);
+  background: rgba(226, 232, 240, 0.92);
 }
 
 html::-webkit-scrollbar-thumb,
@@ -69,8 +71,8 @@ body::-webkit-scrollbar-thumb,
 .react-flow__pane::-webkit-scrollbar-thumb,
 .react-flow__viewport::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  border: 2px solid rgba(15, 23, 42, 0.96);
-  background: linear-gradient(180deg, rgba(99, 102, 241, 0.76), rgba(59, 130, 246, 0.72));
+  border: 2px solid rgba(226, 232, 240, 0.96);
+  background: linear-gradient(180deg, rgba(148, 163, 184, 0.9), rgba(100, 116, 139, 0.82));
 }
 
 html::-webkit-scrollbar-thumb:hover,
@@ -82,7 +84,7 @@ body::-webkit-scrollbar-thumb:hover,
 .react-flow__renderer::-webkit-scrollbar-thumb:hover,
 .react-flow__pane::-webkit-scrollbar-thumb:hover,
 .react-flow__viewport::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, rgba(129, 140, 248, 0.9), rgba(96, 165, 250, 0.86));
+  background: linear-gradient(180deg, rgba(100, 116, 139, 0.94), rgba(71, 85, 105, 0.9));
 }
 
 *::-webkit-scrollbar {
@@ -91,28 +93,28 @@ body::-webkit-scrollbar-thumb:hover,
 }
 
 *::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.92);
+  background: rgba(226, 232, 240, 0.92);
 }
 
 *::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  border: 2px solid rgba(15, 23, 42, 0.92);
-  background: linear-gradient(180deg, rgba(129, 140, 248, 0.72), rgba(96, 165, 250, 0.68));
+  border: 2px solid rgba(226, 232, 240, 0.92);
+  background: linear-gradient(180deg, rgba(148, 163, 184, 0.88), rgba(100, 116, 139, 0.78));
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, rgba(165, 180, 252, 0.88), rgba(125, 211, 252, 0.82));
+  background: linear-gradient(180deg, rgba(100, 116, 139, 0.94), rgba(71, 85, 105, 0.88));
 }
 
 *::-webkit-scrollbar-corner {
-  background: rgba(15, 23, 42, 0.92);
+  background: rgba(226, 232, 240, 0.92);
 }
 
 .flow-handle {
   height: 10px !important;
   width: 10px !important;
   border: 2px solid #ffffff !important;
-  background: #0f172a !important;
+  background: #2563eb !important;
 }
 
 /* ── App Layout ────────────────────────────────────── */
@@ -121,6 +123,9 @@ body::-webkit-scrollbar-thumb:hover,
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(191, 219, 254, 0.35), transparent 22%),
+    linear-gradient(180deg, #ffffff 0%, #f6f9fc 100%);
 }
 
 .app-body {
@@ -128,6 +133,7 @@ body::-webkit-scrollbar-thumb:hover,
   flex: 1;
   overflow: hidden;
   position: relative;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fafc 100%);
 }
 
 /* ── Top Navigation ────────────────────────────────── */
@@ -139,9 +145,10 @@ body::-webkit-scrollbar-thumb:hover,
   height: 52px;
   overflow: visible;
   padding: 0 20px;
-  background: rgba(15, 23, 42, 0.85);
+  background: rgba(255, 255, 255, 0.88);
   backdrop-filter: blur(16px) saturate(1.8);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.06);
   z-index: 50;
   flex-shrink: 0;
 }
@@ -155,16 +162,13 @@ body::-webkit-scrollbar-thumb:hover,
 .topnav-logo {
   width: 22px;
   height: 22px;
-  color: #818cf8;
+  color: #334155;
 }
 
 .topnav-title {
   font-size: 15px;
   font-weight: 700;
-  background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #0f172a;
   letter-spacing: -0.02em;
 }
 
@@ -187,9 +191,9 @@ body::-webkit-scrollbar-thumb:hover,
   gap: 6px;
   padding: 6px 14px;
   border-radius: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.15);
-  background: rgba(30, 41, 59, 0.6);
-  color: #94a3b8;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  background: rgba(255, 255, 255, 0.92);
+  color: #475569;
   font-size: 13px;
   font-weight: 500;
   font-family: 'Inter', sans-serif;
@@ -212,14 +216,14 @@ body::-webkit-scrollbar-thumb:hover,
   white-space: nowrap;
   padding: 7px 10px;
   border-radius: 10px;
-  border: 1px solid rgba(129, 140, 248, 0.16);
-  background: linear-gradient(180deg, rgba(30, 41, 59, 0.98), rgba(15, 23, 42, 0.98));
-  color: #f8fafc;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98));
+  color: #0f172a;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.01em;
   line-height: 1;
-  box-shadow: 0 14px 30px rgba(2, 6, 23, 0.34);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.10);
   transition: opacity 0.18s ease, transform 0.18s ease;
   z-index: 70;
 }
@@ -231,16 +235,16 @@ body::-webkit-scrollbar-thumb:hover,
   left: 50%;
   width: 10px;
   height: 10px;
-  background: rgba(24, 34, 52, 0.98);
-  border-left: 1px solid rgba(129, 140, 248, 0.16);
-  border-top: 1px solid rgba(129, 140, 248, 0.16);
+  background: rgba(255, 255, 255, 0.98);
+  border-left: 1px solid rgba(226, 232, 240, 0.95);
+  border-top: 1px solid rgba(226, 232, 240, 0.95);
   transform: translateX(-50%) rotate(45deg);
 }
 
 .topnav-btn:hover {
-  background: rgba(51, 65, 85, 0.8);
-  color: #e2e8f0;
-  border-color: rgba(148, 163, 184, 0.25);
+  background: rgba(248, 250, 252, 1);
+  color: #0f172a;
+  border-color: rgba(148, 163, 184, 0.4);
 }
 
 .topnav-action:hover .topnav-tooltip,
@@ -259,10 +263,10 @@ body::-webkit-scrollbar-thumb:hover,
 }
 
 .topnav-btn-active {
-  background: rgba(99, 102, 241, 0.15);
-  color: #818cf8;
-  border-color: rgba(99, 102, 241, 0.3);
-  box-shadow: 0 0 12px rgba(99, 102, 241, 0.1);
+  background: rgba(241, 245, 249, 1);
+  color: #0f172a;
+  border-color: rgba(148, 163, 184, 0.35);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.05);
 }
 
 .topnav-btn-icon {
@@ -274,9 +278,10 @@ body::-webkit-scrollbar-thumb:hover,
 .components-sidebar {
   width: 280px;
   flex-shrink: 0;
-  background: rgba(15, 23, 42, 0.92);
+  background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(16px);
-  border-right: 1px solid rgba(148, 163, 184, 0.1);
+  border-right: 1px solid rgba(226, 232, 240, 0.95);
+  box-shadow: 10px 0 28px rgba(15, 23, 42, 0.05);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -332,8 +337,8 @@ body::-webkit-scrollbar-thumb:hover,
 }
 
 .sidebar-close:hover {
-  background: rgba(51, 65, 85, 0.6);
-  color: #e2e8f0;
+  background: rgba(241, 245, 249, 1);
+  color: #0f172a;
 }
 
 .sidebar-close-icon {
@@ -361,10 +366,10 @@ body::-webkit-scrollbar-thumb:hover,
   justify-content: center;
   flex: 1;
   min-width: 0;
-  border: 1px solid rgba(71, 85, 105, 0.45);
-  border-radius: 10px;
-  background: rgba(30, 41, 59, 0.45);
-  color: #94a3b8;
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.92);
+  color: #475569;
   padding: 10px 12px;
   font-size: 12px;
   font-weight: 600;
@@ -376,14 +381,14 @@ body::-webkit-scrollbar-thumb:hover,
 }
 
 .sidebar-tab:hover {
-  background: rgba(51, 65, 85, 0.6);
-  color: #e2e8f0;
+  background: rgba(255, 255, 255, 1);
+  color: #0f172a;
 }
 
 .sidebar-tab-active {
-  background: rgba(99, 102, 241, 0.16);
-  border-color: rgba(99, 102, 241, 0.34);
-  color: #c7d2fe;
+  background: rgba(241, 245, 249, 1);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #0f172a;
 }
 
 .sidebar-items {
@@ -403,7 +408,7 @@ body::-webkit-scrollbar-thumb:hover,
 }
 
 .sidebar-group + .sidebar-group {
-  border-top: 1px solid rgba(71, 85, 105, 0.28);
+  border-top: 1px solid rgba(226, 232, 240, 0.95);
   margin-top: 2px;
   padding-top: 14px;
 }
@@ -437,7 +442,7 @@ body::-webkit-scrollbar-thumb:hover,
 }
 
 .sidebar-group-trigger:hover {
-  background: rgba(30, 41, 59, 0.4);
+  background: rgba(248, 250, 252, 1);
 }
 
 .sidebar-group-chevron {
@@ -453,7 +458,7 @@ body::-webkit-scrollbar-thumb:hover,
 
 .sidebar-group-chevron-open {
   transform: rotate(90deg);
-  color: #cbd5e1;
+  color: #0f172a;
 }
 
 .sidebar-group-actions {
@@ -470,17 +475,17 @@ body::-webkit-scrollbar-thumb:hover,
   height: 32px;
   padding: 0;
   border-radius: 10px;
-  border: 1px solid rgba(71, 85, 105, 0.45);
-  background: rgba(30, 41, 59, 0.52);
-  color: #94a3b8;
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  background: rgba(255, 255, 255, 0.96);
+  color: #475569;
   cursor: pointer;
   transition: all 0.18s ease;
 }
 
 .sidebar-group-add:hover {
-  border-color: rgba(129, 140, 248, 0.35);
-  background: rgba(49, 46, 129, 0.24);
-  color: #c7d2fe;
+  border-color: rgba(37, 99, 235, 0.24);
+  background: rgba(239, 246, 255, 1);
+  color: #2563eb;
 }
 
 .sidebar-group-add-icon {
@@ -499,9 +504,9 @@ body::-webkit-scrollbar-thumb:hover,
   gap: 4px;
   padding: 8px;
   border-radius: 14px;
-  border: 1px solid rgba(71, 85, 105, 0.45);
-  background: rgba(15, 23, 42, 0.98);
-  box-shadow: 0 20px 40px rgba(2, 6, 23, 0.4);
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.10);
 }
 
 .sidebar-group-menu-item {
@@ -513,7 +518,7 @@ body::-webkit-scrollbar-thumb:hover,
   border: none;
   border-radius: 10px;
   background: transparent;
-  color: #cbd5e1;
+  color: #334155;
   font-size: 12px;
   font-weight: 600;
   font-family: 'Inter', sans-serif;
@@ -523,8 +528,8 @@ body::-webkit-scrollbar-thumb:hover,
 }
 
 .sidebar-group-menu-item:hover {
-  background: rgba(51, 65, 85, 0.65);
-  color: #f8fafc;
+  background: rgba(248, 250, 252, 1);
+  color: #0f172a;
 }
 
 .sidebar-group-menu-empty {
@@ -553,7 +558,7 @@ body::-webkit-scrollbar-thumb:hover,
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #cbd5e1;
+  color: #0f172a;
   line-height: 1.2;
 }
 
@@ -571,9 +576,9 @@ body::-webkit-scrollbar-thumb:hover,
 }
 
 .sidebar-group-empty {
-  border: 1px dashed rgba(71, 85, 105, 0.45);
+  border: 1px dashed rgba(203, 213, 225, 0.95);
   border-radius: 12px;
-  background: rgba(15, 23, 42, 0.5);
+  background: rgba(248, 250, 252, 0.95);
   padding: 18px 14px;
   font-size: 12px;
   color: #64748b;
@@ -581,9 +586,9 @@ body::-webkit-scrollbar-thumb:hover,
 }
 
 .sidebar-search-match {
-  border-color: rgba(129, 140, 248, 0.4) !important;
-  box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.22), 0 10px 24px rgba(30, 41, 59, 0.25);
-  background: rgba(49, 46, 129, 0.14) !important;
+  border-color: rgba(148, 163, 184, 0.35) !important;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.12), 0 10px 24px rgba(15, 23, 42, 0.08);
+  background: rgba(248, 250, 252, 1) !important;
 }
 
 .sidebar-item {
@@ -593,7 +598,7 @@ body::-webkit-scrollbar-thumb:hover,
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid transparent;
-  background: rgba(30, 41, 59, 0.4);
+  background: rgba(255, 255, 255, 0.92);
   cursor: grab;
   transition: all 0.2s ease;
   user-select: none;
@@ -605,10 +610,10 @@ button.sidebar-item {
 }
 
 .sidebar-item:hover {
-  background: rgba(51, 65, 85, 0.5);
-  border-color: rgba(148, 163, 184, 0.12);
+  background: rgba(248, 250, 252, 1);
+  border-color: rgba(203, 213, 225, 0.95);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
 }
 
 .sidebar-item:active {
@@ -652,7 +657,7 @@ button.sidebar-item {
 .sidebar-item-label {
   font-size: 13px;
   font-weight: 500;
-  color: #e2e8f0;
+  color: #0f172a;
   line-height: 1.3;
 }
 
@@ -676,9 +681,9 @@ button.sidebar-item {
   width: 28px;
   height: 28px;
   padding: 0;
-  border: 1px solid rgba(148, 163, 184, 0.14);
+  border: 1px solid rgba(226, 232, 240, 0.95);
   border-radius: 9px;
-  background: rgba(15, 23, 42, 0.48);
+  background: rgba(255, 255, 255, 0.96);
   color: #64748b;
   cursor: pointer;
   flex-shrink: 0;
@@ -722,14 +727,14 @@ button.sidebar-item {
 }
 
 .sidebar-workflow-item-active {
-  background: linear-gradient(180deg, rgba(49, 46, 129, 0.3), rgba(30, 41, 59, 0.85));
-  border-color: rgba(129, 140, 248, 0.25);
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.28);
+  background: linear-gradient(180deg, rgba(239, 246, 255, 1), rgba(255, 255, 255, 1));
+  border-color: rgba(37, 99, 235, 0.22);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.08);
 }
 
 .sidebar-workflow-icon {
-  background: rgba(129, 140, 248, 0.14);
-  color: #a5b4fc;
+  background: rgba(241, 245, 249, 1);
+  color: #475569;
   margin-top: 2px;
 }
 
@@ -775,8 +780,8 @@ button.sidebar-item {
   min-height: 26px;
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.16);
-  color: #c7d2fe;
+  background: rgba(226, 232, 240, 0.9);
+  color: #334155;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -799,9 +804,9 @@ button.sidebar-item {
   width: 32px;
   height: 32px;
   padding: 0;
-  border: 1px solid rgba(148, 163, 184, 0.14);
+  border: 1px solid rgba(226, 232, 240, 0.95);
   border-radius: 10px;
-  background: rgba(15, 23, 42, 0.48);
+  background: rgba(255, 255, 255, 0.96);
   color: #9aa8c3;
   cursor: pointer;
   transition: all 0.18s ease;
@@ -821,7 +826,7 @@ button.sidebar-item {
   align-items: center;
   justify-content: center;
   padding: 32px;
-  background: rgba(2, 6, 23, 0.78);
+  background: rgba(241, 245, 249, 0.72);
   backdrop-filter: blur(14px);
 }
 
@@ -831,9 +836,9 @@ button.sidebar-item {
   flex-direction: column;
   gap: 18px;
   border-radius: 24px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: linear-gradient(180deg, rgba(30, 41, 59, 0.99), rgba(15, 23, 42, 1));
-  box-shadow: 0 30px 80px rgba(2, 6, 23, 0.55);
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 250, 252, 1));
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.12);
   padding: 24px;
 }
 
@@ -870,7 +875,7 @@ button.sidebar-item {
   margin: 0;
   font-size: 22px;
   font-weight: 700;
-  color: #f8fafc;
+  color: #0f172a;
   letter-spacing: -0.02em;
 }
 
@@ -878,11 +883,11 @@ button.sidebar-item {
   margin: 0;
   font-size: 15px;
   line-height: 1.65;
-  color: #cbd5e1;
+  color: #475569;
 }
 
 .app-modal-strong {
-  color: #f8fafc;
+  color: #0f172a;
   font-weight: 700;
 }
 
@@ -935,15 +940,15 @@ button.sidebar-item {
 }
 
 .app-modal-btn-secondary {
-  border-color: rgba(148, 163, 184, 0.2);
-  background: rgba(30, 41, 59, 0.94);
-  color: #e2e8f0;
+  border-color: rgba(203, 213, 225, 0.95);
+  background: rgba(255, 255, 255, 0.96);
+  color: #0f172a;
 }
 
 .app-modal-btn-secondary:hover {
-  border-color: rgba(148, 163, 184, 0.34);
-  background: rgba(51, 65, 85, 1);
-  color: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.45);
+  background: rgba(248, 250, 252, 1);
+  color: #0f172a;
 }
 
 .app-modal-btn-danger {
@@ -981,24 +986,24 @@ button.sidebar-item {
 
 /* ── React Flow canvas background override ─────────── */
 .react-flow__background {
-  background: #0f172a !important;
+  background: #ffffff !important;
 }
 
 .react-flow__controls {
-  background: rgba(30, 41, 59, 0.8) !important;
-  border: 1px solid rgba(148, 163, 184, 0.12) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  border: 1px solid rgba(226, 232, 240, 0.95) !important;
   border-radius: 10px !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25) !important;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08) !important;
 }
 
 .react-flow__controls-button {
   background: transparent !important;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.08) !important;
-  fill: #94a3b8 !important;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.95) !important;
+  fill: #475569 !important;
 }
 
 .react-flow__controls-button:hover {
-  background: rgba(51, 65, 85, 0.5) !important;
+  background: rgba(248, 250, 252, 1) !important;
 }
 
 /* ── Config Panel ──────────────────────────────────── */
@@ -1009,11 +1014,11 @@ button.sidebar-item {
   z-index: 20;
   width: 288px;
   border-radius: 12px;
-  border: 1px solid rgba(71, 85, 105, 0.5);
-  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(16px);
   padding: 16px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.10);
 }
 
 .config-panel h2 {
@@ -1021,24 +1026,24 @@ button.sidebar-item {
   align-items: center;
   gap: 8px;
   font-weight: 700;
-  color: #e2e8f0;
+  color: #0f172a;
   margin-bottom: 12px;
   font-size: 14px;
 }
 
 .config-panel h2 svg {
-  color: #818cf8;
+  color: #2563eb;
 }
 
 .config-panel p {
   font-size: 13px;
-  color: #94a3b8;
+  color: #64748b;
 }
 
 .config-panel .config-label {
   font-size: 13px;
   font-weight: 500;
-  color: #cbd5e1;
+  color: #334155;
   margin-bottom: 4px;
   display: block;
 }
@@ -1046,18 +1051,18 @@ button.sidebar-item {
 .dark-input {
   width: 100%;
   border-radius: 8px;
-  border: 1px solid rgba(71, 85, 105, 0.5);
-  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  background: rgba(255, 255, 255, 0.98);
   padding: 8px 12px;
   font-size: 13px;
-  color: #e2e8f0;
+  color: #0f172a;
   font-family: 'Inter', sans-serif;
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .dark-input::placeholder {
-  color: #475569;
+  color: #94a3b8;
 }
 
 .dark-input:focus {

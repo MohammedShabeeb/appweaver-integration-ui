@@ -205,6 +205,16 @@ export default function TopNav() {
               >
                 Security
               </button>
+              <button
+                type="button"
+                className="sidebar-group-menu-item"
+                onClick={() => {
+                  openConfigSection("llms");
+                  setIsConfigMenuOpen(false);
+                }}
+              >
+                LLM
+              </button>
             </div>
           ) : null}
         </div>

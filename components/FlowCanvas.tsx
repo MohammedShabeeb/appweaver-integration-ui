@@ -232,6 +232,7 @@ export default function FlowCanvas() {
     <div
       ref={wrapperRef}
       className="relative flex-1 h-full"
+      style={{ background: "linear-gradient(180deg, #ffffff 0%, #f7fafc 100%)" }}
       onDrop={onDrop}
       onDragOver={(e) => e.preventDefault()}
     >
@@ -245,22 +246,22 @@ export default function FlowCanvas() {
           alignItems: "center",
           gap: 8,
           borderRadius: 12,
-          border: "1px solid rgba(71, 85, 105, 0.5)",
-          background: "rgba(15, 23, 42, 0.92)",
+          border: "1px solid rgba(226, 232, 240, 0.95)",
+          background: "rgba(255, 255, 255, 0.94)",
           backdropFilter: "blur(16px)",
           padding: "6px 12px",
-          boxShadow: "0 4px 16px rgba(0, 0, 0, 0.25)",
+          boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
         }}
       >
         <button
           type="button"
           style={{
             borderRadius: 8,
-            border: "1px solid rgba(71, 85, 105, 0.5)",
+            border: "1px solid rgba(203, 213, 225, 0.95)",
             background: "transparent",
             padding: "4px 10px",
             fontSize: 13,
-            color: "#cbd5e1",
+            color: "#334155",
             cursor: "pointer",
             fontFamily: "'Inter', sans-serif",
             opacity: canvasStack.length <= 1 ? 0.35 : 1,
@@ -273,18 +274,18 @@ export default function FlowCanvas() {
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           {canvasStack.map((canvasId, index) => (
             <React.Fragment key={canvasId}>
-              {index > 0 ? <span style={{ color: "#475569", fontSize: 13 }}>/</span> : null}
+              {index > 0 ? <span style={{ color: "#94a3b8", fontSize: 13 }}>/</span> : null}
               <button
                 type="button"
                 style={{
                   borderRadius: 8,
                   border: "none",
                   background: canvasId === currentCanvasId
-                    ? "rgba(99, 102, 241, 0.15)"
+                    ? "rgba(37, 99, 235, 0.10)"
                     : "transparent",
                   padding: "4px 10px",
                   fontSize: 13,
-                  color: canvasId === currentCanvasId ? "#a5b4fc" : "#94a3b8",
+                  color: canvasId === currentCanvasId ? "#2563eb" : "#64748b",
                   cursor: "pointer",
                   fontFamily: "'Inter', sans-serif",
                 }}
@@ -311,11 +312,11 @@ export default function FlowCanvas() {
             alignItems: "center",
             gap: 8,
             borderRadius: 12,
-            border: "1px solid rgba(71, 85, 105, 0.5)",
-            background: "rgba(15, 23, 42, 0.92)",
+            border: "1px solid rgba(226, 232, 240, 0.95)",
+            background: "rgba(255, 255, 255, 0.94)",
             backdropFilter: "blur(16px)",
             padding: "8px 10px",
-            boxShadow: "0 4px 16px rgba(0, 0, 0, 0.25)",
+            boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)",
           }}
         >
           <svg
@@ -325,7 +326,7 @@ export default function FlowCanvas() {
             strokeWidth="1.8"
             strokeLinecap="round"
             strokeLinejoin="round"
-            style={{ width: 15, height: 15, color: "#64748b", flexShrink: 0 }}
+            style={{ width: 15, height: 15, color: "#94a3b8", flexShrink: 0 }}
           >
             <circle cx="11" cy="11" r="7" />
             <path d="m20 20-3.5-3.5" />
@@ -339,7 +340,7 @@ export default function FlowCanvas() {
               width: "100%",
               border: "none",
               background: "transparent",
-              color: "#e2e8f0",
+              color: "#0f172a",
               fontSize: 13,
               outline: "none",
               fontFamily: "'Inter', sans-serif",
@@ -354,11 +355,11 @@ export default function FlowCanvas() {
               flexDirection: "column",
               gap: 6,
               borderRadius: 14,
-              border: "1px solid rgba(71, 85, 105, 0.45)",
-              background: "rgba(15, 23, 42, 0.96)",
+              border: "1px solid rgba(226, 232, 240, 0.95)",
+              background: "rgba(255, 255, 255, 0.98)",
               backdropFilter: "blur(16px)",
               padding: 8,
-              boxShadow: "0 12px 28px rgba(2, 6, 23, 0.32)",
+              boxShadow: "0 12px 28px rgba(15, 23, 42, 0.10)",
             }}
           >
             {searchResults.map((result) => (
@@ -385,14 +386,14 @@ export default function FlowCanvas() {
                   borderRadius: 10,
                   background: "transparent",
                   padding: "10px 12px",
-                  color: "#e2e8f0",
+                  color: "#0f172a",
                   cursor: "pointer",
                   textAlign: "left",
                   fontFamily: "'Inter', sans-serif",
                 }}
               >
                 <span style={{ fontSize: 13, fontWeight: 600 }}>{result.title}</span>
-                <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                <span style={{ fontSize: 11, color: "#64748b" }}>
                   {result.kind} • {result.subtitle}
                 </span>
               </button>
@@ -403,13 +404,13 @@ export default function FlowCanvas() {
             style={{
               marginTop: 8,
               borderRadius: 14,
-              border: "1px solid rgba(71, 85, 105, 0.45)",
-              background: "rgba(15, 23, 42, 0.96)",
+              border: "1px solid rgba(226, 232, 240, 0.95)",
+              background: "rgba(255, 255, 255, 0.98)",
               backdropFilter: "blur(16px)",
               padding: "12px 14px",
               color: "#64748b",
               fontSize: 12,
-              boxShadow: "0 12px 28px rgba(2, 6, 23, 0.32)",
+              boxShadow: "0 12px 28px rgba(15, 23, 42, 0.10)",
             }}
           >
             No matching component or category found.
@@ -440,8 +441,9 @@ export default function FlowCanvas() {
         }}
         onPaneClick={clearSelection}
         fitView
+        style={{ background: "linear-gradient(180deg, #ffffff 0%, #f7fafc 100%)" }}
       >
-        <Background />
+        <Background color="#d7dee8" gap={20} size={1} />
         <Controls />
       </ReactFlow>
       <button
@@ -459,15 +461,15 @@ export default function FlowCanvas() {
           height: 36,
           borderRadius: 10,
           border: "1px solid rgba(248, 113, 113, 0.25)",
-          background: "rgba(127, 29, 29, 0.18)",
+          background: "rgba(255, 245, 245, 0.96)",
           backdropFilter: "blur(12px)",
           padding: "0 12px",
-          color: "#fecaca",
+          color: "#dc2626",
           fontSize: 12,
           fontWeight: 700,
           fontFamily: "'Inter', sans-serif",
           cursor: "pointer",
-          boxShadow: "0 8px 20px rgba(2, 6, 23, 0.28)",
+          boxShadow: "0 8px 20px rgba(15, 23, 42, 0.08)",
         }}
       >
         Clear Canvas

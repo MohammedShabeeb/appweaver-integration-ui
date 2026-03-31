@@ -12,7 +12,8 @@ import type { DataSourceStrategy } from "@/config/datasourceCatalog";
 
 type InsertableNodeType = Exclude<ComponentType, "start">;
 type SidebarView = "components" | "workflows" | "configs";
-type ConfigSection = "beans" | "datasources" | "security";
+type ConfigSection = "beans" | "datasources" | "security" | "llms";
+type LlmSubsection = "providers" | "rag";
 
 export type SecuritySubsection = "auth" | "authorize";
 
@@ -42,6 +43,29 @@ export type CreatedSecurityConfig = {
   subsection: SecuritySubsection;
   fileName: string;
   content: string;
+};
+
+export type CreatedLlmConfig = {
+  id: string;
+  providerId: string;
+  provider: string;
+  model: string;
+  baseUrl: string;
+  apiKey: string;
+  templatePath: string;
+};
+
+export type CreatedRagConfig = {
+  id: string;
+  ragId: string;
+  embeddingModelProvider: string;
+  embeddingModelEndpoint: string;
+  embeddingModelName: string;
+  embeddingStoreProvider: string;
+  embeddingStoreEndpoint: string;
+  embeddingStoreApiKey: string;
+  embeddingStoreIndexName: string;
+  embeddingStoreDimension: string;
 };
 
 type AppNodeData = {
@@ -110,9 +134,12 @@ type PersistedFlowState = {
   sidebarView?: SidebarView;
   selectedConfigSection?: ConfigSection;
   selectedSecuritySubsection?: SecuritySubsection;
+  selectedLlmSubsection?: LlmSubsection;
   beans?: CreatedBean[];
   dataSources?: CreatedDataSource[];
   securityConfigs?: CreatedSecurityConfig[];
+  llmConfigs?: CreatedLlmConfig[];
+  ragConfigs?: CreatedRagConfig[];
 };
 
 type WorkflowPomDependency = MavenDependencyDefinition;
@@ -555,10 +582,13 @@ function normalizePersistedState(
   const beans = persistedState?.beans ?? [];
   const dataSources = persistedState?.dataSources ?? [];
   const securityConfigs = persistedState?.securityConfigs ?? [];
+  const llmConfigs = persistedState?.llmConfigs ?? [];
+  const ragConfigs = persistedState?.ragConfigs ?? [];
   const isSidebarOpen = persistedState?.isSidebarOpen ?? false;
   const sidebarView = persistedState?.sidebarView ?? "components";
   const selectedConfigSection = persistedState?.selectedConfigSection ?? "beans";
   const selectedSecuritySubsection = persistedState?.selectedSecuritySubsection ?? "auth";
+  const selectedLlmSubsection = persistedState?.selectedLlmSubsection ?? "providers";
 
   const shouldPruneLegacyNode = (node: AppNode) =>
     !["start", "marshal", "unmarshal", "process"].includes(node.type ?? "");
@@ -601,9 +631,12 @@ function normalizePersistedState(
       sidebarView,
       selectedConfigSection,
       selectedSecuritySubsection,
+      selectedLlmSubsection,
       beans,
       dataSources,
       securityConfigs,
+      llmConfigs,
+      ragConfigs,
     };
   }
 
@@ -642,9 +675,12 @@ function normalizePersistedState(
     sidebarView,
     selectedConfigSection,
     selectedSecuritySubsection,
+    selectedLlmSubsection,
     beans,
     dataSources,
     securityConfigs,
+    llmConfigs,
+    ragConfigs,
   };
 }
 
@@ -661,9 +697,12 @@ interface FlowState {
   sidebarView: SidebarView;
   selectedConfigSection: ConfigSection;
   selectedSecuritySubsection: SecuritySubsection;
+  selectedLlmSubsection: LlmSubsection;
   beans: CreatedBean[];
   dataSources: CreatedDataSource[];
   securityConfigs: CreatedSecurityConfig[];
+  llmConfigs: CreatedLlmConfig[];
+  ragConfigs: CreatedRagConfig[];
   setNodes: (nodes: AppNode[]) => void;
   setEdges: (edges: AppEdge[]) => void;
   addNode: (componentKey: ComponentType, position: XYPosition) => void;
@@ -681,6 +720,7 @@ interface FlowState {
   openSidebar: (view: SidebarView) => void;
   openConfigSection: (section: ConfigSection) => void;
   selectSecuritySubsection: (section: SecuritySubsection) => void;
+  selectLlmSubsection: (section: LlmSubsection) => void;
   addBean: (bean: Omit<CreatedBean, "id">) => { ok: true } | { ok: false; reason: string };
   updateBean: (beanId: string, bean: Omit<CreatedBean, "id">) => { ok: true } | { ok: false; reason: string };
   removeBean: (beanId: string) => void;
@@ -698,6 +738,22 @@ interface FlowState {
     config: Omit<CreatedSecurityConfig, "id">,
   ) => { ok: true } | { ok: false; reason: string };
   removeSecurityConfig: (configId: string) => void;
+  addLlmConfig: (
+    config: Omit<CreatedLlmConfig, "id">,
+  ) => { ok: true } | { ok: false; reason: string };
+  updateLlmConfig: (
+    configId: string,
+    config: Omit<CreatedLlmConfig, "id">,
+  ) => { ok: true } | { ok: false; reason: string };
+  removeLlmConfig: (configId: string) => void;
+  addRagConfig: (
+    config: Omit<CreatedRagConfig, "id">,
+  ) => { ok: true } | { ok: false; reason: string };
+  updateRagConfig: (
+    configId: string,
+    config: Omit<CreatedRagConfig, "id">,
+  ) => { ok: true } | { ok: false; reason: string };
+  removeRagConfig: (configId: string) => void;
   exportWorkflow: () => WorkflowExport;
   exportPomXml: () => string;
   importWorkflow: (raw: unknown, fallbackName?: string) => boolean;
@@ -743,9 +799,12 @@ export const useFlowStore = create<FlowState>()(
       sidebarView: "components",
       selectedConfigSection: "beans",
       selectedSecuritySubsection: "auth",
+      selectedLlmSubsection: "providers",
       beans: [],
       dataSources: [],
       securityConfigs: [],
+      llmConfigs: [],
+      ragConfigs: [],
 
       setNodes: (nodes) =>
         set((state) => {
@@ -827,6 +886,7 @@ export const useFlowStore = create<FlowState>()(
           selectedConfigSection: section,
         }),
       selectSecuritySubsection: (section) => set({ selectedSecuritySubsection: section }),
+      selectLlmSubsection: (section) => set({ selectedLlmSubsection: section }),
       addBean: (bean) => {
         const trimmedName = bean.name.trim();
 
@@ -1018,6 +1078,138 @@ export const useFlowStore = create<FlowState>()(
       removeSecurityConfig: (configId) =>
         set((state) => ({
           securityConfigs: state.securityConfigs.filter((item) => item.id !== configId),
+        })),
+      addLlmConfig: (config) => {
+        const trimmedProviderId = config.providerId.trim();
+
+        if (!trimmedProviderId) {
+          return { ok: false, reason: "Provider id is required." };
+        }
+
+        const currentState = get();
+
+        if (
+          currentState.llmConfigs.some(
+            (item) => item.providerId.toLowerCase() === trimmedProviderId.toLowerCase(),
+          )
+        ) {
+          return { ok: false, reason: "An LLM config with that provider id already exists." };
+        }
+
+        set((state) => ({
+          llmConfigs: [
+            ...state.llmConfigs,
+            {
+              id: `llm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              ...config,
+              providerId: trimmedProviderId,
+            },
+          ],
+        }));
+
+        return { ok: true };
+      },
+      updateLlmConfig: (configId, config) => {
+        const trimmedProviderId = config.providerId.trim();
+
+        if (!trimmedProviderId) {
+          return { ok: false, reason: "Provider id is required." };
+        }
+
+        const currentState = get();
+
+        if (
+          currentState.llmConfigs.some(
+            (item) =>
+              item.id !== configId &&
+              item.providerId.toLowerCase() === trimmedProviderId.toLowerCase(),
+          )
+        ) {
+          return { ok: false, reason: "An LLM config with that provider id already exists." };
+        }
+
+        set((state) => ({
+          llmConfigs: state.llmConfigs.map((item) =>
+            item.id === configId
+              ? {
+                  ...item,
+                  ...config,
+                  providerId: trimmedProviderId,
+                }
+              : item,
+          ),
+        }));
+
+        return { ok: true };
+      },
+      removeLlmConfig: (configId) =>
+        set((state) => ({
+          llmConfigs: state.llmConfigs.filter((item) => item.id !== configId),
+        })),
+      addRagConfig: (config) => {
+        const trimmedRagId = config.ragId.trim();
+
+        if (!trimmedRagId) {
+          return { ok: false, reason: "RAG id is required." };
+        }
+
+        const currentState = get();
+
+        if (
+          currentState.ragConfigs.some(
+            (item) => item.ragId.toLowerCase() === trimmedRagId.toLowerCase(),
+          )
+        ) {
+          return { ok: false, reason: "A RAG config with that id already exists." };
+        }
+
+        set((state) => ({
+          ragConfigs: [
+            ...state.ragConfigs,
+            {
+              id: `rag-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              ...config,
+              ragId: trimmedRagId,
+            },
+          ],
+        }));
+
+        return { ok: true };
+      },
+      updateRagConfig: (configId, config) => {
+        const trimmedRagId = config.ragId.trim();
+
+        if (!trimmedRagId) {
+          return { ok: false, reason: "RAG id is required." };
+        }
+
+        const currentState = get();
+
+        if (
+          currentState.ragConfigs.some(
+            (item) => item.id !== configId && item.ragId.toLowerCase() === trimmedRagId.toLowerCase(),
+          )
+        ) {
+          return { ok: false, reason: "A RAG config with that id already exists." };
+        }
+
+        set((state) => ({
+          ragConfigs: state.ragConfigs.map((item) =>
+            item.id === configId
+              ? {
+                  ...item,
+                  ...config,
+                  ragId: trimmedRagId,
+                }
+              : item,
+          ),
+        }));
+
+        return { ok: true };
+      },
+      removeRagConfig: (configId) =>
+        set((state) => ({
+          ragConfigs: state.ragConfigs.filter((item) => item.id !== configId),
         })),
       exportWorkflow: () => {
         const state = get();
@@ -1462,7 +1654,7 @@ export const useFlowStore = create<FlowState>()(
     {
       name: "nextui-flow-store",
       storage: createJSONStorage(() => localStorage),
-      version: 8,
+      version: 9,
       migrate: (persistedState, version) =>
         normalizePersistedState(
           persistedState as PersistedFlowState,
@@ -1479,9 +1671,12 @@ export const useFlowStore = create<FlowState>()(
         sidebarView: state.sidebarView,
         selectedConfigSection: state.selectedConfigSection,
         selectedSecuritySubsection: state.selectedSecuritySubsection,
+        selectedLlmSubsection: state.selectedLlmSubsection,
         beans: state.beans,
         dataSources: state.dataSources,
         securityConfigs: state.securityConfigs,
+        llmConfigs: state.llmConfigs,
+        ragConfigs: state.ragConfigs,
       }),
     },
   ),

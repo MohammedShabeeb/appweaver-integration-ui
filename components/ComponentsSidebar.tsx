@@ -385,7 +385,7 @@ export default function ComponentsSidebar() {
                 >
                   <span
                     className="sidebar-group-title"
-                    style={{ fontSize: 12, letterSpacing: "0.08em", color: "#94a3b8" }}
+                    style={{ fontSize: 12, letterSpacing: "0.08em", color: "#64748b" }}
                   >
                     {selectedConfigSection === "beans" ? "Beans" : "Datasources"}
                   </span>
@@ -395,8 +395,8 @@ export default function ComponentsSidebar() {
                     <div
                       style={{
                         borderRadius: 14,
-                        border: "1px solid rgba(71, 85, 105, 0.36)",
-                        background: "rgba(15, 23, 42, 0.48)",
+                        border: "1px solid rgba(226, 232, 240, 0.95)",
+                        background: "rgba(255, 255, 255, 0.98)",
                         overflow: "hidden",
                       }}
                     >
@@ -454,7 +454,7 @@ export default function ComponentsSidebar() {
                             </select>
                           </label>
                           {selectedBeanTemplate ? (
-                            <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: "#94a3b8" }}>
+                            <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: "#64748b" }}>
                               Edit the bean using the same fields as the JSON source: `name`,
                               `className`, and `arguments`.
                             </p>
@@ -502,7 +502,7 @@ export default function ComponentsSidebar() {
                               Enter a JSON array, for example <code>[&quot;@file&quot;, {}]</code>.
                             </span>
                           </label>
-                          {beanError ? <p style={{ margin: 0, fontSize: 12, color: "#fca5a5" }}>{beanError}</p> : null}
+                          {beanError ? <p style={{ margin: 0, fontSize: 12, color: "#dc2626" }}>{beanError}</p> : null}
                           <button type="button" className="app-modal-btn app-modal-btn-danger" onClick={handleCreateBean}>
                             Create Bean
                           </button>
@@ -553,8 +553,8 @@ export default function ComponentsSidebar() {
                     <div
                       style={{
                         borderRadius: 14,
-                        border: "1px solid rgba(71, 85, 105, 0.36)",
-                        background: "rgba(15, 23, 42, 0.48)",
+                        border: "1px solid rgba(226, 232, 240, 0.95)",
+                        background: "rgba(255, 255, 255, 0.98)",
                         overflow: "hidden",
                       }}
                     >

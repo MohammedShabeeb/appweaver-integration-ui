@@ -43,9 +43,9 @@ function buildCardStyle(accentColor: string, selected?: boolean): CSSProperties 
     minHeight: 132,
     padding: "14px 14px 12px",
     borderRadius: 18,
-    border: `1px solid ${selected ? `${accentColor}8a` : "rgba(255, 255, 255, 0.16)"}`,
+    border: `1px solid ${selected ? `${accentColor}8a` : "rgba(255, 255, 255, 0.12)"}`,
     background:
-      "radial-gradient(circle at top left, rgba(255,255,255,0.05), rgba(255,255,255,0) 34%), linear-gradient(180deg, rgba(23, 23, 26, 0.97), rgba(31, 31, 35, 0.97))",
+      "radial-gradient(circle at top left, rgba(255,255,255,0.06), rgba(255,255,255,0) 34%), linear-gradient(180deg, rgba(10, 15, 28, 0.98), rgba(15, 23, 42, 0.98))",
     color: "#f8fafc",
     boxShadow: selected
       ? `0 0 0 1px ${accentColor}28, 0 18px 40px rgba(2, 6, 23, 0.38), 0 0 28px ${accentColor}24`

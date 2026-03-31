@@ -54,13 +54,13 @@ export default function InsertableEdge({
                 alignItems: "center",
                 justifyContent: "center",
                 borderRadius: 12,
-                border: "1px dashed rgba(71, 85, 105, 0.5)",
-                background: "rgba(15, 23, 42, 0.92)",
+                border: "1px dashed rgba(203, 213, 225, 0.95)",
+                background: "rgba(255, 255, 255, 0.96)",
                 backdropFilter: "blur(16px)",
                 padding: "8px 12px",
                 fontSize: 12,
-                color: "#94a3b8",
-                boxShadow: "0 4px 16px rgba(0, 0, 0, 0.25)",
+                color: "#64748b",
+                boxShadow: "0 4px 16px rgba(15, 23, 42, 0.08)",
               }}
               onClick={(event) => event.stopPropagation()}
               onDragOver={(event) => {
@@ -115,10 +115,10 @@ export default function InsertableEdge({
                     alignItems: "center",
                     justifyContent: "center",
                     borderRadius: "50%",
-                    border: "1px solid rgba(71, 85, 105, 0.5)",
+                    border: "1px solid rgba(203, 213, 225, 0.95)",
                     fontSize: 14,
                     fontWeight: 700,
-                    color: "#818cf8",
+                    color: "#334155",
                   }}
                 >+</span>
                 <span>Drag step here</span>
