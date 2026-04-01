@@ -35,7 +35,7 @@ export default function InsertableEdge({
         id={id}
         path={edgePath}
         style={{
-          stroke: selected ? "#2563eb" : "#94a3b8",
+          stroke: selected ? "var(--workflow-accent)" : "#94a3b8",
           strokeWidth: selected ? 2.5 : 2,
         }}
       />

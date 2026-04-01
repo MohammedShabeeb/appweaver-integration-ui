@@ -36,7 +36,7 @@ const inputStyle: React.CSSProperties = {
   padding: "8px 12px",
   fontSize: 13,
   color: "#0f172a",
-  fontFamily: "'Inter', sans-serif",
+  fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
   outline: "none",
 };
 
@@ -53,13 +53,13 @@ const fieldHintStyle: React.CSSProperties = {
   alignItems: "center",
   gap: 6,
   borderRadius: 999,
-  border: "1px solid rgba(37, 99, 235, 0.18)",
-  background: "rgba(239, 246, 255, 1)",
+  border: "1px solid rgba(var(--workflow-accent-rgb), 0.18)",
+  background: "var(--workflow-accent-soft)",
   padding: "4px 8px",
   fontSize: 10,
   fontWeight: 700,
   letterSpacing: "0.02em",
-  color: "#2563eb",
+  color: "var(--workflow-accent)",
 };
 
 const sectionStyle: React.CSSProperties = {
@@ -82,7 +82,7 @@ const deleteBtnStyle: React.CSSProperties = {
   fontWeight: 500,
   color: "#fff",
   cursor: "pointer",
-  fontFamily: "'Inter', sans-serif",
+  fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
 };
 
 const labelStyle: React.CSSProperties = {
@@ -105,9 +105,9 @@ const selectStyle: React.CSSProperties = {
   paddingRight: 42,
   cursor: "pointer",
   minHeight: 44,
-  border: "1px solid rgba(37, 99, 235, 0.28)",
+  border: "1px solid rgba(var(--workflow-accent-rgb), 0.28)",
   background: "#ffffff",
-  boxShadow: "inset 0 0 0 1px rgba(37, 99, 235, 0.06), 0 0 0 1px rgba(37, 99, 235, 0.04)",
+  boxShadow: "inset 0 0 0 1px rgba(var(--workflow-accent-rgb), 0.06), 0 0 0 1px rgba(var(--workflow-accent-rgb), 0.04)",
   fontWeight: 600,
 };
 
@@ -122,13 +122,13 @@ const selectIconStyle: React.CSSProperties = {
   top: "50%",
   transform: "translateY(-50%)",
   pointerEvents: "none",
-  color: "#2563eb",
+  color: "var(--workflow-accent)",
   width: 26,
   height: 26,
   padding: 5,
   borderRadius: 999,
-  background: "rgba(239, 246, 255, 1)",
-  border: "1px solid rgba(37, 99, 235, 0.14)",
+  background: "var(--workflow-accent-soft)",
+  border: "1px solid rgba(var(--workflow-accent-rgb), 0.14)",
 };
 
 export default function ConfigPanel() {
@@ -152,7 +152,7 @@ export default function ConfigPanel() {
             fontSize: 14,
           }}
         >
-          <ConnectorIcon style={{ width: 16, height: 16, color: "#2563eb" }} />
+          <ConnectorIcon style={{ width: 16, height: 16, color: "var(--workflow-accent)" }} />
           Connector
         </h2>
         <p style={{ fontSize: 13, color: "#64748b", marginBottom: 16 }}>
@@ -200,7 +200,7 @@ export default function ConfigPanel() {
             fontSize: 14,
           }}
         >
-        {nodeMeta ? <nodeMeta.Icon style={{ width: 16, height: 16, color: "#2563eb" }} /> : null}
+        {nodeMeta ? <nodeMeta.Icon style={{ width: 16, height: 16, color: "var(--workflow-accent)" }} /> : null}
         {nodeMeta ? nodeMeta.label : type} Config
       </h2>
 

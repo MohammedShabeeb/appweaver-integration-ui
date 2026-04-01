@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { Inter, Space_Grotesk } from "next/font/google";
+import { Montserrat, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
+const montserratBody = Montserrat({
   subsets: ["latin"],
   variable: "--font-body",
 });
@@ -10,6 +10,11 @@ const inter = Inter({
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
   variable: "--font-display",
+});
+
+const montserrat = Montserrat({
+  subsets: ["latin"],
+  variable: "--font-heading",
 });
 
 export const metadata: Metadata = {
@@ -26,7 +31,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${inter.variable} ${spaceGrotesk.variable}`}
+      className={`${montserratBody.variable} ${spaceGrotesk.variable} ${montserrat.variable}`}
     >
       <body suppressHydrationWarning>{children}</body>
     </html>

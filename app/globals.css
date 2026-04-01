@@ -1,5 +1,24 @@
 @import "tailwindcss";
 
+:root {
+  --workflow-accent: #2DB780;
+  --workflow-accent-rgb: 45, 183, 128;
+  --workflow-accent-soft: #ecf9f3;
+  --workflow-accent-outline: #8cdabd;
+  --text-body-large-size: 18px;
+  --text-body-large-line: 28px;
+  --text-body-default-size: 16px;
+  --text-body-default-line: 24px;
+  --text-body-small-size: 14px;
+  --text-body-small-line: 20px;
+  --text-caption-size: 12px;
+  --text-caption-line: 16px;
+  --text-button-size: 16px;
+  --text-button-line: 24px;
+  --text-label-size: 14px;
+  --text-label-line: 20px;
+}
+
 html,
 body {
   height: 100%;
@@ -8,10 +27,36 @@ body {
 body {
   margin: 0;
   background:
-    radial-gradient(circle at top left, rgba(191, 219, 254, 0.55), transparent 28%),
+    radial-gradient(circle at top left, rgba(var(--workflow-accent-rgb), 0.18), transparent 28%),
     linear-gradient(180deg, #f8fafc 0%, #eef4fb 100%);
   color: #0f172a;
   font-family: var(--font-body), Arial, Helvetica, sans-serif;
+  font-size: var(--text-body-default-size);
+  line-height: var(--text-body-default-line);
+  font-weight: 400;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading), Arial, Helvetica, sans-serif;
+}
+
+.app-heading-1 {
+  font-family: var(--font-heading), Arial, Helvetica, sans-serif;
+  font-size: clamp(24px, 2.6vw, 32px);
+  line-height: clamp(32px, 3.2vw, 40px);
+  font-weight: 700;
+}
+
+.app-heading-2 {
+  font-family: var(--font-heading), Arial, Helvetica, sans-serif;
+  font-size: clamp(20px, 2.1vw, 26px);
+  line-height: clamp(28px, 2.8vw, 34px);
+  font-weight: 700;
 }
 
 * {
@@ -114,7 +159,7 @@ body::-webkit-scrollbar-thumb:hover,
   height: 10px !important;
   width: 10px !important;
   border: 2px solid #ffffff !important;
-  background: #2563eb !important;
+  background: var(--workflow-accent) !important;
 }
 
 /* ── App Layout ────────────────────────────────────── */
@@ -124,7 +169,7 @@ body::-webkit-scrollbar-thumb:hover,
   height: 100vh;
   overflow: hidden;
   background:
-    radial-gradient(circle at top left, rgba(191, 219, 254, 0.35), transparent 22%),
+    radial-gradient(circle at top left, rgba(var(--workflow-accent-rgb), 0.12), transparent 22%),
     linear-gradient(180deg, #ffffff 0%, #f6f9fc 100%);
 }
 
@@ -145,10 +190,10 @@ body::-webkit-scrollbar-thumb:hover,
   height: 52px;
   overflow: visible;
   padding: 0 20px;
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(16px) saturate(1.8);
-  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
-  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.06);
+  background: linear-gradient(180deg, #081B32 0%, #0b223f 100%);
+  backdrop-filter: blur(16px) saturate(1.4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 34px rgba(2, 6, 23, 0.28);
   z-index: 50;
   flex-shrink: 0;
 }
@@ -162,13 +207,13 @@ body::-webkit-scrollbar-thumb:hover,
 .topnav-logo {
   width: 22px;
   height: 22px;
-  color: #334155;
+  color: #e6f5ee;
 }
 
 .topnav-title {
   font-size: 15px;
   font-weight: 700;
-  color: #0f172a;
+  color: #f8fafc;
   letter-spacing: -0.02em;
 }
 
@@ -191,12 +236,13 @@ body::-webkit-scrollbar-thumb:hover,
   gap: 6px;
   padding: 6px 14px;
   border-radius: 8px;
-  border: 1px solid rgba(203, 213, 225, 0.9);
-  background: rgba(255, 255, 255, 0.92);
-  color: #475569;
-  font-size: 13px;
+  border: 1px solid rgba(45, 183, 128, 0.72);
+  background: #2DB780;
+  color: #ffffff;
+  font-size: var(--text-button-size);
+  line-height: var(--text-button-line);
   font-weight: 500;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-body), Arial, Helvetica, sans-serif;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -219,10 +265,11 @@ body::-webkit-scrollbar-thumb:hover,
   border: 1px solid rgba(226, 232, 240, 0.95);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98));
   color: #0f172a;
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-caption-size);
+  font-weight: 400;
+  font-family: var(--font-body), Arial, Helvetica, sans-serif;
   letter-spacing: 0.01em;
-  line-height: 1;
+  line-height: var(--text-caption-line);
   box-shadow: 0 14px 30px rgba(15, 23, 42, 0.10);
   transition: opacity 0.18s ease, transform 0.18s ease;
   z-index: 70;
@@ -242,9 +289,10 @@ body::-webkit-scrollbar-thumb:hover,
 }
 
 .topnav-btn:hover {
-  background: rgba(248, 250, 252, 1);
-  color: #0f172a;
-  border-color: rgba(148, 163, 184, 0.4);
+  background: var(--workflow-accent-soft);
+  color: var(--workflow-accent);
+  border-color: rgba(var(--workflow-accent-rgb), 0.4);
+  box-shadow: 0 10px 20px rgba(var(--workflow-accent-rgb), 0.08);
 }
 
 .topnav-action:hover .topnav-tooltip,
@@ -263,10 +311,10 @@ body::-webkit-scrollbar-thumb:hover,
 }
 
 .topnav-btn-active {
-  background: rgba(241, 245, 249, 1);
-  color: #0f172a;
-  border-color: rgba(148, 163, 184, 0.35);
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.05);
+  background: var(--workflow-accent-soft);
+  color: var(--workflow-accent);
+  border-color: rgba(var(--workflow-accent-rgb), 0.35);
+  box-shadow: 0 10px 20px rgba(var(--workflow-accent-rgb), 0.08);
 }
 
 .topnav-btn-icon {
@@ -315,11 +363,12 @@ body::-webkit-scrollbar-thumb:hover,
 
 .sidebar-title {
   margin: 0;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #64748b;
+  color: var(--workflow-accent);
 }
 
 .sidebar-close {
@@ -347,16 +396,20 @@ body::-webkit-scrollbar-thumb:hover,
 }
 
 .sidebar-hint {
-  font-size: 11px;
-  color: #475569;
-  margin: 6px 0 0;
+  font-size: var(--text-body-small-size);
+  line-height: var(--text-body-small-line);
+  color: var(--workflow-accent);
+  margin: 10px 0 0;
 }
 
 .sidebar-tabs {
   display: flex;
-  gap: 10px;
+  justify-content: center;
+  gap: 24px;
   padding: 0 18px 10px;
-  margin-bottom: 4px;
+  margin-top: 22px;
+  margin-bottom: 8px;
+  border-bottom: none;
 }
 
 .sidebar-tab {
@@ -364,31 +417,30 @@ body::-webkit-scrollbar-thumb:hover,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 1;
-  min-width: 0;
-  border: 1px solid rgba(203, 213, 225, 0.95);
-  border-radius: 12px;
-  background: rgba(248, 250, 252, 0.92);
+  min-width: fit-content;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   color: #475569;
-  padding: 10px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
+  padding: 0 4px 12px;
+  font-size: var(--text-button-size);
+  line-height: var(--text-button-line);
+  font-weight: 500;
   white-space: nowrap;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-body), Arial, Helvetica, sans-serif;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: color 0.18s ease, border-color 0.18s ease;
+  border-bottom: 2px solid transparent;
 }
 
 .sidebar-tab:hover {
-  background: rgba(255, 255, 255, 1);
-  color: #0f172a;
+  color: var(--workflow-accent);
 }
 
 .sidebar-tab-active {
-  background: rgba(241, 245, 249, 1);
-  border-color: rgba(148, 163, 184, 0.35);
-  color: #0f172a;
+  background: transparent;
+  border-color: var(--workflow-accent);
+  color: var(--workflow-accent);
 }
 
 .sidebar-items {
@@ -483,9 +535,9 @@ body::-webkit-scrollbar-thumb:hover,
 }
 
 .sidebar-group-add:hover {
-  border-color: rgba(37, 99, 235, 0.24);
-  background: rgba(239, 246, 255, 1);
-  color: #2563eb;
+  border-color: rgba(var(--workflow-accent-rgb), 0.24);
+  background: var(--workflow-accent-soft);
+  color: var(--workflow-accent);
 }
 
 .sidebar-group-add-icon {
@@ -519,9 +571,10 @@ body::-webkit-scrollbar-thumb:hover,
   border-radius: 10px;
   background: transparent;
   color: #334155;
-  font-size: 12px;
+  font-size: var(--text-button-size);
+  line-height: var(--text-button-line);
   font-weight: 600;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-body), Arial, Helvetica, sans-serif;
   cursor: pointer;
   text-align: left;
   transition: all 0.18s ease;
@@ -534,7 +587,8 @@ body::-webkit-scrollbar-thumb:hover,
 
 .sidebar-group-menu-empty {
   padding: 10px 12px;
-  font-size: 12px;
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
   color: #64748b;
 }
 
@@ -554,8 +608,9 @@ body::-webkit-scrollbar-thumb:hover,
 
 .sidebar-group-title {
   margin: 0;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
+  font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: #0f172a;
@@ -564,8 +619,8 @@ body::-webkit-scrollbar-thumb:hover,
 
 .sidebar-group-description {
   margin: 0;
-  font-size: 12px;
-  line-height: 1.55;
+  font-size: var(--text-body-small-size);
+  line-height: var(--text-body-small-line);
   color: #64748b;
 }
 
@@ -580,7 +635,8 @@ body::-webkit-scrollbar-thumb:hover,
   border-radius: 12px;
   background: rgba(248, 250, 252, 0.95);
   padding: 18px 14px;
-  font-size: 12px;
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
   color: #64748b;
   text-align: center;
 }
@@ -727,9 +783,9 @@ button.sidebar-item {
 }
 
 .sidebar-workflow-item-active {
-  background: linear-gradient(180deg, rgba(239, 246, 255, 1), rgba(255, 255, 255, 1));
-  border-color: rgba(37, 99, 235, 0.22);
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.08);
+  background: linear-gradient(180deg, var(--workflow-accent-soft), rgba(255, 255, 255, 1));
+  border-color: rgba(var(--workflow-accent-rgb), 0.22);
+  box-shadow: 0 8px 18px rgba(var(--workflow-accent-rgb), 0.08);
 }
 
 .sidebar-workflow-icon {
@@ -875,14 +931,15 @@ button.sidebar-item {
   margin: 0;
   font-size: 22px;
   font-weight: 700;
+  font-family: var(--font-heading), Arial, Helvetica, sans-serif;
   color: #0f172a;
   letter-spacing: -0.02em;
 }
 
 .app-modal-text {
   margin: 0;
-  font-size: 15px;
-  line-height: 1.65;
+  font-size: var(--text-body-default-size);
+  line-height: var(--text-body-default-line);
   color: #475569;
 }
 
@@ -902,16 +959,17 @@ button.sidebar-item {
 }
 
 .app-modal-warning-label {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--text-caption-size);
+  line-height: var(--text-caption-line);
+  font-weight: 400;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #fda4af;
 }
 
 .app-modal-warning-text {
-  font-size: 14px;
-  line-height: 1.55;
+  font-size: var(--text-body-small-size);
+  line-height: var(--text-body-small-line);
   color: #fecdd3;
 }
 
@@ -932,9 +990,10 @@ button.sidebar-item {
   padding: 0 18px;
   border-radius: 14px;
   border: 1px solid transparent;
-  font-size: 14px;
+  font-size: var(--text-button-size);
+  line-height: var(--text-button-line);
   font-weight: 700;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-body), Arial, Helvetica, sans-serif;
   cursor: pointer;
   transition: all 0.18s ease;
 }
@@ -970,7 +1029,7 @@ button.sidebar-item {
 .sidebar-group-trigger:focus-visible,
 .sidebar-group-add:focus-visible,
 .sidebar-group-menu-item:focus-visible {
-  outline: 2px solid #93c5fd;
+  outline: 2px solid var(--workflow-accent-outline);
   outline-offset: 2px;
 }
 
@@ -1028,20 +1087,23 @@ button.sidebar-item {
   font-weight: 700;
   color: #0f172a;
   margin-bottom: 12px;
-  font-size: 14px;
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
 }
 
 .config-panel h2 svg {
-  color: #2563eb;
+  color: var(--workflow-accent);
 }
 
 .config-panel p {
-  font-size: 13px;
+  font-size: var(--text-body-small-size);
+  line-height: var(--text-body-small-line);
   color: #64748b;
 }
 
 .config-panel .config-label {
-  font-size: 13px;
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-line);
   font-weight: 500;
   color: #334155;
   margin-bottom: 4px;
@@ -1054,9 +1116,10 @@ button.sidebar-item {
   border: 1px solid rgba(203, 213, 225, 0.95);
   background: rgba(255, 255, 255, 0.98);
   padding: 8px 12px;
-  font-size: 13px;
+  font-size: var(--text-body-default-size);
+  line-height: var(--text-body-default-line);
   color: #0f172a;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-body), Arial, Helvetica, sans-serif;
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -1066,8 +1129,8 @@ button.sidebar-item {
 }
 
 .dark-input:focus {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  border-color: var(--workflow-accent);
+  box-shadow: 0 0 0 3px rgba(var(--workflow-accent-rgb), 0.15);
 }
 
 .config-delete-btn {
@@ -1076,12 +1139,13 @@ button.sidebar-item {
   border: none;
   background: rgba(220, 38, 38, 0.7);
   padding: 8px 12px;
-  font-size: 13px;
+  font-size: var(--text-button-size);
+  line-height: var(--text-button-line);
   font-weight: 500;
   color: #fff;
   cursor: pointer;
   transition: background 0.2s;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-body), Arial, Helvetica, sans-serif;
 }
 
 .config-delete-btn:hover {

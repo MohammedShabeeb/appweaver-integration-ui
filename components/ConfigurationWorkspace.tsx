@@ -388,7 +388,7 @@ function SectionTitle({
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em" }}>
+      <h2 className="app-heading-2" style={{ margin: 0, color: "#0f172a", letterSpacing: "-0.02em" }}>
         {title}
       </h2>
       <p style={{ margin: 0, color: "#64748b", fontSize: 14, lineHeight: 1.6 }}>{subtitle}</p>
@@ -478,6 +478,8 @@ function BeansWorkspace() {
               gap: 14,
               flex: 1,
               minHeight: 0,
+              overflow: "auto",
+              paddingRight: 6,
             }}
           >
             <label style={{ display: "grid", gap: 6 }}>
@@ -572,7 +574,7 @@ function BeansWorkspace() {
 
             {error ? <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{error}</p> : null}
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: "auto", paddingTop: 8 }}>
+            <div style={stickyActionBarStyle}>
               <button type="button" onClick={handleCreate} style={primaryButtonStyle}>
                 Create Bean
               </button>
@@ -817,7 +819,7 @@ function DatasourcesWorkspace() {
 
             {error ? <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{error}</p> : null}
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <div style={stickyActionBarStyle}>
               <button type="button" onClick={() => runAction(addDataSource)} style={primaryButtonStyle}>
                 Create Datasource
               </button>
@@ -1087,7 +1089,7 @@ function SecurityWorkspace() {
               paddingRight: 6,
             }}
           >
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 24, borderBottom: "1px solid rgba(226, 232, 240, 0.95)", paddingBottom: 2 }}>
               {(["auth", "authorize"] as const).map((section) => (
                 <button
                   key={section}
@@ -1095,16 +1097,11 @@ function SecurityWorkspace() {
                   onClick={() => handleSubsectionChange(section)}
                   style={{
                     ...securitySubsectionButtonStyle,
-                    background:
+                    color: selectedSecuritySubsection === section ? "var(--workflow-accent)" : "#475569",
+                    borderBottom:
                       selectedSecuritySubsection === section
-                        ? "rgba(37, 99, 235, 0.2)"
-                        : securitySubsectionButtonStyle.background,
-                    border:
-                      selectedSecuritySubsection === section
-                        ? "1px solid rgba(96, 165, 250, 0.45)"
-                        : securitySubsectionButtonStyle.border,
-                    color:
-                      selectedSecuritySubsection === section ? "#0f172a" : "#475569",
+                        ? "2px solid var(--workflow-accent)"
+                        : securitySubsectionButtonStyle.borderBottom,
                   }}
                 >
                   {section}
@@ -1433,7 +1430,7 @@ function SecurityWorkspace() {
 
             {error ? <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{error}</p> : null}
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <div style={stickyActionBarStyle}>
               <button type="button" onClick={() => runAction(addSecurityConfig)} style={primaryButtonStyle}>
                 Create Security Config
               </button>
@@ -1483,13 +1480,16 @@ function SecurityWorkspace() {
                     style={{
                       border: "none",
                       background: "transparent",
-                      color: selectedSecuritySubsection === section ? "#0f172a" : "#475569",
-                      padding: 0,
+                      color: selectedSecuritySubsection === section ? "var(--workflow-accent)" : "#475569",
+                      padding: "0 0 8px",
                       textAlign: "left",
-                      fontSize: 14,
-                      fontWeight: 700,
+                      fontSize: 16,
+                      lineHeight: "24px",
+                      fontWeight: 500,
                       cursor: "pointer",
                       textTransform: "lowercase",
+                      borderBottom: selectedSecuritySubsection === section ? "2px solid var(--workflow-accent)" : "2px solid transparent",
+                      width: "fit-content",
                     }}
                   >
                     {section}
@@ -1592,35 +1592,48 @@ const fieldLabelStyle: React.CSSProperties = {
 const primaryButtonStyle: React.CSSProperties = {
   border: "none",
   borderRadius: 12,
-  background: "linear-gradient(135deg, #0f172a, #1e293b)",
-  color: "#f8fafc",
+  background: "linear-gradient(135deg, #2DB780, #249c6c)",
+  color: "#ffffff",
   padding: "12px 16px",
   fontSize: 13,
   fontWeight: 700,
   cursor: "pointer",
+  boxShadow: "0 12px 24px rgba(45, 183, 128, 0.22)",
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
-  border: "1px solid rgba(203, 213, 225, 0.95)",
+  border: "1px solid rgba(148, 163, 184, 0.38)",
   borderRadius: 12,
   background: "#ffffff",
-  color: "#0f172a",
+  color: "#475569",
   padding: "12px 16px",
   fontSize: 13,
-  fontWeight: 700,
+  fontWeight: 600,
   cursor: "pointer",
+  boxShadow: "0 8px 18px rgba(15, 23, 42, 0.06)",
+};
+
+const stickyActionBarStyle: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 10,
+  marginTop: "auto",
+  paddingTop: 16,
+  borderTop: "1px solid rgba(203, 213, 225, 0.95)",
 };
 
 const securitySubsectionButtonStyle: React.CSSProperties = {
-  border: "1px solid rgba(203, 213, 225, 0.95)",
-  borderRadius: 12,
-  background: "#f8fafc",
+  border: "none",
+  borderRadius: 0,
+  background: "transparent",
   color: "#475569",
-  padding: "10px 14px",
-  fontSize: 12,
-  fontWeight: 700,
+  padding: "0 4px 12px",
+  fontSize: 16,
+  lineHeight: "24px",
+  fontWeight: 500,
   cursor: "pointer",
   textTransform: "lowercase",
+  borderBottom: "2px solid transparent",
 };
 
 export default function ConfigurationWorkspace() {
@@ -1666,10 +1679,10 @@ export default function ConfigurationWorkspace() {
         }}
       >
         <div style={{ display: "grid", gap: 6 }}>
-          <span style={{ color: "#60a5fa", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+          <span style={{ color: "#2DB780", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" }}>
             Configuration Workspace
           </span>
-          <h1 style={{ margin: 0, color: "#0f172a", fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em" }}>
+          <h1 className="app-heading-1" style={{ margin: 0, color: "#0f172a", letterSpacing: "-0.03em" }}>
             {pageMeta.title}
           </h1>
         </div>

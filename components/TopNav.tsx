@@ -1,8 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 
 import { useFlowStore } from "@/store/useFlowStore";
+
+const workflowAccent = "#2DB780";
+const workflowAccentDark = "#249c6c";
+
+function buildTopNavButtonStyle(isHighlighted: boolean): CSSProperties {
+  return {
+    background: isHighlighted ? workflowAccentDark : workflowAccent,
+    color: "#ffffff",
+    borderColor: isHighlighted ? workflowAccentDark : "rgba(45, 183, 128, 0.72)",
+    boxShadow: isHighlighted ? "0 10px 20px rgba(36, 156, 108, 0.28)" : "0 8px 16px rgba(45, 183, 128, 0.2)",
+  };
+}
 
 export default function TopNav() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -17,6 +29,7 @@ export default function TopNav() {
     toggleSidebar,
   } = useFlowStore();
   const [isConfigMenuOpen, setIsConfigMenuOpen] = useState(false);
+  const [hoveredButton, setHoveredButton] = useState<string | null>(null);
   const configMenuRef = useRef<HTMLDivElement | null>(null);
 
   const handleSidebarToggle = (view: "workflows" | "components" | "configs") => {
@@ -130,7 +143,10 @@ export default function TopNav() {
             type="button"
             aria-label="Open workflows"
             className={`topnav-btn ${isSidebarOpen && sidebarView === "workflows" ? "topnav-btn-active" : ""}`}
+            style={buildTopNavButtonStyle(hoveredButton === "workflows" || (isSidebarOpen && sidebarView === "workflows"))}
             onClick={() => handleSidebarToggle("workflows")}
+            onMouseEnter={() => setHoveredButton("workflows")}
+            onMouseLeave={() => setHoveredButton((current) => (current === "workflows" ? null : current))}
           >
             <svg
               viewBox="0 0 24 24"
@@ -153,7 +169,10 @@ export default function TopNav() {
             type="button"
             aria-label="Open configs"
             className={`topnav-btn ${isSidebarOpen && sidebarView === "configs" ? "topnav-btn-active" : ""}`}
+            style={buildTopNavButtonStyle(hoveredButton === "configs" || (isSidebarOpen && sidebarView === "configs"))}
             onClick={() => setIsConfigMenuOpen((current) => !current)}
+            onMouseEnter={() => setHoveredButton("configs")}
+            onMouseLeave={() => setHoveredButton((current) => (current === "configs" ? null : current))}
           >
             <svg
               viewBox="0 0 24 24"
@@ -233,7 +252,10 @@ export default function TopNav() {
             type="button"
             aria-label="Open components"
             className={`topnav-btn ${isSidebarOpen && sidebarView === "components" ? "topnav-btn-active" : ""}`}
+            style={buildTopNavButtonStyle(hoveredButton === "components" || (isSidebarOpen && sidebarView === "components"))}
             onClick={() => handleSidebarToggle("components")}
+            onMouseEnter={() => setHoveredButton("components")}
+            onMouseLeave={() => setHoveredButton((current) => (current === "components" ? null : current))}
           >
             <svg
               viewBox="0 0 24 24"
@@ -264,7 +286,10 @@ export default function TopNav() {
             type="button"
             aria-label="Import workflow"
             className="topnav-btn"
+            style={buildTopNavButtonStyle(hoveredButton === "import")}
             onClick={() => fileInputRef.current?.click()}
+            onMouseEnter={() => setHoveredButton("import")}
+            onMouseLeave={() => setHoveredButton((current) => (current === "import" ? null : current))}
           >
             <svg
               viewBox="0 0 24 24"
@@ -287,7 +312,10 @@ export default function TopNav() {
             type="button"
             aria-label="Export pom.xml"
             className="topnav-btn"
+            style={buildTopNavButtonStyle(hoveredButton === "pom")}
             onClick={handleSavePom}
+            onMouseEnter={() => setHoveredButton("pom")}
+            onMouseLeave={() => setHoveredButton((current) => (current === "pom" ? null : current))}
           >
             <svg
               viewBox="0 0 24 24"
@@ -312,7 +340,10 @@ export default function TopNav() {
             type="button"
             aria-label="Export workflow"
             className="topnav-btn"
+            style={buildTopNavButtonStyle(hoveredButton === "export")}
             onClick={handleSaveWorkflow}
+            onMouseEnter={() => setHoveredButton("export")}
+            onMouseLeave={() => setHoveredButton((current) => (current === "export" ? null : current))}
           >
             <svg
               viewBox="0 0 24 24"

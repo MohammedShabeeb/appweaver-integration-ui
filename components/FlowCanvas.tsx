@@ -263,7 +263,7 @@ export default function FlowCanvas() {
             fontSize: 13,
             color: "#334155",
             cursor: "pointer",
-            fontFamily: "'Inter', sans-serif",
+            fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
             opacity: canvasStack.length <= 1 ? 0.35 : 1,
           }}
           onClick={goBackCanvas}
@@ -281,13 +281,13 @@ export default function FlowCanvas() {
                   borderRadius: 8,
                   border: "none",
                   background: canvasId === currentCanvasId
-                    ? "rgba(37, 99, 235, 0.10)"
+                    ? "rgba(var(--workflow-accent-rgb), 0.10)"
                     : "transparent",
                   padding: "4px 10px",
                   fontSize: 13,
-                  color: canvasId === currentCanvasId ? "#2563eb" : "#64748b",
+                  color: canvasId === currentCanvasId ? "var(--workflow-accent)" : "#64748b",
                   cursor: "pointer",
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
                 }}
                 onClick={() => openCanvasFromBreadcrumb(canvasId)}
               >
@@ -343,7 +343,7 @@ export default function FlowCanvas() {
               color: "#0f172a",
               fontSize: 13,
               outline: "none",
-              fontFamily: "'Inter', sans-serif",
+              fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
             }}
           />
         </div>
@@ -389,7 +389,7 @@ export default function FlowCanvas() {
                   color: "#0f172a",
                   cursor: "pointer",
                   textAlign: "left",
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
                 }}
               >
                 <span style={{ fontSize: 13, fontWeight: 600 }}>{result.title}</span>
@@ -467,7 +467,7 @@ export default function FlowCanvas() {
           color: "#dc2626",
           fontSize: 12,
           fontWeight: 700,
-          fontFamily: "'Inter', sans-serif",
+          fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
           cursor: "pointer",
           boxShadow: "0 8px 20px rgba(15, 23, 42, 0.08)",
         }}

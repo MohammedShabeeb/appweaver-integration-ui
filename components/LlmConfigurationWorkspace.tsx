@@ -111,7 +111,7 @@ function SectionTitle({
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.03em" }}>
+      <h2 className="app-heading-2" style={{ margin: 0, color: "#0f172a", letterSpacing: "-0.03em" }}>
         {title}
       </h2>
     </div>
@@ -177,37 +177,49 @@ const workspacePanelStyle: React.CSSProperties = {
 const primaryButtonStyle: React.CSSProperties = {
   border: "none",
   borderRadius: 14,
-  background: "linear-gradient(135deg, #0f172a, #1e293b)",
-  color: "#f8fafc",
+  background: "linear-gradient(135deg, #2DB780, #249c6c)",
+  color: "#ffffff",
   padding: "12px 18px",
   fontSize: 13,
   fontWeight: 700,
   cursor: "pointer",
-  boxShadow: "0 10px 24px rgba(15, 23, 42, 0.14)",
+  boxShadow: "0 12px 24px rgba(45, 183, 128, 0.22)",
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
-  border: "1px solid #cbd5e1",
+  border: "1px solid rgba(148, 163, 184, 0.38)",
   borderRadius: 14,
-  background: "rgba(255, 255, 255, 0.92)",
-  color: "#0f172a",
+  background: "#ffffff",
+  color: "#475569",
   padding: "12px 18px",
   fontSize: 13,
-  fontWeight: 700,
+  fontWeight: 600,
   cursor: "pointer",
+  boxShadow: "0 8px 18px rgba(15, 23, 42, 0.06)",
+};
+
+const stickyActionBarStyle: React.CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 10,
+  marginTop: "auto",
+  paddingTop: 16,
+  borderTop: "1px solid rgba(203, 213, 225, 0.95)",
 };
 
 const subsectionButtonStyle: React.CSSProperties = {
-  border: "1px solid #d7e0ea",
-  borderRadius: 999,
-  background: "#f8fafc",
+  border: "none",
+  borderRadius: 0,
+  background: "transparent",
   color: "#475569",
-  padding: "10px 16px",
-  fontSize: 12,
-  fontWeight: 700,
+  padding: "0 4px 12px",
+  fontSize: 16,
+  lineHeight: "24px",
+  fontWeight: 500,
   cursor: "pointer",
   textTransform: "uppercase",
   letterSpacing: "0.05em",
+  borderBottom: "2px solid transparent",
 };
 
 const deleteIconButtonStyle: React.CSSProperties = {
@@ -544,9 +556,9 @@ export default function LlmConfigurationWorkspace() {
           title={selectedLlmSubsection === "providers" ? (selectedProvider ? "Edit Provider Config" : "Create Provider Config") : selectedRagConfig ? "Edit RAG Config" : "Create RAG Config"}
         />
         <div style={{ marginTop: 18, display: "grid", gap: 14, flex: 1, minHeight: 0, alignContent: "start", overflow: "auto", paddingRight: 6 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 24, borderBottom: "1px solid rgba(226, 232, 240, 0.95)", paddingBottom: 2 }}>
             {(["providers", "rag"] as const).map((section) => (
-              <button key={section} type="button" onClick={() => handleSubsectionChange(section)} style={{ ...subsectionButtonStyle, background: selectedLlmSubsection === section ? "#0f172a" : subsectionButtonStyle.background, border: selectedLlmSubsection === section ? "1px solid #0f172a" : subsectionButtonStyle.border, color: selectedLlmSubsection === section ? "#f8fafc" : subsectionButtonStyle.color, boxShadow: selectedLlmSubsection === section ? "0 10px 20px rgba(15, 23, 42, 0.12)" : "none" }}>
+              <button key={section} type="button" onClick={() => handleSubsectionChange(section)} style={{ ...subsectionButtonStyle, color: selectedLlmSubsection === section ? "var(--workflow-accent)" : subsectionButtonStyle.color, borderBottom: selectedLlmSubsection === section ? "2px solid var(--workflow-accent)" : subsectionButtonStyle.borderBottom }}>
                 {section}
               </button>
             ))}
@@ -565,7 +577,7 @@ export default function LlmConfigurationWorkspace() {
               <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>API Key</span><input type="password" value={providerEditor.apiKey} onChange={(event) => setProviderEditor((current) => ({ ...current, apiKey: event.target.value }))} placeholder="Optional for local providers like Ollama" style={fieldStyle} /></label>
               <div style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Generated JSON Preview</span><textarea value={providerPreview} readOnly style={previewStyle} /></div>
               {providerError ? <p style={{ margin: 0, color: "#dc2626", fontSize: 13, fontWeight: 600 }}>{providerError}</p> : null}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}><button type="button" onClick={handleCreateProvider} style={primaryButtonStyle}>Create Provider</button><button type="button" onClick={handleUpdateProvider} style={secondaryButtonStyle}>Edit Provider</button></div>
+              <div style={stickyActionBarStyle}><button type="button" onClick={handleCreateProvider} style={primaryButtonStyle}>Create Provider</button><button type="button" onClick={handleUpdateProvider} style={secondaryButtonStyle}>Edit Provider</button></div>
             </>
           ) : (
             <>
@@ -586,7 +598,7 @@ export default function LlmConfigurationWorkspace() {
               </div>
               <div style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Generated JSON Preview</span><textarea value={ragPreview} readOnly style={previewStyle} /></div>
               {ragError ? <p style={{ margin: 0, color: "#dc2626", fontSize: 13, fontWeight: 600 }}>{ragError}</p> : null}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}><button type="button" onClick={handleCreateRag} style={primaryButtonStyle}>Create RAG Config</button><button type="button" onClick={handleUpdateRag} style={secondaryButtonStyle}>Edit RAG Config</button></div>
+              <div style={stickyActionBarStyle}><button type="button" onClick={handleCreateRag} style={primaryButtonStyle}>Create RAG Config</button><button type="button" onClick={handleUpdateRag} style={secondaryButtonStyle}>Edit RAG Config</button></div>
             </>
           )}
         </div>

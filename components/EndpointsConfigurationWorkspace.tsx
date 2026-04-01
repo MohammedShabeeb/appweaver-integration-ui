@@ -169,7 +169,7 @@ function buildApiRouteContent(editor: ApiRouteEditorState) {
 function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div style={{ display: "grid", gap: 6 }}>
-      <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.03em" }}>{title}</h2>
+      <h2 className="app-heading-2" style={{ margin: 0, color: "#0f172a", letterSpacing: "-0.03em" }}>{title}</h2>
       <p style={{ margin: 0, color: "#64748b", fontSize: 14, lineHeight: 1.6 }}>{subtitle}</p>
     </div>
   );
@@ -185,9 +185,10 @@ const workspaceGridStyle: React.CSSProperties = { flex: 1, minHeight: 0, display
 const workspacePanelStyle: React.CSSProperties = { ...panelStyle, padding: 24, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" };
 const fieldStyle: React.CSSProperties = { width: "100%", borderRadius: 16, border: "1px solid #dbe4f0", background: "#ffffff", padding: "14px 16px", fontSize: 14, color: "#0f172a", fontFamily: "var(--font-body), Arial, Helvetica, sans-serif", outline: "none", boxShadow: "inset 0 1px 2px rgba(15, 23, 42, 0.04)" };
 const fieldLabelStyle: React.CSSProperties = { color: "#475569", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" };
-const subsectionButtonStyle: React.CSSProperties = { border: "1px solid #d7e0ea", borderRadius: 999, background: "#f8fafc", color: "#475569", padding: "10px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer", textTransform: "uppercase", letterSpacing: "0.05em" };
-const primaryButtonStyle: React.CSSProperties = { border: "none", borderRadius: 14, background: "linear-gradient(135deg, #0f172a, #1e293b)", color: "#f8fafc", padding: "12px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 10px 24px rgba(15, 23, 42, 0.14)" };
-const secondaryButtonStyle: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 14, background: "rgba(255, 255, 255, 0.92)", color: "#0f172a", padding: "12px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer" };
+const subsectionButtonStyle: React.CSSProperties = { border: "none", borderRadius: 0, background: "transparent", color: "#475569", padding: "0 4px 12px", fontSize: 16, lineHeight: "24px", fontWeight: 500, cursor: "pointer", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "2px solid transparent" };
+const primaryButtonStyle: React.CSSProperties = { border: "none", borderRadius: 14, background: "linear-gradient(135deg, #2DB780, #249c6c)", color: "#ffffff", padding: "12px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 12px 24px rgba(45, 183, 128, 0.22)" };
+const secondaryButtonStyle: React.CSSProperties = { border: "1px solid rgba(148, 163, 184, 0.38)", borderRadius: 14, background: "#ffffff", color: "#475569", padding: "12px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: "0 8px 18px rgba(15, 23, 42, 0.06)" };
+const stickyActionBarStyle: React.CSSProperties = { display: "flex", flexWrap: "wrap", gap: 10, marginTop: "auto", paddingTop: 16, borderTop: "1px solid rgba(203, 213, 225, 0.95)" };
 const deleteIconButtonStyle: React.CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 10, border: "1px solid rgba(248, 113, 113, 0.28)", background: "#fff5f5", color: "#dc2626", boxShadow: "0 8px 18px rgba(220, 38, 38, 0.08)", cursor: "pointer" };
 const listItemMetaStyle: React.CSSProperties = { marginTop: 4, fontSize: 12, color: "#64748b", overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.55 };
 
@@ -321,9 +322,9 @@ export default function EndpointsConfigurationWorkspace() {
       <section style={workspacePanelStyle}>
         <SectionTitle title={selectedItem ? "Edit Endpoint Config" : "Create Endpoint Config"} subtitle="Manage endpoint JSON files for API, gRPC, SSE, and WS access to your workflows." />
         <div style={{ marginTop: 18, display: "grid", gap: 14, flex: 1, minHeight: 0, alignContent: "start", overflow: "auto", paddingRight: 6 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 24, borderBottom: "1px solid rgba(226, 232, 240, 0.95)", paddingBottom: 2 }}>
             {(["api", "grpc", "sse", "ws"] as const).map((protocol) => (
-              <button key={protocol} type="button" onClick={() => handleProtocolChange(protocol)} style={{ ...subsectionButtonStyle, background: selectedProtocol === protocol ? "#0f172a" : subsectionButtonStyle.background, border: selectedProtocol === protocol ? "1px solid #0f172a" : subsectionButtonStyle.border, color: selectedProtocol === protocol ? "#f8fafc" : subsectionButtonStyle.color }}>
+              <button key={protocol} type="button" onClick={() => handleProtocolChange(protocol)} style={{ ...subsectionButtonStyle, color: selectedProtocol === protocol ? "var(--workflow-accent)" : subsectionButtonStyle.color, borderBottom: selectedProtocol === protocol ? "2px solid var(--workflow-accent)" : subsectionButtonStyle.borderBottom }}>
                 {protocol}
               </button>
             ))}
@@ -401,7 +402,7 @@ export default function EndpointsConfigurationWorkspace() {
             </>
           )}
           {error ? <p style={{ margin: 0, color: "#dc2626", fontSize: 13, fontWeight: 600 }}>{error}</p> : null}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          <div style={stickyActionBarStyle}>
             <button type="button" onClick={handleCreate} style={primaryButtonStyle}>Create Endpoint Config</button>
             <button type="button" onClick={handleUpdate} style={secondaryButtonStyle}>Edit Endpoint Config</button>
             {selectedProtocol === "api" ? (
