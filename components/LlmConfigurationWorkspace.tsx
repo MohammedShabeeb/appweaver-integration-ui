@@ -176,7 +176,7 @@ const workspacePanelStyle: React.CSSProperties = {
 
 const primaryButtonStyle: React.CSSProperties = {
   border: "none",
-  borderRadius: 14,
+  borderRadius: 8,
   background: "#10233f",
   color: "#ffffff",
   padding: "12px 18px",
@@ -188,7 +188,7 @@ const primaryButtonStyle: React.CSSProperties = {
 
 const secondaryButtonStyle: React.CSSProperties = {
   border: "1px solid #10233f",
-  borderRadius: 14,
+  borderRadius: 8,
   background: "#ffffff",
   color: "#10233f",
   padding: "12px 18px",

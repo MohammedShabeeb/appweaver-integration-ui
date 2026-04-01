@@ -358,53 +358,79 @@ body::-webkit-scrollbar-thumb:hover,
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  padding: 20px 18px 10px;
+  gap: 16px;
+  padding: 20px 18px 14px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.95);
+  background:
+    radial-gradient(circle at top left, rgba(var(--workflow-accent-rgb), 0.10), transparent 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98));
 }
 
 .sidebar-header > div {
   min-width: 0;
 }
 
+.sidebar-header-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
 .sidebar-title {
   margin: 0;
-  font-size: var(--text-label-size);
-  line-height: var(--text-label-line);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--workflow-accent);
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+  padding-right: 8px;
+  word-break: normal;
 }
 
 .sidebar-close {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
+  gap: 8px;
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  background: rgba(255, 255, 255, 0.92);
   color: #64748b;
   cursor: pointer;
-  transition: all 0.15s ease;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
+  transition: all 0.18s ease;
 }
 
 .sidebar-close:hover {
-  background: rgba(241, 245, 249, 1);
-  color: #0f172a;
+  border-color: rgba(var(--workflow-accent-rgb), 0.24);
+  background: var(--workflow-accent-soft);
+  color: var(--workflow-accent);
+}
+
+.sidebar-close-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .sidebar-close-icon {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
 }
 
 .sidebar-hint {
-  font-size: var(--text-body-small-size);
-  line-height: var(--text-body-small-line);
-  color: var(--workflow-accent);
-  margin: 10px 0 0;
+  max-width: 22ch;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #475569;
+  margin: 0;
 }
 
 .sidebar-tabs {

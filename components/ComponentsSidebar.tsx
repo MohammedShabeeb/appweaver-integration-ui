@@ -247,11 +247,11 @@ export default function ComponentsSidebar() {
     <>
       <aside className="components-sidebar">
         <div className="sidebar-header">
-          <div>
-            <h2 className="sidebar-title" style={{ color: "#0f172a" }}>
+          <div className="sidebar-header-copy">
+            <h2 className="sidebar-title">
               {isWorkflowView ? "Workflows" : isConfigsView ? "Configs" : "Components"}
             </h2>
-            <p className="sidebar-hint" style={{ color: "#0f172a" }}>
+            <p className="sidebar-hint">
               {isWorkflowView
                 ? "Select a workflow to render it on the canvas"
                 : isConfigsView
@@ -260,6 +260,7 @@ export default function ComponentsSidebar() {
             </p>
           </div>
           <button type="button" className="sidebar-close" onClick={toggleSidebar}>
+            <span className="sidebar-close-label">Close</span>
             <svg
               viewBox="0 0 24 24"
               fill="none"
