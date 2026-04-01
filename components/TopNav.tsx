@@ -215,6 +215,16 @@ export default function TopNav() {
               >
                 LLM
               </button>
+              <button
+                type="button"
+                className="sidebar-group-menu-item"
+                onClick={() => {
+                  openConfigSection("endpoints");
+                  setIsConfigMenuOpen(false);
+                }}
+              >
+                Endpoints
+              </button>
             </div>
           ) : null}
         </div>

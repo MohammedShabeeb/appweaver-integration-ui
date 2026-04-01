@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import LlmConfigurationWorkspace from "./LlmConfigurationWorkspace";
+import EndpointsConfigurationWorkspace from "./EndpointsConfigurationWorkspace";
 
 import {
   useFlowStore,
@@ -1641,6 +1642,10 @@ export default function ConfigurationWorkspace() {
                     ? "LLM / RAG Configuration"
                     : "LLM / Provider Configuration"
               }
+          : selectedConfigSection === "endpoints"
+            ? {
+                title: "Endpoints Configuration"
+              }
           : {
               title: "Security Configuration"
             },
@@ -1687,6 +1692,8 @@ export default function ConfigurationWorkspace() {
         <DatasourcesWorkspace />
       ) : selectedConfigSection === "llms" ? (
         <LlmConfigurationWorkspace />
+      ) : selectedConfigSection === "endpoints" ? (
+        <EndpointsConfigurationWorkspace />
       ) : (
         <SecurityWorkspace />
       )}

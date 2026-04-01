@@ -12,8 +12,9 @@ import type { DataSourceStrategy } from "@/config/datasourceCatalog";
 
 type InsertableNodeType = Exclude<ComponentType, "start">;
 type SidebarView = "components" | "workflows" | "configs";
-type ConfigSection = "beans" | "datasources" | "security" | "llms";
+type ConfigSection = "beans" | "datasources" | "security" | "llms" | "endpoints";
 type LlmSubsection = "providers" | "rag";
+export type EndpointProtocol = "api" | "grpc" | "sse" | "ws";
 
 export type SecuritySubsection = "auth" | "authorize";
 
@@ -66,6 +67,14 @@ export type CreatedRagConfig = {
   embeddingStoreApiKey: string;
   embeddingStoreIndexName: string;
   embeddingStoreDimension: string;
+};
+
+export type CreatedEndpointConfig = {
+  id: string;
+  protocol: EndpointProtocol;
+  folderPath: string;
+  fileName: string;
+  content: string;
 };
 
 type AppNodeData = {
@@ -140,6 +149,7 @@ type PersistedFlowState = {
   securityConfigs?: CreatedSecurityConfig[];
   llmConfigs?: CreatedLlmConfig[];
   ragConfigs?: CreatedRagConfig[];
+  endpointConfigs?: CreatedEndpointConfig[];
 };
 
 type WorkflowPomDependency = MavenDependencyDefinition;
@@ -584,6 +594,7 @@ function normalizePersistedState(
   const securityConfigs = persistedState?.securityConfigs ?? [];
   const llmConfigs = persistedState?.llmConfigs ?? [];
   const ragConfigs = persistedState?.ragConfigs ?? [];
+  const endpointConfigs = persistedState?.endpointConfigs ?? [];
   const isSidebarOpen = persistedState?.isSidebarOpen ?? false;
   const sidebarView = persistedState?.sidebarView ?? "components";
   const selectedConfigSection = persistedState?.selectedConfigSection ?? "beans";
@@ -637,6 +648,7 @@ function normalizePersistedState(
       securityConfigs,
       llmConfigs,
       ragConfigs,
+      endpointConfigs,
     };
   }
 
@@ -681,6 +693,7 @@ function normalizePersistedState(
     securityConfigs,
     llmConfigs,
     ragConfigs,
+    endpointConfigs,
   };
 }
 
@@ -703,6 +716,7 @@ interface FlowState {
   securityConfigs: CreatedSecurityConfig[];
   llmConfigs: CreatedLlmConfig[];
   ragConfigs: CreatedRagConfig[];
+  endpointConfigs: CreatedEndpointConfig[];
   setNodes: (nodes: AppNode[]) => void;
   setEdges: (edges: AppEdge[]) => void;
   addNode: (componentKey: ComponentType, position: XYPosition) => void;
@@ -754,6 +768,14 @@ interface FlowState {
     config: Omit<CreatedRagConfig, "id">,
   ) => { ok: true } | { ok: false; reason: string };
   removeRagConfig: (configId: string) => void;
+  addEndpointConfig: (
+    config: Omit<CreatedEndpointConfig, "id">,
+  ) => { ok: true } | { ok: false; reason: string };
+  updateEndpointConfig: (
+    configId: string,
+    config: Omit<CreatedEndpointConfig, "id">,
+  ) => { ok: true } | { ok: false; reason: string };
+  removeEndpointConfig: (configId: string) => void;
   exportWorkflow: () => WorkflowExport;
   exportPomXml: () => string;
   importWorkflow: (raw: unknown, fallbackName?: string) => boolean;
@@ -805,6 +827,7 @@ export const useFlowStore = create<FlowState>()(
       securityConfigs: [],
       llmConfigs: [],
       ragConfigs: [],
+      endpointConfigs: [],
 
       setNodes: (nodes) =>
         set((state) => {
@@ -1210,6 +1233,92 @@ export const useFlowStore = create<FlowState>()(
       removeRagConfig: (configId) =>
         set((state) => ({
           ragConfigs: state.ragConfigs.filter((item) => item.id !== configId),
+        })),
+      addEndpointConfig: (config) => {
+        const normalizedFolderPath = config.folderPath
+          .trim()
+          .replace(/\\/g, "/")
+          .replace(/^\/+|\/+$/g, "");
+        const normalizedFileName = config.fileName.trim().toLowerCase().endsWith(".json")
+          ? config.fileName.trim()
+          : `${config.fileName.trim()}.json`;
+
+        if (!normalizedFileName || normalizedFileName === ".json") {
+          return { ok: false, reason: "Endpoint file name is required." };
+        }
+
+        const currentState = get();
+
+        if (
+          currentState.endpointConfigs.some(
+            (item) =>
+              item.protocol === config.protocol &&
+              item.folderPath.toLowerCase() === normalizedFolderPath.toLowerCase() &&
+              item.fileName.toLowerCase() === normalizedFileName.toLowerCase(),
+          )
+        ) {
+          return { ok: false, reason: "An endpoint config already exists for that protocol and path." };
+        }
+
+        set((state) => ({
+          endpointConfigs: [
+            ...state.endpointConfigs,
+            {
+              id: `endpoint-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              ...config,
+              folderPath: normalizedFolderPath,
+              fileName: normalizedFileName,
+            },
+          ],
+        }));
+
+        return { ok: true };
+      },
+      updateEndpointConfig: (configId, config) => {
+        const normalizedFolderPath = config.folderPath
+          .trim()
+          .replace(/\\/g, "/")
+          .replace(/^\/+|\/+$/g, "");
+        const normalizedFileName = config.fileName.trim().toLowerCase().endsWith(".json")
+          ? config.fileName.trim()
+          : `${config.fileName.trim()}.json`;
+
+        if (!normalizedFileName || normalizedFileName === ".json") {
+          return { ok: false, reason: "Endpoint file name is required." };
+        }
+
+        const currentState = get();
+
+        if (
+          currentState.endpointConfigs.some(
+            (item) =>
+              item.id !== configId &&
+              item.protocol === config.protocol &&
+              item.folderPath.toLowerCase() === normalizedFolderPath.toLowerCase() &&
+              item.fileName.toLowerCase() === normalizedFileName.toLowerCase(),
+          )
+        ) {
+          return { ok: false, reason: "An endpoint config already exists for that protocol and path." };
+        }
+
+        set((state) => ({
+          endpointConfigs: state.endpointConfigs.map((item) =>
+            item.id === configId
+              ? {
+                  ...item,
+                  ...config,
+                  folderPath: normalizedFolderPath,
+                  fileName: normalizedFileName,
+                }
+              : item,
+          ),
+        }));
+
+        return { ok: true };
+      },
+      removeEndpointConfig: (configId) =>
+        set((state) => ({
+          endpointConfigs: state.endpointConfigs.filter((item) => item.id !== configId),
         })),
       exportWorkflow: () => {
         const state = get();
@@ -1677,6 +1786,7 @@ export const useFlowStore = create<FlowState>()(
         securityConfigs: state.securityConfigs,
         llmConfigs: state.llmConfigs,
         ragConfigs: state.ragConfigs,
+        endpointConfigs: state.endpointConfigs,
       }),
     },
   ),
