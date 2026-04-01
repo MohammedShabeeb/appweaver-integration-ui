@@ -186,9 +186,10 @@ const workspacePanelStyle: React.CSSProperties = { ...panelStyle, padding: 24, m
 const fieldStyle: React.CSSProperties = { width: "100%", borderRadius: 16, border: "1px solid #dbe4f0", background: "#ffffff", padding: "14px 16px", fontSize: 14, color: "#0f172a", fontFamily: "var(--font-body), Arial, Helvetica, sans-serif", outline: "none", boxShadow: "inset 0 1px 2px rgba(15, 23, 42, 0.04)" };
 const fieldLabelStyle: React.CSSProperties = { color: "#475569", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" };
 const subsectionButtonStyle: React.CSSProperties = { border: "none", borderRadius: 0, background: "transparent", color: "#475569", padding: "0 4px 12px", fontSize: 16, lineHeight: "24px", fontWeight: 500, cursor: "pointer", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "2px solid transparent" };
-const primaryButtonStyle: React.CSSProperties = { border: "none", borderRadius: 14, background: "linear-gradient(135deg, #2DB780, #249c6c)", color: "#ffffff", padding: "12px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 12px 24px rgba(45, 183, 128, 0.22)" };
-const secondaryButtonStyle: React.CSSProperties = { border: "1px solid rgba(148, 163, 184, 0.38)", borderRadius: 14, background: "#ffffff", color: "#475569", padding: "12px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: "0 8px 18px rgba(15, 23, 42, 0.06)" };
-const stickyActionBarStyle: React.CSSProperties = { display: "flex", flexWrap: "wrap", gap: 10, marginTop: "auto", paddingTop: 16, borderTop: "1px solid rgba(203, 213, 225, 0.95)" };
+const primaryButtonStyle: React.CSSProperties = { border: "none", borderRadius: 14, background: "#10233f", color: "#ffffff", padding: "12px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 12px 24px rgba(16, 35, 63, 0.18)" };
+const secondaryButtonStyle: React.CSSProperties = { border: "1px solid #10233f", borderRadius: 14, background: "#ffffff", color: "#10233f", padding: "12px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: "0 8px 18px rgba(16, 35, 63, 0.06)" };
+const tertiaryButtonStyle: React.CSSProperties = { border: "none", borderRadius: 14, background: "#2DB780", color: "#ffffff", padding: "12px 18px", fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 12px 24px rgba(45, 183, 128, 0.18)" };
+const stickyActionBarStyle: React.CSSProperties = { display: "flex", flexWrap: "wrap", gap: 10, marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(203, 213, 225, 0.95)", flexShrink: 0 };
 const deleteIconButtonStyle: React.CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: 10, border: "1px solid rgba(248, 113, 113, 0.28)", background: "#fff5f5", color: "#dc2626", boxShadow: "0 8px 18px rgba(220, 38, 38, 0.08)", cursor: "pointer" };
 const listItemMetaStyle: React.CSSProperties = { marginTop: 4, fontSize: 12, color: "#64748b", overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.55 };
 
@@ -401,6 +402,8 @@ export default function EndpointsConfigurationWorkspace() {
               <p style={{ margin: 0, color: "#64748b", fontSize: 12, lineHeight: 1.6 }}>Protocol-specific files are saved to their default locations automatically.</p>
             </>
           )}
+        </div>
+        <div style={{ flexShrink: 0 }}>
           {error ? <p style={{ margin: 0, color: "#dc2626", fontSize: 13, fontWeight: 600 }}>{error}</p> : null}
           <div style={stickyActionBarStyle}>
             <button type="button" onClick={handleCreate} style={primaryButtonStyle}>Create Endpoint Config</button>
@@ -414,7 +417,7 @@ export default function EndpointsConfigurationWorkspace() {
                   setApiEditor(createApiRouteEditorState());
                   setError(null);
                 }}
-                style={secondaryButtonStyle}
+                style={tertiaryButtonStyle}
               >
                 New REST Route
               </button>
@@ -427,7 +430,7 @@ export default function EndpointsConfigurationWorkspace() {
                   setEditor(createAdditionalRouteState("sse"));
                   setError(null);
                 }}
-                style={secondaryButtonStyle}
+                style={tertiaryButtonStyle}
               >
                 New SSE Route
               </button>

@@ -5,14 +5,18 @@ import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } fro
 import { useFlowStore } from "@/store/useFlowStore";
 
 const workflowAccent = "#2DB780";
-const workflowAccentDark = "#249c6c";
+const workflowAccentDark = "#1f8f63";
 
 function buildTopNavButtonStyle(isHighlighted: boolean): CSSProperties {
   return {
-    background: isHighlighted ? workflowAccentDark : workflowAccent,
-    color: "#ffffff",
-    borderColor: isHighlighted ? workflowAccentDark : "rgba(45, 183, 128, 0.72)",
-    boxShadow: isHighlighted ? "0 10px 20px rgba(36, 156, 108, 0.28)" : "0 8px 16px rgba(45, 183, 128, 0.2)",
+    background: isHighlighted
+      ? workflowAccentDark
+      : "linear-gradient(180deg, rgba(233, 248, 242, 0.98), rgba(222, 244, 236, 0.98))",
+    color: isHighlighted ? "#ffffff" : workflowAccent,
+    borderColor: isHighlighted ? workflowAccentDark : "rgba(45, 183, 128, 0.34)",
+    boxShadow: isHighlighted
+      ? "0 12px 24px rgba(31, 143, 99, 0.24)"
+      : "inset 0 1px 0 rgba(255, 255, 255, 0.75), 0 8px 18px rgba(45, 183, 128, 0.08)",
   };
 }
 

@@ -571,9 +571,9 @@ function BeansWorkspace() {
                 `123`, `true`, `{}` or `[]`, it will be converted before saving.
               </p>
             </div>
-
+          </div>
+          <div style={{ flexShrink: 0 }}>
             {error ? <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{error}</p> : null}
-
             <div style={stickyActionBarStyle}>
               <button type="button" onClick={handleCreate} style={primaryButtonStyle}>
                 Create Bean
@@ -816,9 +816,9 @@ function DatasourcesWorkspace() {
                 style={{ ...fieldStyle, minHeight: 140, resize: "vertical", fontFamily: "monospace" }}
               />
             </label>
-
+          </div>
+          <div style={{ flexShrink: 0 }}>
             {error ? <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{error}</p> : null}
-
             <div style={stickyActionBarStyle}>
               <button type="button" onClick={() => runAction(addDataSource)} style={primaryButtonStyle}>
                 Create Datasource
@@ -1427,9 +1427,9 @@ function SecurityWorkspace() {
                 />
               </label>
             )}
-
+          </div>
+          <div style={{ flexShrink: 0 }}>
             {error ? <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{error}</p> : null}
-
             <div style={stickyActionBarStyle}>
               <button type="button" onClick={() => runAction(addSecurityConfig)} style={primaryButtonStyle}>
                 Create Security Config
@@ -1592,34 +1592,35 @@ const fieldLabelStyle: React.CSSProperties = {
 const primaryButtonStyle: React.CSSProperties = {
   border: "none",
   borderRadius: 12,
-  background: "linear-gradient(135deg, #2DB780, #249c6c)",
+  background: "#10233f",
   color: "#ffffff",
   padding: "12px 16px",
   fontSize: 13,
   fontWeight: 700,
   cursor: "pointer",
-  boxShadow: "0 12px 24px rgba(45, 183, 128, 0.22)",
+  boxShadow: "0 12px 24px rgba(16, 35, 63, 0.18)",
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
-  border: "1px solid rgba(148, 163, 184, 0.38)",
+  border: "1px solid #10233f",
   borderRadius: 12,
   background: "#ffffff",
-  color: "#475569",
+  color: "#10233f",
   padding: "12px 16px",
   fontSize: 13,
   fontWeight: 600,
   cursor: "pointer",
-  boxShadow: "0 8px 18px rgba(15, 23, 42, 0.06)",
+  boxShadow: "0 8px 18px rgba(16, 35, 63, 0.06)",
 };
 
 const stickyActionBarStyle: React.CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
   gap: 10,
-  marginTop: "auto",
+  marginTop: 16,
   paddingTop: 16,
   borderTop: "1px solid rgba(203, 213, 225, 0.95)",
+  flexShrink: 0,
 };
 
 const securitySubsectionButtonStyle: React.CSSProperties = {

@@ -177,34 +177,35 @@ const workspacePanelStyle: React.CSSProperties = {
 const primaryButtonStyle: React.CSSProperties = {
   border: "none",
   borderRadius: 14,
-  background: "linear-gradient(135deg, #2DB780, #249c6c)",
+  background: "#10233f",
   color: "#ffffff",
   padding: "12px 18px",
   fontSize: 13,
   fontWeight: 700,
   cursor: "pointer",
-  boxShadow: "0 12px 24px rgba(45, 183, 128, 0.22)",
+  boxShadow: "0 12px 24px rgba(16, 35, 63, 0.18)",
 };
 
 const secondaryButtonStyle: React.CSSProperties = {
-  border: "1px solid rgba(148, 163, 184, 0.38)",
+  border: "1px solid #10233f",
   borderRadius: 14,
   background: "#ffffff",
-  color: "#475569",
+  color: "#10233f",
   padding: "12px 18px",
   fontSize: 13,
   fontWeight: 600,
   cursor: "pointer",
-  boxShadow: "0 8px 18px rgba(15, 23, 42, 0.06)",
+  boxShadow: "0 8px 18px rgba(16, 35, 63, 0.06)",
 };
 
 const stickyActionBarStyle: React.CSSProperties = {
   display: "flex",
   flexWrap: "wrap",
   gap: 10,
-  marginTop: "auto",
+  marginTop: 16,
   paddingTop: 16,
   borderTop: "1px solid rgba(203, 213, 225, 0.95)",
+  flexShrink: 0,
 };
 
 const subsectionButtonStyle: React.CSSProperties = {
@@ -576,8 +577,6 @@ export default function LlmConfigurationWorkspace() {
               <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Base URL</span><input value={providerEditor.baseUrl} onChange={(event) => setProviderEditor((current) => ({ ...current, baseUrl: event.target.value }))} placeholder="https://api.x.ai/v1" style={fieldStyle} /></label>
               <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>API Key</span><input type="password" value={providerEditor.apiKey} onChange={(event) => setProviderEditor((current) => ({ ...current, apiKey: event.target.value }))} placeholder="Optional for local providers like Ollama" style={fieldStyle} /></label>
               <div style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Generated JSON Preview</span><textarea value={providerPreview} readOnly style={previewStyle} /></div>
-              {providerError ? <p style={{ margin: 0, color: "#dc2626", fontSize: 13, fontWeight: 600 }}>{providerError}</p> : null}
-              <div style={stickyActionBarStyle}><button type="button" onClick={handleCreateProvider} style={primaryButtonStyle}>Create Provider</button><button type="button" onClick={handleUpdateProvider} style={secondaryButtonStyle}>Edit Provider</button></div>
             </>
           ) : (
             <>
@@ -593,10 +592,21 @@ export default function LlmConfigurationWorkspace() {
               </div>
               <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Store Endpoint</span><input value={ragEditor.embeddingStoreEndpoint} onChange={(event) => setRagEditor((current) => ({ ...current, embeddingStoreEndpoint: event.target.value }))} placeholder="Optional for memory store" style={fieldStyle} /></label>
               <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-                <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Store API Key</span><input type="password" value={ragEditor.embeddingStoreApiKey} onChange={(event) => setRagEditor((current) => ({ ...current, embeddingStoreApiKey: event.target.value }))} placeholder="Optional for memory store" style={fieldStyle} /></label>
-                <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Store Index Name</span><input value={ragEditor.embeddingStoreIndexName} onChange={(event) => setRagEditor((current) => ({ ...current, embeddingStoreIndexName: event.target.value }))} placeholder="aihub-framework-index" style={fieldStyle} /></label>
+              <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Store API Key</span><input type="password" value={ragEditor.embeddingStoreApiKey} onChange={(event) => setRagEditor((current) => ({ ...current, embeddingStoreApiKey: event.target.value }))} placeholder="Optional for memory store" style={fieldStyle} /></label>
+              <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Store Index Name</span><input value={ragEditor.embeddingStoreIndexName} onChange={(event) => setRagEditor((current) => ({ ...current, embeddingStoreIndexName: event.target.value }))} placeholder="aihub-framework-index" style={fieldStyle} /></label>
               </div>
               <div style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Generated JSON Preview</span><textarea value={ragPreview} readOnly style={previewStyle} /></div>
+            </>
+          )}
+        </div>
+        <div style={{ flexShrink: 0 }}>
+          {selectedLlmSubsection === "providers" ? (
+            <>
+              {providerError ? <p style={{ margin: 0, color: "#dc2626", fontSize: 13, fontWeight: 600 }}>{providerError}</p> : null}
+              <div style={stickyActionBarStyle}><button type="button" onClick={handleCreateProvider} style={primaryButtonStyle}>Create Provider</button><button type="button" onClick={handleUpdateProvider} style={secondaryButtonStyle}>Edit Provider</button></div>
+            </>
+          ) : (
+            <>
               {ragError ? <p style={{ margin: 0, color: "#dc2626", fontSize: 13, fontWeight: 600 }}>{ragError}</p> : null}
               <div style={stickyActionBarStyle}><button type="button" onClick={handleCreateRag} style={primaryButtonStyle}>Create RAG Config</button><button type="button" onClick={handleUpdateRag} style={secondaryButtonStyle}>Edit RAG Config</button></div>
             </>

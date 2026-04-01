@@ -40,19 +40,6 @@ type StepListItem = {
   description: string;
 };
 
-const workflowAccent = "#2DB780";
-const workflowAccentSoft = "#ecf9f3";
-const workflowSectionTabStyle: CSSProperties = {
-  color: workflowAccent,
-  background: workflowAccentSoft,
-  border: "1px solid rgba(45, 183, 128, 0.28)",
-  borderRadius: 12,
-  borderBottom: "1px solid rgba(45, 183, 128, 0.28)",
-  padding: "10px 12px",
-  margin: "0 auto",
-  minWidth: 140,
-};
-
 const stepDescriptions: Record<StepListItem["type"], string> = {
   marshal: "Serialize data and choose the `clazz` value from a dropdown.",
   unmarshal: "Deserialize data and choose the `clazz` value from a dropdown.",
@@ -286,19 +273,6 @@ export default function ComponentsSidebar() {
               <path d="M6 6l12 12" />
             </svg>
           </button>
-        </div>
-
-        <div className="sidebar-tabs" aria-label="Current sidebar view">
-          <span
-            className="sidebar-tab sidebar-tab-active"
-            style={workflowSectionTabStyle}
-          >
-            {!isWorkflowView && !isConfigsView
-              ? "Components"
-              : isConfigsView
-                ? "Configs"
-                : "Workflows"}
-          </span>
         </div>
 
         {!isWorkflowView && !isConfigsView ? (
