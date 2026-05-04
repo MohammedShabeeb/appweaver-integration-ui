@@ -1,19 +1,24 @@
 import { useFlowStore } from "@/store/useFlowStore";
+import { isBuiltInComponent, type BuiltInComponentType } from "@/config/componentCatalog";
+import type { NodeProps } from "reactflow";
 import { nodeTypeMeta } from "../node-icons";
 import FlowNodeCard from "./FlowNodeCard";
 import { getBuiltInNodeCardMeta } from "./nodeCardMeta";
 
-type StepNodeProps = {
-  id: string;
-  type: "marshal" | "unmarshal" | "process";
-  data: {
-    label?: string;
-    config?: Record<string, unknown>;
-  };
-  selected?: boolean;
+type StepNodeType = Exclude<BuiltInComponentType, "start">;
+
+type StepNodeData = {
+  label?: string;
+  config?: Record<string, unknown>;
 };
 
-function getNodeDescription(type: StepNodeProps["type"], config?: Record<string, unknown>) {
+type StepNodeProps = NodeProps<StepNodeData>;
+
+function isStepNodeType(type: string | undefined): type is StepNodeType {
+  return Boolean(type && type !== "start" && isBuiltInComponent(type));
+}
+
+function getNodeDescription(type: StepNodeType, config?: Record<string, unknown>) {
   if (type === "process") {
     return `ref: ${String(config?.ref ?? "processorRef")}`;
   }
@@ -23,6 +28,11 @@ function getNodeDescription(type: StepNodeProps["type"], config?: Record<string,
 
 export default function StepNode({ id, type, data, selected }: StepNodeProps) {
   const deleteNode = useFlowStore((state) => state.deleteNode);
+
+  if (!isStepNodeType(type)) {
+    return null;
+  }
+
   const meta = getBuiltInNodeCardMeta(type);
 
   if (!meta) {

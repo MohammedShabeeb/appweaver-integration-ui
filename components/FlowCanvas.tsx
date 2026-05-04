@@ -394,7 +394,7 @@ export default function FlowCanvas() {
               >
                 <span style={{ fontSize: 13, fontWeight: 600 }}>{result.title}</span>
                 <span style={{ fontSize: 11, color: "#64748b" }}>
-                  {result.kind} • {result.subtitle}
+                  {result.kind} &bull; {result.subtitle}
                 </span>
               </button>
             ))}
