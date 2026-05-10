@@ -3,6 +3,11 @@
 import { useMemo, useState } from "react";
 
 import {
+  appWeaverApiClient,
+  type AppWeaverLlmProviderConfig,
+  type AppWeaverRagConfig,
+} from "@/lib/appweaverApiClient";
+import {
   useFlowStore,
   type CreatedLlmConfig,
   type CreatedRagConfig,
@@ -101,6 +106,72 @@ function createRagEditorFromItem(item: CreatedRagConfig): RagEditorState {
     embeddingStoreApiKey: item.embeddingStoreApiKey,
     embeddingStoreIndexName: item.embeddingStoreIndexName,
     embeddingStoreDimension: item.embeddingStoreDimension,
+  };
+}
+
+function normalizeBackendProvider(provider: AppWeaverLlmProviderConfig): CreatedLlmConfig {
+  const providerId = provider.id?.trim() || provider.model;
+
+  return {
+    id: `llm-${providerId}`,
+    providerId,
+    provider: provider.provider ?? "",
+    model: provider.model ?? "",
+    baseUrl: provider.baseUrl ?? "",
+    apiKey: provider.apiKey ?? "",
+    templatePath: provider.templatePath ?? "/system-config/llm/templates",
+  };
+}
+
+function toBackendProvider(config: Omit<CreatedLlmConfig, "id">): AppWeaverLlmProviderConfig {
+  return {
+    id: config.providerId,
+    provider: config.provider,
+    model: config.model,
+    baseUrl: config.baseUrl,
+    templatePath: config.templatePath,
+    enableStreaming: false,
+    ...(config.apiKey.trim() ? { apiKey: config.apiKey } : {}),
+  };
+}
+
+function normalizeBackendRagConfig(config: AppWeaverRagConfig): CreatedRagConfig {
+  const ragId = config.id?.trim() || config.embeddingStore?.indexName || "default";
+
+  return {
+    id: `rag-${ragId}`,
+    ragId,
+    embeddingModelProvider: config.embeddingModel?.provider ?? "",
+    embeddingModelEndpoint: config.embeddingModel?.endpoint ?? "",
+    embeddingModelName: config.embeddingModel?.modelName ?? "",
+    embeddingStoreProvider: config.embeddingStore?.provider ?? "memory",
+    embeddingStoreEndpoint: config.embeddingStore?.endpoint ?? "",
+    embeddingStoreApiKey: config.embeddingStore?.apiKey ?? "",
+    embeddingStoreIndexName: config.embeddingStore?.indexName ?? "",
+    embeddingStoreDimension:
+      typeof config.embeddingStore?.dimension === "number"
+        ? String(config.embeddingStore.dimension)
+        : "",
+  };
+}
+
+function toBackendRagConfig(config: Omit<CreatedRagConfig, "id">): AppWeaverRagConfig {
+  const dimension = Number(config.embeddingStoreDimension);
+
+  return {
+    id: config.ragId,
+    embeddingModel: {
+      provider: config.embeddingModelProvider,
+      endpoint: config.embeddingModelEndpoint,
+      modelName: config.embeddingModelName,
+    },
+    embeddingStore: {
+      provider: config.embeddingStoreProvider,
+      ...(config.embeddingStoreEndpoint.trim() ? { endpoint: config.embeddingStoreEndpoint } : {}),
+      ...(config.embeddingStoreApiKey.trim() ? { apiKey: config.embeddingStoreApiKey } : {}),
+      ...(config.embeddingStoreIndexName.trim() ? { indexName: config.embeddingStoreIndexName } : {}),
+      ...(Number.isFinite(dimension) ? { dimension } : {}),
+    },
   };
 }
 
@@ -264,9 +335,11 @@ export default function LlmConfigurationWorkspace() {
     selectedLlmSubsection,
     selectLlmSubsection,
     addLlmConfig,
+    replaceLlmConfigs,
     updateLlmConfig,
     removeLlmConfig,
     addRagConfig,
+    replaceRagConfigs,
     updateRagConfig,
     removeRagConfig,
   } = useFlowStore();
@@ -277,6 +350,10 @@ export default function LlmConfigurationWorkspace() {
   const [ragEditor, setRagEditor] = useState<RagEditorState>(() => createRagEditorState());
   const [providerError, setProviderError] = useState<string | null>(null);
   const [ragError, setRagError] = useState<string | null>(null);
+  const [providerMessage, setProviderMessage] = useState<string | null>(null);
+  const [ragMessage, setRagMessage] = useState<string | null>(null);
+  const [isProviderLoading, setIsProviderLoading] = useState(false);
+  const [isRagLoading, setIsRagLoading] = useState(false);
 
   const selectedProvider = llmConfigs.find((item) => item.id === selectedProviderId) ?? null;
   const selectedRagConfig = ragConfigs.find((item) => item.id === selectedRagConfigId) ?? null;
@@ -433,10 +510,55 @@ export default function LlmConfigurationWorkspace() {
     return payload;
   };
 
-  const handleCreateProvider = () => {
+  const loadProviders = async () => {
+    setIsProviderLoading(true);
+    setProviderMessage(null);
+
+    try {
+      const backendProviders = await appWeaverApiClient.system.llm.providers.list();
+      const normalizedProviders = backendProviders.map(normalizeBackendProvider);
+
+      replaceLlmConfigs(normalizedProviders);
+      setProviderError(null);
+      setProviderMessage(`Loaded ${normalizedProviders.length} provider config${normalizedProviders.length === 1 ? "" : "s"} from the backend.`);
+    } catch (issue) {
+      setProviderError(issue instanceof Error ? issue.message : "Could not load LLM providers from the backend.");
+      setProviderMessage(null);
+    } finally {
+      setIsProviderLoading(false);
+    }
+  };
+
+  const loadRagConfigs = async () => {
+    setIsRagLoading(true);
+    setRagMessage(null);
+
+    try {
+      const backendRagConfigs = await appWeaverApiClient.system.llm.rag.list();
+      const normalizedRagConfigs = backendRagConfigs.map(normalizeBackendRagConfig);
+
+      replaceRagConfigs(normalizedRagConfigs);
+      setRagError(null);
+      setRagMessage(`Loaded ${normalizedRagConfigs.length} RAG config${normalizedRagConfigs.length === 1 ? "" : "s"} from the backend.`);
+    } catch (issue) {
+      setRagError(issue instanceof Error ? issue.message : "Could not load RAG configs from the backend.");
+      setRagMessage(null);
+    } finally {
+      setIsRagLoading(false);
+    }
+  };
+
+  const handleCreateProvider = async () => {
     const payload = buildProviderPayload();
 
     if (!payload) {
+      return;
+    }
+
+    try {
+      await appWeaverApiClient.system.llm.providers.create(toBackendProvider(payload));
+    } catch (issue) {
+      setProviderError(issue instanceof Error ? issue.message : "Could not create the provider config.");
       return;
     }
 
@@ -448,12 +570,13 @@ export default function LlmConfigurationWorkspace() {
     }
 
     setProviderError(null);
+    setProviderMessage(`Created provider "${payload.providerId}" in the backend.`);
     setProviderEditor(createLlmEditorState());
     setSelectedProviderId(null);
   };
 
-  const handleUpdateProvider = () => {
-    if (!selectedProviderId) {
+  const handleUpdateProvider = async () => {
+    if (!selectedProviderId || !selectedProvider) {
       setProviderError("Select a provider config from the list to edit it.");
       return;
     }
@@ -461,6 +584,16 @@ export default function LlmConfigurationWorkspace() {
     const payload = buildProviderPayload();
 
     if (!payload) {
+      return;
+    }
+
+    try {
+      await appWeaverApiClient.system.llm.providers.update(
+        selectedProvider.providerId,
+        toBackendProvider(payload),
+      );
+    } catch (issue) {
+      setProviderError(issue instanceof Error ? issue.message : "Could not update the provider config.");
       return;
     }
 
@@ -472,10 +605,25 @@ export default function LlmConfigurationWorkspace() {
     }
 
     setProviderError(null);
+    setProviderMessage(`Updated provider "${payload.providerId}" in the backend.`);
   };
 
-  const handleDeleteProvider = (configId: string) => {
+  const handleDeleteProvider = async (configId: string) => {
+    const provider = llmConfigs.find((item) => item.id === configId);
+
+    if (!provider) {
+      return;
+    }
+
+    try {
+      await appWeaverApiClient.system.llm.providers.remove(provider.providerId);
+    } catch (issue) {
+      setProviderError(issue instanceof Error ? issue.message : "Could not delete the provider config.");
+      return;
+    }
+
     removeLlmConfig(configId);
+    setProviderMessage(`Deleted provider "${provider.providerId}" from the backend.`);
 
     if (selectedProviderId === configId) {
       setSelectedProviderId(null);
@@ -484,10 +632,17 @@ export default function LlmConfigurationWorkspace() {
     }
   };
 
-  const handleCreateRag = () => {
+  const handleCreateRag = async () => {
     const payload = buildRagPayload();
 
     if (!payload) {
+      return;
+    }
+
+    try {
+      await appWeaverApiClient.system.llm.rag.create(toBackendRagConfig(payload));
+    } catch (issue) {
+      setRagError(issue instanceof Error ? issue.message : "Could not create the RAG config.");
       return;
     }
 
@@ -499,12 +654,13 @@ export default function LlmConfigurationWorkspace() {
     }
 
     setRagError(null);
+    setRagMessage(`Created RAG config "${payload.ragId}" in the backend.`);
     setRagEditor(createRagEditorState());
     setSelectedRagConfigId(null);
   };
 
-  const handleUpdateRag = () => {
-    if (!selectedRagConfigId) {
+  const handleUpdateRag = async () => {
+    if (!selectedRagConfigId || !selectedRagConfig) {
       setRagError("Select a RAG config from the list to edit it.");
       return;
     }
@@ -512,6 +668,16 @@ export default function LlmConfigurationWorkspace() {
     const payload = buildRagPayload();
 
     if (!payload) {
+      return;
+    }
+
+    try {
+      await appWeaverApiClient.system.llm.rag.update(
+        selectedRagConfig.ragId,
+        toBackendRagConfig(payload),
+      );
+    } catch (issue) {
+      setRagError(issue instanceof Error ? issue.message : "Could not update the RAG config.");
       return;
     }
 
@@ -523,10 +689,25 @@ export default function LlmConfigurationWorkspace() {
     }
 
     setRagError(null);
+    setRagMessage(`Updated RAG config "${payload.ragId}" in the backend.`);
   };
 
-  const handleDeleteRag = (configId: string) => {
+  const handleDeleteRag = async (configId: string) => {
+    const ragConfig = ragConfigs.find((item) => item.id === configId);
+
+    if (!ragConfig) {
+      return;
+    }
+
+    try {
+      await appWeaverApiClient.system.llm.rag.remove(ragConfig.ragId);
+    } catch (issue) {
+      setRagError(issue instanceof Error ? issue.message : "Could not delete the RAG config.");
+      return;
+    }
+
     removeRagConfig(configId);
+    setRagMessage(`Deleted RAG config "${ragConfig.ragId}" from the backend.`);
 
     if (selectedRagConfigId === configId) {
       setSelectedRagConfigId(null);
@@ -603,12 +784,14 @@ export default function LlmConfigurationWorkspace() {
           {selectedLlmSubsection === "providers" ? (
             <>
               {providerError ? <p style={{ margin: 0, color: "#dc2626", fontSize: 13, fontWeight: 600 }}>{providerError}</p> : null}
-              <div style={stickyActionBarStyle}><button type="button" onClick={handleCreateProvider} style={primaryButtonStyle}>Create Provider</button><button type="button" onClick={handleUpdateProvider} style={secondaryButtonStyle}>Edit Provider</button></div>
+              {providerMessage ? <p style={{ margin: providerError ? "8px 0 0" : 0, color: "#047857", fontSize: 13, fontWeight: 600 }}>{providerMessage}</p> : null}
+              <div style={stickyActionBarStyle}><button type="button" onClick={() => void handleCreateProvider()} style={primaryButtonStyle}>Create Provider</button><button type="button" onClick={() => void handleUpdateProvider()} style={secondaryButtonStyle}>Edit Provider</button><button type="button" onClick={() => void loadProviders()} disabled={isProviderLoading} style={secondaryButtonStyle}>{isProviderLoading ? "Loading..." : "Load Providers"}</button></div>
             </>
           ) : (
             <>
               {ragError ? <p style={{ margin: 0, color: "#dc2626", fontSize: 13, fontWeight: 600 }}>{ragError}</p> : null}
-              <div style={stickyActionBarStyle}><button type="button" onClick={handleCreateRag} style={primaryButtonStyle}>Create RAG Config</button><button type="button" onClick={handleUpdateRag} style={secondaryButtonStyle}>Edit RAG Config</button></div>
+              {ragMessage ? <p style={{ margin: ragError ? "8px 0 0" : 0, color: "#047857", fontSize: 13, fontWeight: 600 }}>{ragMessage}</p> : null}
+              <div style={stickyActionBarStyle}><button type="button" onClick={() => void handleCreateRag()} style={primaryButtonStyle}>Create RAG Config</button><button type="button" onClick={() => void handleUpdateRag()} style={secondaryButtonStyle}>Edit RAG Config</button><button type="button" onClick={() => void loadRagConfigs()} disabled={isRagLoading} style={secondaryButtonStyle}>{isRagLoading ? "Loading..." : "Load RAG Configs"}</button></div>
             </>
           )}
         </div>
@@ -623,7 +806,7 @@ export default function LlmConfigurationWorkspace() {
                 <button type="button" onClick={() => { selectLlmSubsection("providers"); setSelectedProviderId(item.id); setProviderEditor(createLlmEditorFromItem(item)); setProviderError(null); }} style={{ width: "100%", textAlign: "left", borderRadius: 18, border: item.id === selectedProviderId && selectedLlmSubsection === "providers" ? "1px solid rgba(15, 23, 42, 0.18)" : "1px solid rgba(226, 232, 240, 0.95)", background: item.id === selectedProviderId && selectedLlmSubsection === "providers" ? "linear-gradient(180deg, #eff6ff, #ffffff)" : "linear-gradient(180deg, #ffffff, #f8fafc)", padding: "14px 52px 14px 16px", color: "#0f172a", cursor: "pointer", boxShadow: item.id === selectedProviderId && selectedLlmSubsection === "providers" ? "0 14px 28px rgba(37, 99, 235, 0.10)" : "0 8px 18px rgba(15, 23, 42, 0.05)" }}>
                   <div style={{ fontSize: 14, fontWeight: 700, overflowWrap: "anywhere" }}>{item.providerId}</div><div style={listItemMetaStyle}>{item.provider} | {item.model}</div><div style={listItemMetaStyle}>{item.baseUrl}</div>
                 </button>
-                <button type="button" aria-label={`Delete ${item.providerId}`} onClick={() => handleDeleteProvider(item.id)} style={{ ...deleteIconButtonStyle, position: "absolute", top: "50%", right: 12, transform: "translateY(-50%)" }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}><path d="M9 3.75h6a1 1 0 0 1 1 1V6H8V4.75a1 1 0 0 1 1-1Z" /><path d="M4.75 6h14.5" /><path d="M6.75 6.75 7.6 19a2 2 0 0 0 2 1.86h4.8a2 2 0 0 0 2-1.86l.85-12.25" /><path d="M10 10.25v6.5" /><path d="M14 10.25v6.5" /></svg></button>
+                <button type="button" aria-label={`Delete ${item.providerId}`} onClick={() => void handleDeleteProvider(item.id)} style={{ ...deleteIconButtonStyle, position: "absolute", top: "50%", right: 12, transform: "translateY(-50%)" }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}><path d="M9 3.75h6a1 1 0 0 1 1 1V6H8V4.75a1 1 0 0 1 1-1Z" /><path d="M4.75 6h14.5" /><path d="M6.75 6.75 7.6 19a2 2 0 0 0 2 1.86h4.8a2 2 0 0 0 2-1.86l.85-12.25" /><path d="M10 10.25v6.5" /><path d="M14 10.25v6.5" /></svg></button>
               </div>
             )) : <div style={{ marginLeft: 12, borderRadius: 16, border: "1px dashed #cbd5e1", padding: "16px 18px", color: "#64748b", fontSize: 12, background: "rgba(248, 250, 252, 0.9)" }}>No provider configs created yet.</div>}
           </div>
@@ -634,7 +817,7 @@ export default function LlmConfigurationWorkspace() {
                 <button type="button" onClick={() => { selectLlmSubsection("rag"); setSelectedRagConfigId(item.id); setRagEditor(createRagEditorFromItem(item)); setRagError(null); }} style={{ width: "100%", textAlign: "left", borderRadius: 18, border: item.id === selectedRagConfigId && selectedLlmSubsection === "rag" ? "1px solid rgba(15, 23, 42, 0.18)" : "1px solid rgba(226, 232, 240, 0.95)", background: item.id === selectedRagConfigId && selectedLlmSubsection === "rag" ? "linear-gradient(180deg, #eff6ff, #ffffff)" : "linear-gradient(180deg, #ffffff, #f8fafc)", padding: "14px 52px 14px 16px", color: "#0f172a", cursor: "pointer", boxShadow: item.id === selectedRagConfigId && selectedLlmSubsection === "rag" ? "0 14px 28px rgba(37, 99, 235, 0.10)" : "0 8px 18px rgba(15, 23, 42, 0.05)" }}>
                   <div style={{ fontSize: 14, fontWeight: 700, overflowWrap: "anywhere" }}>{item.ragId}</div><div style={listItemMetaStyle}>{item.embeddingModelProvider} | {item.embeddingModelName}</div><div style={listItemMetaStyle}>{item.embeddingStoreProvider}{item.embeddingStoreIndexName ? ` | ${item.embeddingStoreIndexName}` : ""}</div>
                 </button>
-                <button type="button" aria-label={`Delete ${item.ragId}`} onClick={() => handleDeleteRag(item.id)} style={{ ...deleteIconButtonStyle, position: "absolute", top: "50%", right: 12, transform: "translateY(-50%)" }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}><path d="M9 3.75h6a1 1 0 0 1 1 1V6H8V4.75a1 1 0 0 1 1-1Z" /><path d="M4.75 6h14.5" /><path d="M6.75 6.75 7.6 19a2 2 0 0 0 2 1.86h4.8a2 2 0 0 0 2-1.86l.85-12.25" /><path d="M10 10.25v6.5" /><path d="M14 10.25v6.5" /></svg></button>
+                <button type="button" aria-label={`Delete ${item.ragId}`} onClick={() => void handleDeleteRag(item.id)} style={{ ...deleteIconButtonStyle, position: "absolute", top: "50%", right: 12, transform: "translateY(-50%)" }}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}><path d="M9 3.75h6a1 1 0 0 1 1 1V6H8V4.75a1 1 0 0 1 1-1Z" /><path d="M4.75 6h14.5" /><path d="M6.75 6.75 7.6 19a2 2 0 0 0 2 1.86h4.8a2 2 0 0 0 2-1.86l.85-12.25" /><path d="M10 10.25v6.5" /><path d="M14 10.25v6.5" /></svg></button>
               </div>
             )) : <div style={{ marginLeft: 12, borderRadius: 16, border: "1px dashed #cbd5e1", padding: "16px 18px", color: "#64748b", fontSize: 12, background: "rgba(248, 250, 252, 0.9)" }}>No RAG configs created yet.</div>}
           </div>

@@ -1,13 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import LlmConfigurationWorkspace from "./LlmConfigurationWorkspace";
 import EndpointsConfigurationWorkspace from "./EndpointsConfigurationWorkspace";
+import {
+  appWeaverApiClient,
+  type AppWeaverBeanConfig,
+  type AppWeaverDataSourceConfig,
+} from "@/lib/appweaverApiClient";
 
 import {
   useFlowStore,
   type CreatedBean,
   type CreatedDataSource,
+  type CreatedDataSourceTenant,
   type CreatedSecurityConfig,
   type SecuritySubsection,
 } from "@/store/useFlowStore";
@@ -35,6 +41,7 @@ type SecurityEditorState = {
   fileName: string;
   content: string;
   authTenants: AuthTenantEditorState[];
+  authorizePolicy: AuthorizePolicyEditorState;
 };
 
 type AuthClientEditorState = {
@@ -50,6 +57,28 @@ type AuthTenantEditorState = {
   keyHeader: string;
   secretHeader: string;
   clients: AuthClientEditorState[];
+};
+
+type AuthorizeRuleType = "ROLE" | "OR" | "AND" | "NOT";
+
+type AuthorizeRoleEditorState = {
+  id: string;
+  name: string;
+};
+
+type AuthorizeRuleEditorState = {
+  id: string;
+  type: AuthorizeRuleType;
+  roleId: string;
+  roleIds: string[];
+};
+
+type AuthorizePolicyEditorState = {
+  policyName: string;
+  enabled: boolean;
+  roles: AuthorizeRoleEditorState[];
+  roleHierarchy: Record<string, string[]>;
+  rules: AuthorizeRuleEditorState[];
 };
 
 function createBeanEditorState(): BeanEditorState {
@@ -101,6 +130,99 @@ function createDataSourceEditorFromItem(dataSource: CreatedDataSource): DataSour
     l2CacheProvider: dataSource.l2CacheProvider,
     strategy: JSON.stringify(dataSource.strategy, null, 2),
   };
+}
+
+function createBeanId(name: string) {
+  return `bean-${encodeURIComponent(name)}`;
+}
+
+function normalizeBackendBean(bean: AppWeaverBeanConfig): CreatedBean {
+  const name = bean.name ?? "";
+
+  return {
+    id: createBeanId(name),
+    name,
+    className: bean.className ?? "",
+    constructorArgs: Array.isArray(bean.constructorArgs) ? bean.constructorArgs : [],
+  };
+}
+
+function toBackendBean(bean: Omit<CreatedBean, "id">): AppWeaverBeanConfig {
+  return {
+    name: bean.name,
+    className: bean.className,
+    constructorArgs: bean.constructorArgs,
+    enabled: true,
+  };
+}
+
+function createDataSourceId(key: string) {
+  return `datasource-${encodeURIComponent(key)}`;
+}
+
+function normalizeBackendDataSources(
+  dataSources: Record<string, AppWeaverDataSourceConfig>,
+): CreatedDataSource[] {
+  if (!dataSources || typeof dataSources !== "object" || Array.isArray(dataSources)) {
+    throw new Error("Datasource API response must be a JSON object keyed by datasource name.");
+  }
+
+  return Object.entries(dataSources).map(([key, dataSource]) => ({
+    id: createDataSourceId(key),
+    key,
+    driver: dataSource.driver ?? "",
+    username: dataSource.username ?? "",
+    password: dataSource.password ?? "",
+    maxPool: Number(dataSource.maxPool ?? 0),
+    minPool: Number(dataSource.minPool ?? 0),
+    url: dataSource.url ?? "",
+    packageToScan: dataSource.packageToScan ?? "",
+    l2CacheProvider: dataSource.l2CacheProvider ?? "",
+    strategy: {
+      name: dataSource.strategy?.name ?? "",
+      ...(dataSource.strategy?.schema ? { schema: dataSource.strategy.schema } : {}),
+    },
+  }));
+}
+
+function toBackendDataSource(dataSource: Omit<CreatedDataSource, "id">): AppWeaverDataSourceConfig {
+  return {
+    name: dataSource.key,
+    driver: dataSource.driver,
+    username: dataSource.username,
+    password: dataSource.password,
+    maxPool: dataSource.maxPool,
+    minPool: dataSource.minPool,
+    url: dataSource.url,
+    packageToScan: dataSource.packageToScan,
+    l2CacheProvider: dataSource.l2CacheProvider,
+    strategy: dataSource.strategy,
+  };
+}
+
+function normalizeBackendDataSource(
+  key: string,
+  dataSource: AppWeaverDataSourceConfig,
+): CreatedDataSource {
+  return normalizeBackendDataSources({ [key]: dataSource })[0];
+}
+
+function createDataSourceTenantId(tenantName: string) {
+  return `datasource-tenant-${encodeURIComponent(tenantName)}`;
+}
+
+function normalizeBackendDataSourceTenants(
+  tenants: Record<string, string>,
+): CreatedDataSourceTenant[] {
+  if (!tenants || typeof tenants !== "object" || Array.isArray(tenants)) {
+    throw new Error("Datasource tenant API response must be a JSON object keyed by tenant name.");
+  }
+
+  return Object.entries(tenants).map(([tenantName, dataSourceKey]) => ({
+    id: createDataSourceTenantId(tenantName),
+    tenantName,
+    dataSourceKey,
+  }));
 }
 
 function createAuthClientEditorState(
@@ -207,19 +329,224 @@ function parseAuthTenants(content: string): AuthTenantEditorState[] {
   }
 }
 
+function createAuthorizeRoleEditorState(name = ""): AuthorizeRoleEditorState {
+  return {
+    id: `role-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name,
+  };
+}
+
+function createAuthorizeRuleEditorState(
+  roleId: string,
+  overrides: Partial<Omit<AuthorizeRuleEditorState, "id">> = {},
+): AuthorizeRuleEditorState {
+  return {
+    id: `rule-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type: overrides.type ?? "ROLE",
+    roleId: overrides.roleId ?? roleId,
+    roleIds: overrides.roleIds ?? (roleId ? [roleId] : []),
+  };
+}
+
+function createDefaultAuthorizePolicy(): AuthorizePolicyEditorState {
+  const admin = createAuthorizeRoleEditorState("admin");
+  const manager = createAuthorizeRoleEditorState("manager");
+  const user = createAuthorizeRoleEditorState("user");
+
+  return {
+    policyName: "policy1",
+    enabled: true,
+    roles: [admin, manager, user],
+    roleHierarchy: {
+      [admin.id]: [manager.id],
+      [manager.id]: [user.id],
+      [user.id]: [],
+    },
+    rules: [createAuthorizeRuleEditorState(user.id)],
+  };
+}
+
+function buildAuthorizeRule(
+  rule: AuthorizeRuleEditorState,
+  roleNameById: Map<string, string>,
+) {
+  if (rule.type === "ROLE") {
+    return {
+      type: "ROLE",
+      value: roleNameById.get(rule.roleId) ?? "",
+    };
+  }
+
+  return {
+    type: rule.type,
+    policyRules: rule.roleIds
+      .map((roleId) => roleNameById.get(roleId))
+      .filter((roleName): roleName is string => Boolean(roleName))
+      .map((roleName) => ({
+        type: "ROLE",
+        value: roleName,
+      })),
+  };
+}
+
+function buildAuthorizeConfig(policy: AuthorizePolicyEditorState) {
+  const roleNameById = new Map(
+    policy.roles
+      .map((role) => [role.id, role.name.trim()] as const)
+      .filter(([, name]) => Boolean(name)),
+  );
+
+  return {
+    policies: {
+      [policy.policyName.trim()]: {
+        roleHierarchy: Object.fromEntries(
+          policy.roles
+            .map((role) => {
+              const roleName = role.name.trim();
+
+              if (!roleName) {
+                return null;
+              }
+
+              return [
+                roleName,
+                (policy.roleHierarchy[role.id] ?? [])
+                  .map((childRoleId) => roleNameById.get(childRoleId))
+                  .filter((childRoleName): childRoleName is string => Boolean(childRoleName)),
+              ] as const;
+            })
+            .filter((entry): entry is readonly [string, string[]] => Boolean(entry)),
+        ),
+        rule:
+          policy.rules.length === 1
+            ? buildAuthorizeRule(policy.rules[0], roleNameById)
+            : {
+                type: "AND",
+                policyRules: policy.rules.map((rule) => buildAuthorizeRule(rule, roleNameById)),
+              },
+        enabled: policy.enabled,
+      },
+    },
+  };
+}
+
+function serializeAuthorizeConfig(policy: AuthorizePolicyEditorState) {
+  return JSON.stringify(buildAuthorizeConfig(policy), null, 2);
+}
+
+function parseAuthorizePolicy(content: string): AuthorizePolicyEditorState {
+  try {
+    type ParsedAuthorizeRule = {
+      type?: string;
+      value?: string;
+      policyRules?: ParsedAuthorizeRule[];
+    };
+    const parsed = JSON.parse(content) as {
+      policies?: Record<
+        string,
+        {
+          roleHierarchy?: Record<string, string[]>;
+          rule?: ParsedAuthorizeRule;
+          enabled?: boolean;
+        }
+      >;
+    };
+    const policyEntry = Object.entries(parsed.policies ?? {})[0];
+
+    if (!policyEntry) {
+      return createDefaultAuthorizePolicy();
+    }
+
+    const [policyName, policyValue] = policyEntry;
+    const collectRuleValues = (rule?: ParsedAuthorizeRule): string[] => {
+      if (!rule) {
+        return [];
+      }
+
+      return [
+        rule.value ?? "",
+        ...(rule.policyRules ?? []).flatMap((policyRule) => collectRuleValues(policyRule)),
+      ].filter(Boolean);
+    };
+    const roleNames = Array.from(
+      new Set([
+        ...Object.keys(policyValue.roleHierarchy ?? {}),
+        ...Object.values(policyValue.roleHierarchy ?? {}).flat(),
+        ...collectRuleValues(policyValue.rule),
+      ].filter(Boolean)),
+    );
+    const roles = (roleNames.length > 0 ? roleNames : ["admin", "manager", "user"]).map((roleName) =>
+      createAuthorizeRoleEditorState(roleName),
+    );
+    const roleIdByName = new Map(roles.map((role) => [role.name, role.id]));
+    const roleHierarchy = Object.fromEntries(
+      roles.map((role) => [
+        role.id,
+        (policyValue.roleHierarchy?.[role.name] ?? [])
+          .map((childRoleName) => roleIdByName.get(childRoleName))
+          .filter((childRoleId): childRoleId is string => Boolean(childRoleId)),
+      ]),
+    );
+    const firstRoleId = roles[0]?.id ?? "";
+    const createParsedRule = (rule?: ParsedAuthorizeRule) => {
+      const type: AuthorizeRuleType =
+        rule?.type === "OR" || rule?.type === "AND" || rule?.type === "NOT"
+          ? rule.type
+          : "ROLE";
+      const roleId =
+        roleIdByName.get(rule?.value ?? "") ??
+        roleIdByName.get(rule?.policyRules?.[0]?.value ?? "") ??
+        firstRoleId;
+      const roleIds =
+        rule?.policyRules
+          ?.map((policyRule) => roleIdByName.get(policyRule.value ?? ""))
+          .filter((parsedRoleId): parsedRoleId is string => Boolean(parsedRoleId)) ??
+        (roleId ? [roleId] : []);
+
+      return createAuthorizeRuleEditorState(roleId, {
+        type,
+        roleId,
+        roleIds,
+      });
+    };
+    const parsedRules =
+      policyValue.rule?.type === "AND" &&
+      policyValue.rule.policyRules?.some((rule) => rule.type && rule.type !== "ROLE")
+        ? policyValue.rule.policyRules.map((rule) => createParsedRule(rule))
+        : [createParsedRule(policyValue.rule)];
+
+    return {
+      policyName,
+      enabled: policyValue.enabled ?? true,
+      roles,
+      roleHierarchy,
+      rules: parsedRules.length > 0 ? parsedRules : [createAuthorizeRuleEditorState(firstRoleId)],
+    };
+  } catch {
+    return createDefaultAuthorizePolicy();
+  }
+}
+
 const SECURITY_DEFAULTS: Record<
   SecuritySubsection,
-  { fileName: string; content: string; authTenants: AuthTenantEditorState[] }
+  {
+    fileName: string;
+    content: string;
+    authTenants: AuthTenantEditorState[];
+    authorizePolicy: AuthorizePolicyEditorState;
+  }
 > = {
   auth: {
     fileName: "apikey.json",
     content: serializeAuthConfig(createDefaultAuthTenants()),
     authTenants: createDefaultAuthTenants(),
+    authorizePolicy: createDefaultAuthorizePolicy(),
   },
   authorize: {
     fileName: "policy.json",
-    content: '{\n  "type": "policy",\n  "effect": "allow",\n  "resource": "*",\n  "actions": []\n}',
+    content: serializeAuthorizeConfig(createDefaultAuthorizePolicy()),
     authTenants: createDefaultAuthTenants(),
+    authorizePolicy: createDefaultAuthorizePolicy(),
   },
 };
 
@@ -231,6 +558,8 @@ function createSecurityEditorState(subsection: SecuritySubsection): SecurityEdit
     content: defaults.content,
     authTenants:
       subsection === "auth" ? defaults.authTenants : createDefaultAuthTenants(),
+    authorizePolicy:
+      subsection === "authorize" ? defaults.authorizePolicy : createDefaultAuthorizePolicy(),
   };
 }
 
@@ -240,6 +569,8 @@ function createSecurityEditorFromItem(item: CreatedSecurityConfig): SecurityEdit
     content: item.content,
     authTenants:
       item.subsection === "auth" ? parseAuthTenants(item.content) : createDefaultAuthTenants(),
+    authorizePolicy:
+      item.subsection === "authorize" ? parseAuthorizePolicy(item.content) : createDefaultAuthorizePolicy(),
   };
 }
 
@@ -397,49 +728,127 @@ function SectionTitle({
 }
 
 function BeansWorkspace() {
-  const { beans, addBean, updateBean, removeBean } = useFlowStore();
+  const { beans, addBean, replaceBeans, updateBean, removeBean } = useFlowStore();
   const [selectedBeanId, setSelectedBeanId] = useState<string | null>(null);
   const [editor, setEditor] = useState<BeanEditorState>(() => createBeanEditorState());
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadMessage, setLoadMessage] = useState<string | null>(null);
+  const [lookupName, setLookupName] = useState("");
   const constructorArgs = normalizeConstructorArgs(editor.constructorArgs);
 
   const selectedBean = beans.find((bean) => bean.id === selectedBeanId) ?? null;
 
-  const handleCreate = () => {
-    try {
-      const nextConstructorArgs = constructorArgs.map((arg) => parseConstructorArgValue(arg));
+  const parseBeanEditor = () => ({
+    name: editor.name,
+    className: editor.className,
+    constructorArgs: constructorArgs.map((arg) => parseConstructorArgValue(arg)),
+  });
 
-      const result = addBean({
-        name: editor.name,
-        className: editor.className,
-        constructorArgs: nextConstructorArgs,
-      });
+  const loadBeans = useCallback(async () => {
+    setIsLoading(true);
+    setLoadMessage(null);
+
+    try {
+      const backendBeans = await appWeaverApiClient.system.beans.list();
+      const normalizedBeans = backendBeans.map(normalizeBackendBean);
+
+      replaceBeans(normalizedBeans);
+      setError(null);
+      setLoadMessage(`Loaded ${normalizedBeans.length} bean${normalizedBeans.length === 1 ? "" : "s"} from the backend.`);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not load beans from the backend.");
+      setLoadMessage(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [replaceBeans]);
+
+  const handleGetBeanByName = async () => {
+    const trimmedName = lookupName.trim();
+
+    if (!trimmedName) {
+      setError("Enter a bean name to fetch.");
+      return;
+    }
+
+    setIsLoading(true);
+    setLoadMessage(null);
+
+    try {
+      const backendBean = await appWeaverApiClient.system.beans.get(trimmedName);
+      const normalizedBean = normalizeBackendBean({ ...backendBean, name: backendBean.name ?? trimmedName });
+
+      replaceBeans([normalizedBean]);
+      setSelectedBeanId(normalizedBean.id);
+      setEditor(createBeanEditorFromItem(normalizedBean));
+      setError(null);
+      setLoadMessage(`Loaded bean "${normalizedBean.name}" from the backend.`);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not load that bean from the backend.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCreate = async () => {
+    try {
+      const payload = parseBeanEditor();
+      const trimmedName = payload.name.trim();
+
+      if (!trimmedName) {
+        setError("Bean name is required.");
+        return;
+      }
+
+      if (beans.some((bean) => bean.name === trimmedName)) {
+        setError("A bean with that name already exists.");
+        return;
+      }
+
+      await appWeaverApiClient.system.beans.create(
+        trimmedName,
+        toBackendBean({ ...payload, name: trimmedName }),
+      );
+      const result = addBean(payload);
 
       if (!result.ok) {
         setError(result.reason);
         return;
       }
 
+      setEditor(createBeanEditorState());
       setError(null);
-    } catch {
-      setError("The constructor arguments could not be converted.");
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "The constructor arguments could not be converted.");
     }
   };
 
-  const handleUpdate = () => {
-    if (!selectedBeanId) {
+  const handleUpdate = async () => {
+    if (!selectedBeanId || !selectedBean) {
       setError("Select a bean from the list to edit it.");
       return;
     }
 
     try {
-      const nextConstructorArgs = constructorArgs.map((arg) => parseConstructorArgValue(arg));
+      const payload = parseBeanEditor();
+      const trimmedName = payload.name.trim();
 
-      const result = updateBean(selectedBeanId, {
-        name: editor.name,
-        className: editor.className,
-        constructorArgs: nextConstructorArgs,
-      });
+      if (!trimmedName) {
+        setError("Bean name is required.");
+        return;
+      }
+
+      if (beans.some((bean) => bean.id !== selectedBeanId && bean.name === trimmedName)) {
+        setError("A bean with that name already exists.");
+        return;
+      }
+
+      await appWeaverApiClient.system.beans.update(
+        selectedBean.name,
+        toBackendBean({ ...payload, name: trimmedName }),
+      );
+      const result = updateBean(selectedBeanId, payload);
 
       if (!result.ok) {
         setError(result.reason);
@@ -447,13 +856,25 @@ function BeansWorkspace() {
       }
 
       setError(null);
-    } catch {
-      setError("The constructor arguments could not be converted.");
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "The constructor arguments could not be converted.");
     }
   };
 
-  const handleDelete = (beanId: string) => {
-    removeBean(beanId);
+  const handleDelete = async (beanId: string) => {
+    const bean = beans.find((item) => item.id === beanId);
+
+    if (!bean) {
+      return;
+    }
+
+    try {
+      await appWeaverApiClient.system.beans.remove(bean.name);
+      removeBean(beanId);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not delete the bean.");
+      return;
+    }
 
     if (selectedBeanId === beanId) {
       setSelectedBeanId(null);
@@ -468,7 +889,7 @@ function BeansWorkspace() {
         <section style={workspacePanelStyle}>
           <SectionTitle
             title={selectedBean ? "Edit Bean" : "Create Bean"}
-            subtitle="Enter bean values manually, then save a new bean or update the selected one."
+            subtitle="Create and manage bean definitions from the AppWeaver backend."
           />
           <div
             style={{
@@ -575,10 +996,21 @@ function BeansWorkspace() {
           <div style={{ flexShrink: 0 }}>
             {error ? <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{error}</p> : null}
             <div style={stickyActionBarStyle}>
-              <button type="button" onClick={handleCreate} style={primaryButtonStyle}>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedBeanId(null);
+                  setEditor(createBeanEditorState());
+                  setError(null);
+                }}
+                style={secondaryButtonStyle}
+              >
+                New Bean
+              </button>
+              <button type="button" onClick={() => void handleCreate()} style={primaryButtonStyle}>
                 Create Bean
               </button>
-              <button type="button" onClick={handleUpdate} style={secondaryButtonStyle}>
+              <button type="button" onClick={() => void handleUpdate()} style={secondaryButtonStyle}>
                 Edit Bean
               </button>
             </div>
@@ -588,8 +1020,57 @@ function BeansWorkspace() {
         <section style={workspacePanelStyle}>
           <SectionTitle
             title="List Beans"
-            subtitle="Select an existing bean to edit it, or enter a new bean manually."
+            subtitle="Click load to fetch the current bean list from the backend."
           />
+          <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+            <button
+              type="button"
+              onClick={() => void loadBeans()}
+              disabled={isLoading}
+              style={{
+                ...secondaryButtonStyle,
+                minHeight: 44,
+                opacity: isLoading ? 0.7 : 1,
+                cursor: isLoading ? "wait" : "pointer",
+              }}
+            >
+              {isLoading ? "Loading Beans" : "Load Beans"}
+            </button>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) auto",
+                gap: 10,
+                alignItems: "center",
+              }}
+            >
+              <input
+                value={lookupName}
+                onChange={(event) => setLookupName(event.target.value)}
+                placeholder="bean name"
+                style={{ ...fieldStyle, minHeight: 44, padding: "9px 12px" }}
+              />
+              <button
+                type="button"
+                onClick={() => void handleGetBeanByName()}
+                disabled={isLoading}
+                style={{
+                  ...secondaryButtonStyle,
+                  minHeight: 44,
+                  whiteSpace: "nowrap",
+                  opacity: isLoading ? 0.7 : 1,
+                  cursor: isLoading ? "wait" : "pointer",
+                }}
+              >
+                Get By Name
+              </button>
+            </div>
+            {loadMessage ? (
+              <p style={{ margin: 0, color: "#166534", fontSize: 12, lineHeight: 1.5 }}>
+                {loadMessage}
+              </p>
+            ) : null}
+          </div>
           <div
             style={{
               marginTop: 18,
@@ -640,7 +1121,7 @@ function BeansWorkspace() {
                   <button
                     type="button"
                     aria-label={`Delete ${bean.name}`}
-                    onClick={() => handleDelete(bean.id)}
+                    onClick={() => void handleDelete(bean.id)}
                     style={{
                       ...deleteIconButtonStyle,
                       position: "absolute",
@@ -681,6 +1162,7 @@ function BeansWorkspace() {
               </div>
             )}
           </div>
+
         </section>
       </div>
     </>
@@ -688,12 +1170,99 @@ function BeansWorkspace() {
 }
 
 function DatasourcesWorkspace() {
-  const { dataSources, addDataSource, updateDataSource, removeDataSource } = useFlowStore();
+  const {
+    dataSources,
+    dataSourceTenants,
+    addDataSource,
+    replaceDataSources,
+    addDataSourceTenant,
+    replaceDataSourceTenants,
+    updateDataSourceTenant,
+    removeDataSourceTenant,
+    updateDataSource,
+    removeDataSource,
+  } = useFlowStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
   const [editor, setEditor] = useState<DataSourceEditorState>(() => createDataSourceEditorState());
+  const [newEditorDraft, setNewEditorDraft] = useState<DataSourceEditorState>(() =>
+    createDataSourceEditorState(),
+  );
+  const [editorDrafts, setEditorDrafts] = useState<Record<string, DataSourceEditorState>>({});
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isTenantLoading, setIsTenantLoading] = useState(false);
+  const [loadMessage, setLoadMessage] = useState<string | null>(null);
+  const [tenantMessage, setTenantMessage] = useState<string | null>(null);
+  const [lookupName, setLookupName] = useState("");
+  const [tenantName, setTenantName] = useState("");
+  const [tenantDataSourceKey, setTenantDataSourceKey] = useState("");
 
   const selectedItem = dataSources.find((item) => item.id === selectedId) ?? null;
+  const selectedTenant = dataSourceTenants.find((item) => item.id === selectedTenantId) ?? null;
+
+  const updateEditor = (
+    updater: DataSourceEditorState | ((current: DataSourceEditorState) => DataSourceEditorState),
+  ) => {
+    setEditor((current) => {
+      const nextEditor = typeof updater === "function" ? updater(current) : updater;
+
+      if (selectedId) {
+        setEditorDrafts((currentDrafts) => ({
+          ...currentDrafts,
+          [selectedId]: nextEditor,
+        }));
+      } else {
+        setNewEditorDraft(nextEditor);
+      }
+
+      return nextEditor;
+    });
+  };
+
+  const selectDataSource = (dataSource: CreatedDataSource) => {
+    setSelectedId(dataSource.id);
+    setEditor(editorDrafts[dataSource.id] ?? createDataSourceEditorFromItem(dataSource));
+    setError(null);
+  };
+
+  const loadDataSources = useCallback(async () => {
+    setIsLoading(true);
+    setLoadMessage(null);
+
+    try {
+      const backendDataSources = await appWeaverApiClient.system.dataSources.list();
+      const normalizedDataSources = normalizeBackendDataSources(backendDataSources);
+
+      replaceDataSources(normalizedDataSources);
+      setError(null);
+      setLoadMessage(`Loaded ${normalizedDataSources.length} datasource${normalizedDataSources.length === 1 ? "" : "s"} from the backend.`);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not load datasources from the backend.");
+      setLoadMessage(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [replaceDataSources]);
+
+  const loadDataSourceTenants = useCallback(async () => {
+    setIsTenantLoading(true);
+    setTenantMessage(null);
+
+    try {
+      const backendTenants = await appWeaverApiClient.system.dataSourceTenants.list();
+      const normalizedTenants = normalizeBackendDataSourceTenants(backendTenants);
+
+      replaceDataSourceTenants(normalizedTenants);
+      setError(null);
+      setTenantMessage(`Loaded ${normalizedTenants.length} tenant mapping${normalizedTenants.length === 1 ? "" : "s"} from the backend.`);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not load datasource tenant mappings from the backend.");
+      setTenantMessage(null);
+    } finally {
+      setIsTenantLoading(false);
+    }
+  }, [replaceDataSourceTenants]);
 
   const parseEditor = () => {
     const strategy = JSON.parse(editor.strategy);
@@ -723,11 +1292,64 @@ function DatasourcesWorkspace() {
     };
   };
 
-  const runAction = (
-    action: (payload: Omit<CreatedDataSource, "id">) => { ok: true } | { ok: false; reason: string },
-  ) => {
+  const handleCreate = async () => {
     try {
-      const result = action(parseEditor());
+      const payload = parseEditor();
+      const trimmedKey = payload.key.trim();
+
+      if (!trimmedKey) {
+        setError("Datasource key is required.");
+        return;
+      }
+
+      if (dataSources.some((item) => item.key === trimmedKey)) {
+        setError("A datasource with that key already exists.");
+        return;
+      }
+
+      await appWeaverApiClient.system.dataSources.create(toBackendDataSource({ ...payload, key: trimmedKey }));
+      const result = addDataSource(payload);
+
+      if (!result.ok) {
+        setError(result.reason);
+        return;
+      }
+
+      const blankEditor = createDataSourceEditorState();
+
+      setNewEditorDraft(blankEditor);
+      setEditor(blankEditor);
+      setError(null);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "The datasource fields are invalid.");
+    }
+  };
+
+  const handleUpdate = async () => {
+    if (!selectedId || !selectedItem) {
+      setError("Select a datasource from the list to edit it.");
+      return;
+    }
+
+    try {
+      const payload = parseEditor();
+      const trimmedKey = payload.key.trim();
+
+      if (!trimmedKey) {
+        setError("Datasource key is required.");
+        return;
+      }
+
+      if (dataSources.some((item) => item.id !== selectedId && item.key === trimmedKey)) {
+        setError("A datasource with that key already exists.");
+        return;
+      }
+
+      await appWeaverApiClient.system.dataSources.update(
+        selectedItem.key,
+        toBackendDataSource({ ...payload, key: trimmedKey }),
+      );
+      const result = updateDataSource(selectedId, payload);
 
       if (!result.ok) {
         setError(result.reason);
@@ -735,18 +1357,216 @@ function DatasourcesWorkspace() {
       }
 
       setError(null);
+      setEditorDrafts((currentDrafts) => {
+        const { [selectedId]: savedDraft, ...remainingDrafts } = currentDrafts;
+        void savedDraft;
+        return remainingDrafts;
+      });
     } catch (issue) {
       setError(issue instanceof Error ? issue.message : "The datasource fields are invalid.");
     }
   };
 
-  const handleDelete = (dataSourceId: string) => {
-    removeDataSource(dataSourceId);
+  const handleDelete = async (dataSourceId: string) => {
+    const dataSource = dataSources.find((item) => item.id === dataSourceId);
+
+    if (!dataSource) {
+      return;
+    }
+
+    try {
+      await appWeaverApiClient.system.dataSources.remove(dataSource.key);
+      removeDataSource(dataSourceId);
+      setEditorDrafts((currentDrafts) => {
+        const { [dataSourceId]: deletedDraft, ...remainingDrafts } = currentDrafts;
+        void deletedDraft;
+        return remainingDrafts;
+      });
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not delete the datasource.");
+      return;
+    }
 
     if (selectedId === dataSourceId) {
       setSelectedId(null);
-      setEditor(createDataSourceEditorState());
+      setEditor(newEditorDraft);
       setError(null);
+    }
+  };
+
+  const handleGetDataSourceByName = async () => {
+    const trimmedName = lookupName.trim();
+
+    if (!trimmedName) {
+      setError("Enter a datasource name to fetch.");
+      return;
+    }
+
+    setIsLoading(true);
+    setLoadMessage(null);
+
+    try {
+      const backendDataSource = await appWeaverApiClient.system.dataSources.get(trimmedName);
+      const normalizedDataSource = normalizeBackendDataSource(trimmedName, backendDataSource);
+      const nextDataSources = [
+        normalizedDataSource,
+        ...dataSources.filter((item) => item.key !== normalizedDataSource.key),
+      ];
+
+      replaceDataSources(nextDataSources);
+      setSelectedId(normalizedDataSource.id);
+      setEditorDrafts((currentDrafts) => ({
+        ...currentDrafts,
+        [normalizedDataSource.id]: createDataSourceEditorFromItem(normalizedDataSource),
+      }));
+      setEditor(createDataSourceEditorFromItem(normalizedDataSource));
+      setError(null);
+      setLoadMessage(`Loaded datasource "${normalizedDataSource.key}" from the backend.`);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not load that datasource from the backend.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleNewDataSource = () => {
+    setSelectedId(null);
+    setEditor(newEditorDraft);
+    setError(null);
+    setLoadMessage(null);
+  };
+
+  const selectDataSourceTenant = (tenant: CreatedDataSourceTenant) => {
+    setSelectedTenantId(tenant.id);
+    setTenantName(tenant.tenantName);
+    setTenantDataSourceKey(tenant.dataSourceKey);
+    setError(null);
+    setTenantMessage(null);
+  };
+
+  const handleNewDataSourceTenant = () => {
+    setSelectedTenantId(null);
+    setTenantName("");
+    setTenantDataSourceKey(dataSources[0]?.key ?? "");
+    setError(null);
+    setTenantMessage(null);
+  };
+
+  const validateTenantEditor = () => {
+    const trimmedTenantName = tenantName.trim();
+    const trimmedDataSourceKey = tenantDataSourceKey.trim();
+
+    if (!trimmedTenantName) {
+      throw new Error("Tenant name is required.");
+    }
+
+    if (!trimmedDataSourceKey) {
+      throw new Error("Select a datasource for the tenant.");
+    }
+
+    if (!dataSources.some((item) => item.key === trimmedDataSourceKey)) {
+      throw new Error("Selected datasource is not available in the datasource list.");
+    }
+
+    return {
+      tenantName: trimmedTenantName,
+      dataSourceKey: trimmedDataSourceKey,
+    };
+  };
+
+  const handleCreateDataSourceTenant = async () => {
+    try {
+      const payload = validateTenantEditor();
+
+      if (dataSourceTenants.some((item) => item.tenantName === payload.tenantName)) {
+        setError("A tenant mapping with that name already exists.");
+        return;
+      }
+
+      await appWeaverApiClient.system.dataSourceTenants.create(
+        payload.tenantName,
+        payload.dataSourceKey,
+      );
+      const result = addDataSourceTenant(payload);
+
+      if (!result.ok) {
+        setError(result.reason);
+        return;
+      }
+
+      setSelectedTenantId(null);
+      setTenantName("");
+      setTenantDataSourceKey(dataSources[0]?.key ?? "");
+      setError(null);
+      setTenantMessage(`Created tenant mapping "${payload.tenantName}".`);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not create the datasource tenant mapping.");
+    }
+  };
+
+  const handleUpdateDataSourceTenant = async () => {
+    if (!selectedTenantId || !selectedTenant) {
+      setError("Select a tenant mapping from the list to edit it.");
+      return;
+    }
+
+    try {
+      const payload = validateTenantEditor();
+
+      if (
+        dataSourceTenants.some(
+          (item) => item.id !== selectedTenantId && item.tenantName === payload.tenantName,
+        )
+      ) {
+        setError("A tenant mapping with that name already exists.");
+        return;
+      }
+
+      if (payload.tenantName === selectedTenant.tenantName) {
+        await appWeaverApiClient.system.dataSourceTenants.update(
+          payload.tenantName,
+          payload.dataSourceKey,
+        );
+      } else {
+        await appWeaverApiClient.system.dataSourceTenants.create(
+          payload.tenantName,
+          payload.dataSourceKey,
+        );
+        await appWeaverApiClient.system.dataSourceTenants.remove(selectedTenant.tenantName);
+      }
+
+      const result = updateDataSourceTenant(selectedTenantId, payload);
+
+      if (!result.ok) {
+        setError(result.reason);
+        return;
+      }
+
+      setError(null);
+      setTenantMessage(`Updated tenant mapping "${payload.tenantName}".`);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not update the datasource tenant mapping.");
+    }
+  };
+
+  const handleDeleteDataSourceTenant = async (tenantId: string) => {
+    const tenant = dataSourceTenants.find((item) => item.id === tenantId);
+
+    if (!tenant) {
+      return;
+    }
+
+    try {
+      await appWeaverApiClient.system.dataSourceTenants.remove(tenant.tenantName);
+      removeDataSourceTenant(tenantId);
+      setTenantMessage(`Deleted tenant mapping "${tenant.tenantName}".`);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not delete the datasource tenant mapping.");
+      return;
+    }
+
+    if (selectedTenantId === tenantId) {
+      handleNewDataSourceTenant();
     }
   };
 
@@ -756,7 +1576,7 @@ function DatasourcesWorkspace() {
         <section style={workspacePanelStyle}>
           <SectionTitle
             title={selectedItem ? "Edit Datasource" : "Create Datasource"}
-            subtitle="Create and manage datasource definitions outside the workflow canvas."
+            subtitle="Create and manage datasource definitions from the AppWeaver backend."
           />
           <div
             style={{
@@ -786,7 +1606,7 @@ function DatasourcesWorkspace() {
                 <input
                   value={editor[key]}
                   onChange={(event) =>
-                    setEditor((current) => ({ ...current, [key]: event.target.value }))
+                    updateEditor((current) => ({ ...current, [key]: event.target.value }))
                   }
                   style={fieldStyle}
                 />
@@ -800,7 +1620,7 @@ function DatasourcesWorkspace() {
                   <input
                     value={editor[key]}
                     onChange={(event) =>
-                      setEditor((current) => ({ ...current, [key]: event.target.value }))
+                      updateEditor((current) => ({ ...current, [key]: event.target.value }))
                     }
                     style={fieldStyle}
                   />
@@ -812,27 +1632,87 @@ function DatasourcesWorkspace() {
               <span style={fieldLabelStyle}>Strategy</span>
               <textarea
                 value={editor.strategy}
-                onChange={(event) => setEditor((current) => ({ ...current, strategy: event.target.value }))}
+                onChange={(event) => updateEditor((current) => ({ ...current, strategy: event.target.value }))}
                 style={{ ...fieldStyle, minHeight: 140, resize: "vertical", fontFamily: "monospace" }}
               />
             </label>
+
+            <div
+              style={{
+                borderTop: "1px solid rgba(203, 213, 225, 0.95)",
+                paddingTop: 14,
+                display: "grid",
+                gap: 12,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <span style={fieldLabelStyle}>Datasource Tenants</span>
+                <button
+                  type="button"
+                  onClick={handleNewDataSourceTenant}
+                  style={{ ...secondaryButtonStyle, padding: "8px 12px", fontSize: 12 }}
+                >
+                  New Tenant
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(180px, 0.8fr)", gap: 12 }}>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span style={fieldLabelStyle}>Tenant Name</span>
+                  <input
+                    value={tenantName}
+                    onChange={(event) => setTenantName(event.target.value)}
+                    placeholder="tenantA"
+                    style={fieldStyle}
+                  />
+                </label>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span style={fieldLabelStyle}>Datasource</span>
+                  <select
+                    value={tenantDataSourceKey}
+                    onChange={(event) => setTenantDataSourceKey(event.target.value)}
+                    style={fieldStyle}
+                  >
+                    <option value="">Select datasource</option>
+                    {dataSources.map((dataSource) => (
+                      <option key={dataSource.id} value={dataSource.key}>
+                        {dataSource.key}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => void handleCreateDataSourceTenant()}
+                  style={primaryButtonStyle}
+                >
+                  Create Tenant Mapping
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleUpdateDataSourceTenant()}
+                  style={secondaryButtonStyle}
+                >
+                  Edit Tenant Mapping
+                </button>
+              </div>
+            </div>
           </div>
           <div style={{ flexShrink: 0 }}>
             {error ? <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{error}</p> : null}
             <div style={stickyActionBarStyle}>
-              <button type="button" onClick={() => runAction(addDataSource)} style={primaryButtonStyle}>
+              <button type="button" onClick={handleNewDataSource} style={secondaryButtonStyle}>
+                New Datasource
+              </button>
+              <button type="button" onClick={() => void handleCreate()} style={primaryButtonStyle}>
                 Create Datasource
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  if (!selectedId) {
-                    setError("Select a datasource from the list to edit it.");
-                    return;
-                  }
-
-                  runAction((payload) => updateDataSource(selectedId, payload));
-                }}
+                onClick={() => void handleUpdate()}
                 style={secondaryButtonStyle}
               >
                 Edit Datasource
@@ -842,7 +1722,68 @@ function DatasourcesWorkspace() {
         </section>
 
         <section style={workspacePanelStyle}>
-          <SectionTitle title="List Datasources" subtitle="Select a datasource to edit it, or enter a new one manually." />
+          <SectionTitle
+            title="List Datasources"
+            subtitle="Click load to fetch the current datasource list from the backend."
+          />
+          <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) auto",
+                gap: 10,
+                alignItems: "center",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => void loadDataSources()}
+                disabled={isLoading}
+                style={{
+                  ...secondaryButtonStyle,
+                  minHeight: 44,
+                  opacity: isLoading ? 0.7 : 1,
+                  cursor: isLoading ? "wait" : "pointer",
+                }}
+              >
+                {isLoading ? "Loading Datasources" : "Load Datasources"}
+              </button>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) auto",
+                gap: 10,
+                alignItems: "center",
+              }}
+            >
+              <input
+                value={lookupName}
+                onChange={(event) => setLookupName(event.target.value)}
+                placeholder="datasource name"
+                style={{ ...fieldStyle, minHeight: 44, padding: "9px 12px" }}
+              />
+              <button
+                type="button"
+                onClick={() => void handleGetDataSourceByName()}
+                disabled={isLoading}
+                style={{
+                  ...secondaryButtonStyle,
+                  minHeight: 44,
+                  whiteSpace: "nowrap",
+                  opacity: isLoading ? 0.7 : 1,
+                  cursor: isLoading ? "wait" : "pointer",
+                }}
+              >
+                Get By Name
+              </button>
+            </div>
+            {loadMessage ? (
+              <p style={{ margin: 0, color: "#166534", fontSize: 12, lineHeight: 1.5 }}>
+                {loadMessage}
+              </p>
+            ) : null}
+          </div>
           <div
             style={{
               marginTop: 18,
@@ -865,11 +1806,7 @@ function DatasourcesWorkspace() {
                 >
                   <button
                     type="button"
-                    onClick={() => {
-                      setSelectedId(item.id);
-                      setEditor(createDataSourceEditorFromItem(item));
-                      setError(null);
-                    }}
+                    onClick={() => selectDataSource(item)}
                     style={{
                       width: "100%",
                       textAlign: "left",
@@ -893,7 +1830,7 @@ function DatasourcesWorkspace() {
                   <button
                     type="button"
                     aria-label={`Delete ${item.key}`}
-                    onClick={() => handleDelete(item.id)}
+                    onClick={() => void handleDelete(item.id)}
                     style={{
                       ...deleteIconButtonStyle,
                       position: "absolute",
@@ -934,6 +1871,112 @@ function DatasourcesWorkspace() {
               </div>
             )}
           </div>
+          <div
+            style={{
+              marginTop: 18,
+              borderTop: "1px solid rgba(203, 213, 225, 0.95)",
+              paddingTop: 16,
+              display: "grid",
+              gap: 12,
+              flexShrink: 0,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <span style={fieldLabelStyle}>Tenant Mappings</span>
+              <button
+                type="button"
+                onClick={() => void loadDataSourceTenants()}
+                disabled={isTenantLoading}
+                style={{
+                  ...secondaryButtonStyle,
+                  padding: "8px 12px",
+                  fontSize: 12,
+                  opacity: isTenantLoading ? 0.7 : 1,
+                  cursor: isTenantLoading ? "wait" : "pointer",
+                }}
+              >
+                {isTenantLoading ? "Loading Tenants" : "Load Tenants"}
+              </button>
+            </div>
+            {tenantMessage ? (
+              <p style={{ margin: 0, color: "#166534", fontSize: 12, lineHeight: 1.5 }}>
+                {tenantMessage}
+              </p>
+            ) : null}
+            <div style={{ display: "grid", gap: 10, maxHeight: 240, overflow: "auto", paddingRight: 6 }}>
+              {dataSourceTenants.length > 0 ? (
+                dataSourceTenants.map((tenant) => (
+                  <div key={tenant.id} style={{ position: "relative" }}>
+                    <button
+                      type="button"
+                      onClick={() => selectDataSourceTenant(tenant)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        borderRadius: 16,
+                        border:
+                          tenant.id === selectedTenantId
+                            ? "1px solid rgba(96, 165, 250, 0.5)"
+                            : "1px solid rgba(71, 85, 105, 0.3)",
+                        background:
+                          tenant.id === selectedTenantId
+                            ? "rgba(30, 64, 175, 0.18)"
+                            : "rgba(255, 255, 255, 0.96)",
+                        padding: "12px 46px 12px 16px",
+                        color: "#0f172a",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ fontSize: 14, fontWeight: 700, overflowWrap: "anywhere" }}>
+                        {tenant.tenantName}
+                      </div>
+                      <div style={listItemMetaStyle}>{tenant.dataSourceKey}</div>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Delete tenant mapping ${tenant.tenantName}`}
+                      onClick={() => void handleDeleteDataSourceTenant(tenant.id)}
+                      style={{
+                        ...deleteIconButtonStyle,
+                        position: "absolute",
+                        top: "50%",
+                        right: 12,
+                        transform: "translateY(-50%)",
+                      }}
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{ width: 14, height: 14 }}
+                      >
+                        <path d="M9 3.75h6a1 1 0 0 1 1 1V6H8V4.75a1 1 0 0 1 1-1Z" />
+                        <path d="M4.75 6h14.5" />
+                        <path d="M6.75 6.75 7.6 19a2 2 0 0 0 2 1.86h4.8a2 2 0 0 0 2-1.86l.85-12.25" />
+                        <path d="M10 10.25v6.5" />
+                        <path d="M14 10.25v6.5" />
+                      </svg>
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div
+                  style={{
+                    borderRadius: 16,
+                    border: "1px dashed rgba(71, 85, 105, 0.45)",
+                    padding: "14px 16px",
+                    color: "#64748b",
+                    textAlign: "center",
+                  }}
+                >
+                  No tenant mappings created yet.
+                </div>
+              )}
+            </div>
+          </div>
         </section>
       </div>
     </>
@@ -959,6 +2002,10 @@ function SecurityWorkspace() {
   );
   const selectedItem = filteredConfigs.find((item) => item.id === selectedId) ?? null;
   const authPreview = useMemo(() => serializeAuthConfig(editor.authTenants), [editor.authTenants]);
+  const authorizePreview = useMemo(
+    () => serializeAuthorizeConfig(editor.authorizePolicy),
+    [editor.authorizePolicy],
+  );
 
   const handleSubsectionChange = (section: SecuritySubsection) => {
     selectSecuritySubsection(section);
@@ -1017,14 +2064,62 @@ function SecurityWorkspace() {
     }
   };
 
+  const validateAuthorizeEditor = () => {
+    const policyName = editor.authorizePolicy.policyName.trim();
+
+    if (!policyName) {
+      throw new Error("Policy name is required.");
+    }
+
+    if (editor.authorizePolicy.roles.length === 0) {
+      throw new Error("Add at least one role.");
+    }
+
+    const roleNames = new Set<string>();
+
+    for (const role of editor.authorizePolicy.roles) {
+      const roleName = role.name.trim();
+
+      if (!roleName) {
+        throw new Error("Every role needs a name.");
+      }
+
+      const normalizedRoleName = roleName.toLowerCase();
+
+      if (roleNames.has(normalizedRoleName)) {
+        throw new Error(`Duplicate role name: ${roleName}`);
+      }
+
+      roleNames.add(normalizedRoleName);
+    }
+
+    if (editor.authorizePolicy.rules.length === 0) {
+      throw new Error("Add at least one rule.");
+    }
+
+    for (const [ruleIndex, rule] of editor.authorizePolicy.rules.entries()) {
+      if (rule.type === "ROLE") {
+        if (!rule.roleId) {
+          throw new Error(`Rule ${ruleIndex + 1} needs a role.`);
+        }
+
+        continue;
+      }
+
+      if (rule.roleIds.length === 0) {
+        throw new Error(`Rule ${ruleIndex + 1} needs at least one role.`);
+      }
+    }
+  };
+
   const getEditorContent = () => {
     if (selectedSecuritySubsection === "auth") {
       validateAuthEditor();
       return authPreview;
     }
 
-    JSON.parse(editor.content);
-    return editor.content;
+    validateAuthorizeEditor();
+    return authorizePreview;
   };
 
   const runAction = (
@@ -1108,18 +2203,6 @@ function SecurityWorkspace() {
                 </button>
               ))}
             </div>
-
-            <label style={{ display: "grid", gap: 6 }}>
-              <span style={fieldLabelStyle}>File</span>
-              <input
-                value={editor.fileName}
-                onChange={(event) =>
-                  setEditor((current) => ({ ...current, fileName: event.target.value }))
-                }
-                placeholder={selectedSecuritySubsection === "auth" ? "apikey.json" : "policy.json"}
-                style={fieldStyle}
-              />
-            </label>
 
             {selectedSecuritySubsection === "auth" ? (
               <div style={{ display: "grid", gap: 14 }}>
@@ -1416,16 +2499,380 @@ function SecurityWorkspace() {
                 </div>
               </div>
             ) : (
-              <label style={{ display: "grid", gap: 6 }}>
-                <span style={fieldLabelStyle}>JSON Content</span>
-                <textarea
-                  value={editor.content}
-                  onChange={(event) =>
-                    setEditor((current) => ({ ...current, content: event.target.value }))
-                  }
-                  style={{ ...fieldStyle, minHeight: 220, resize: "vertical", fontFamily: "monospace" }}
-                />
-              </label>
+              <div style={{ display: "grid", gap: 14 }}>
+                <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Policy Name</span>
+                    <input
+                      value={editor.authorizePolicy.policyName}
+                      onChange={(event) =>
+                        setEditor((current) => ({
+                          ...current,
+                          authorizePolicy: {
+                            ...current.authorizePolicy,
+                            policyName: event.target.value,
+                          },
+                        }))
+                      }
+                      placeholder="policy1"
+                      style={fieldStyle}
+                    />
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 28, color: "#334155", fontSize: 13 }}>
+                    <input
+                      type="checkbox"
+                      checked={editor.authorizePolicy.enabled}
+                      onChange={(event) =>
+                        setEditor((current) => ({
+                          ...current,
+                          authorizePolicy: {
+                            ...current.authorizePolicy,
+                            enabled: event.target.checked,
+                          },
+                        }))
+                      }
+                    />
+                    Enabled
+                  </label>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <span style={fieldLabelStyle}>Roles</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditor((current) => {
+                          const nextRole = createAuthorizeRoleEditorState(`role${current.authorizePolicy.roles.length + 1}`);
+
+                          return {
+                            ...current,
+                            authorizePolicy: {
+                              ...current.authorizePolicy,
+                              roles: [...current.authorizePolicy.roles, nextRole],
+                              roleHierarchy: {
+                                ...current.authorizePolicy.roleHierarchy,
+                                [nextRole.id]: [],
+                              },
+                            },
+                          };
+                        })
+                      }
+                      style={iconButtonStyle}
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {editor.authorizePolicy.roles.map((role, roleIndex) => (
+                      <div
+                        key={role.id}
+                        style={{
+                          borderRadius: 14,
+                          border: "1px solid rgba(71, 85, 105, 0.3)",
+                          background: "rgba(248, 250, 252, 0.95)",
+                          padding: 14,
+                          display: "grid",
+                          gap: 10,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                          <span style={{ color: "#334155", fontSize: 13, fontWeight: 700 }}>
+                            Role {roleIndex + 1}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`Remove role ${roleIndex + 1}`}
+                            onClick={() =>
+                              setEditor((current) => {
+                                const nextRoles =
+                                  current.authorizePolicy.roles.length > 1
+                                    ? current.authorizePolicy.roles.filter((item) => item.id !== role.id)
+                                    : [createAuthorizeRoleEditorState("admin")];
+                                const nextRoleIds = new Set(nextRoles.map((item) => item.id));
+                                const nextHierarchy = Object.fromEntries(
+                                  nextRoles.map((item) => [
+                                    item.id,
+                                    (current.authorizePolicy.roleHierarchy[item.id] ?? []).filter((childId) =>
+                                      nextRoleIds.has(childId),
+                                    ),
+                                  ]),
+                                );
+                                const fallbackRoleId = nextRoles[0]?.id ?? "";
+
+                                return {
+                                  ...current,
+                                  authorizePolicy: {
+                                    ...current.authorizePolicy,
+                                    roles: nextRoles,
+                                    roleHierarchy: nextHierarchy,
+                                    rules: current.authorizePolicy.rules.map((rule) => ({
+                                      ...rule,
+                                      roleId: nextRoleIds.has(rule.roleId) ? rule.roleId : fallbackRoleId,
+                                      roleIds: rule.roleIds.filter((roleId) => nextRoleIds.has(roleId)),
+                                    })),
+                                  },
+                                };
+                              })
+                            }
+                            style={{ ...iconButtonStyle, width: 30, height: 30, borderRadius: 10 }}
+                          >
+                            -
+                          </button>
+                        </div>
+                        <input
+                          value={role.name}
+                          onChange={(event) =>
+                            setEditor((current) => ({
+                              ...current,
+                              authorizePolicy: {
+                                ...current.authorizePolicy,
+                                roles: current.authorizePolicy.roles.map((item) =>
+                                  item.id === role.id ? { ...item, name: event.target.value } : item,
+                                ),
+                              },
+                            }))
+                          }
+                          placeholder="admin"
+                          style={fieldStyle}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <span style={fieldLabelStyle}>Role Hierarchy</span>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {editor.authorizePolicy.roles.map((role) => (
+                      <div
+                        key={role.id}
+                        style={{
+                          borderRadius: 14,
+                          border: "1px solid rgba(71, 85, 105, 0.3)",
+                          background: "rgba(255, 255, 255, 0.98)",
+                          padding: 14,
+                          display: "grid",
+                          gap: 10,
+                        }}
+                      >
+                        <span style={{ color: "#334155", fontSize: 13, fontWeight: 700 }}>
+                          {role.name.trim() || "Unnamed role"} includes
+                        </span>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                          {editor.authorizePolicy.roles
+                            .filter((childRole) => childRole.id !== role.id)
+                            .map((childRole) => (
+                              <label key={childRole.id} style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "#334155", fontSize: 13 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={(editor.authorizePolicy.roleHierarchy[role.id] ?? []).includes(childRole.id)}
+                                  onChange={(event) =>
+                                    setEditor((current) => {
+                                      const currentChildren = current.authorizePolicy.roleHierarchy[role.id] ?? [];
+
+                                      return {
+                                        ...current,
+                                        authorizePolicy: {
+                                          ...current.authorizePolicy,
+                                          roleHierarchy: {
+                                            ...current.authorizePolicy.roleHierarchy,
+                                            [role.id]: event.target.checked
+                                              ? [...currentChildren, childRole.id]
+                                              : currentChildren.filter((childId) => childId !== childRole.id),
+                                          },
+                                        },
+                                      };
+                                    })
+                                  }
+                                />
+                                {childRole.name.trim() || "Unnamed role"}
+                              </label>
+                            ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <span style={fieldLabelStyle}>Rules</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditor((current) => ({
+                          ...current,
+                          authorizePolicy: {
+                            ...current.authorizePolicy,
+                            rules: [
+                              ...current.authorizePolicy.rules,
+                              createAuthorizeRuleEditorState(current.authorizePolicy.roles[0]?.id ?? ""),
+                            ],
+                          },
+                        }))
+                      }
+                      style={iconButtonStyle}
+                    >
+                      +
+                    </button>
+                  </div>
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {editor.authorizePolicy.rules.map((rule, ruleIndex) => (
+                      <div
+                        key={rule.id}
+                        style={{
+                          borderRadius: 14,
+                          border: "1px solid rgba(71, 85, 105, 0.3)",
+                          background: "rgba(255, 255, 255, 0.98)",
+                          padding: 14,
+                          display: "grid",
+                          gap: 10,
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                          <span style={{ color: "#334155", fontSize: 13, fontWeight: 700 }}>
+                            Rule {ruleIndex + 1}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`Remove rule ${ruleIndex + 1}`}
+                            onClick={() =>
+                              setEditor((current) => ({
+                                ...current,
+                                authorizePolicy: {
+                                  ...current.authorizePolicy,
+                                  rules:
+                                    current.authorizePolicy.rules.length > 1
+                                      ? current.authorizePolicy.rules.filter((item) => item.id !== rule.id)
+                                      : [createAuthorizeRuleEditorState(current.authorizePolicy.roles[0]?.id ?? "")],
+                                },
+                              }))
+                            }
+                            style={{ ...iconButtonStyle, width: 30, height: 30, borderRadius: 10 }}
+                          >
+                            -
+                          </button>
+                        </div>
+                        <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+                          <label style={{ display: "grid", gap: 6 }}>
+                            <span style={fieldLabelStyle}>Type</span>
+                            <select
+                              value={rule.type}
+                              onChange={(event) =>
+                                setEditor((current) => ({
+                                  ...current,
+                                  authorizePolicy: {
+                                    ...current.authorizePolicy,
+                                    rules: current.authorizePolicy.rules.map((item) =>
+                                      item.id === rule.id
+                                        ? { ...item, type: event.target.value as AuthorizeRuleType }
+                                        : item,
+                                    ),
+                                  },
+                                }))
+                              }
+                              style={fieldStyle}
+                            >
+                              {(["ROLE", "OR", "AND", "NOT"] as const).map((ruleType) => (
+                                <option key={ruleType} value={ruleType}>
+                                  {ruleType}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+
+                          {rule.type === "ROLE" ? (
+                            <label style={{ display: "grid", gap: 6 }}>
+                              <span style={fieldLabelStyle}>Role</span>
+                              <select
+                                value={rule.roleId}
+                                onChange={(event) =>
+                                  setEditor((current) => ({
+                                    ...current,
+                                    authorizePolicy: {
+                                      ...current.authorizePolicy,
+                                      rules: current.authorizePolicy.rules.map((item) =>
+                                        item.id === rule.id ? { ...item, roleId: event.target.value } : item,
+                                      ),
+                                    },
+                                  }))
+                                }
+                                style={fieldStyle}
+                              >
+                                {editor.authorizePolicy.roles.map((role) => (
+                                  <option key={role.id} value={role.id}>
+                                    {role.name.trim() || "Unnamed role"}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          ) : (
+                            <div style={{ display: "grid", gap: 8 }}>
+                              <span style={fieldLabelStyle}>Roles</span>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 12, minHeight: 44, alignItems: "center" }}>
+                                {editor.authorizePolicy.roles.map((role) => (
+                                  <label key={role.id} style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "#334155", fontSize: 13 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={rule.roleIds.includes(role.id)}
+                                      onChange={(event) =>
+                                        setEditor((current) => ({
+                                          ...current,
+                                          authorizePolicy: {
+                                            ...current.authorizePolicy,
+                                            rules: current.authorizePolicy.rules.map((item) =>
+                                              item.id === rule.id
+                                                ? {
+                                                    ...item,
+                                                    roleIds: event.target.checked
+                                                      ? [...item.roleIds, role.id]
+                                                      : item.roleIds.filter((roleId) => roleId !== role.id),
+                                                  }
+                                                : item,
+                                            ),
+                                          },
+                                        }))
+                                      }
+                                    />
+                                    {role.name.trim() || "Unnamed role"}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <span style={fieldLabelStyle}>Generated JSON Preview</span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(authorizePreview);
+                          setError(null);
+                        } catch {
+                          setError("Could not copy the generated JSON preview.");
+                        }
+                      }}
+                      style={{ ...secondaryButtonStyle, padding: "8px 12px", fontSize: 12 }}
+                    >
+                      Copy JSON
+                    </button>
+                  </div>
+                  <textarea
+                    value={authorizePreview}
+                    readOnly
+                    style={{ ...fieldStyle, minHeight: 220, resize: "vertical", fontFamily: "monospace" }}
+                  />
+                </div>
+              </div>
             )}
           </div>
           <div style={{ flexShrink: 0 }}>

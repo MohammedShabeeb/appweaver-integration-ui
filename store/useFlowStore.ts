@@ -39,6 +39,12 @@ export type CreatedDataSource = {
   strategy: DataSourceStrategy;
 };
 
+export type CreatedDataSourceTenant = {
+  id: string;
+  tenantName: string;
+  dataSourceKey: string;
+};
+
 export type CreatedSecurityConfig = {
   id: string;
   subsection: SecuritySubsection;
@@ -146,6 +152,7 @@ type PersistedFlowState = {
   selectedLlmSubsection?: LlmSubsection;
   beans?: CreatedBean[];
   dataSources?: CreatedDataSource[];
+  dataSourceTenants?: CreatedDataSourceTenant[];
   securityConfigs?: CreatedSecurityConfig[];
   llmConfigs?: CreatedLlmConfig[];
   ragConfigs?: CreatedRagConfig[];
@@ -591,6 +598,7 @@ function normalizePersistedState(
 ) {
   const beans = persistedState?.beans ?? [];
   const dataSources = persistedState?.dataSources ?? [];
+  const dataSourceTenants = persistedState?.dataSourceTenants ?? [];
   const securityConfigs = persistedState?.securityConfigs ?? [];
   const llmConfigs = persistedState?.llmConfigs ?? [];
   const ragConfigs = persistedState?.ragConfigs ?? [];
@@ -645,6 +653,7 @@ function normalizePersistedState(
       selectedLlmSubsection,
       beans,
       dataSources,
+      dataSourceTenants,
       securityConfigs,
       llmConfigs,
       ragConfigs,
@@ -713,6 +722,7 @@ interface FlowState {
   selectedLlmSubsection: LlmSubsection;
   beans: CreatedBean[];
   dataSources: CreatedDataSource[];
+  dataSourceTenants: CreatedDataSourceTenant[];
   securityConfigs: CreatedSecurityConfig[];
   llmConfigs: CreatedLlmConfig[];
   ragConfigs: CreatedRagConfig[];
@@ -736,9 +746,20 @@ interface FlowState {
   selectSecuritySubsection: (section: SecuritySubsection) => void;
   selectLlmSubsection: (section: LlmSubsection) => void;
   addBean: (bean: Omit<CreatedBean, "id">) => { ok: true } | { ok: false; reason: string };
+  replaceBeans: (beans: CreatedBean[]) => void;
   updateBean: (beanId: string, bean: Omit<CreatedBean, "id">) => { ok: true } | { ok: false; reason: string };
   removeBean: (beanId: string) => void;
   addDataSource: (dataSource: Omit<CreatedDataSource, "id">) => { ok: true } | { ok: false; reason: string };
+  replaceDataSources: (dataSources: CreatedDataSource[]) => void;
+  addDataSourceTenant: (
+    tenant: Omit<CreatedDataSourceTenant, "id">,
+  ) => { ok: true } | { ok: false; reason: string };
+  replaceDataSourceTenants: (tenants: CreatedDataSourceTenant[]) => void;
+  updateDataSourceTenant: (
+    tenantId: string,
+    tenant: Omit<CreatedDataSourceTenant, "id">,
+  ) => { ok: true } | { ok: false; reason: string };
+  removeDataSourceTenant: (tenantId: string) => void;
   updateDataSource: (
     dataSourceId: string,
     dataSource: Omit<CreatedDataSource, "id">,
@@ -755,6 +776,7 @@ interface FlowState {
   addLlmConfig: (
     config: Omit<CreatedLlmConfig, "id">,
   ) => { ok: true } | { ok: false; reason: string };
+  replaceLlmConfigs: (configs: CreatedLlmConfig[]) => void;
   updateLlmConfig: (
     configId: string,
     config: Omit<CreatedLlmConfig, "id">,
@@ -763,6 +785,7 @@ interface FlowState {
   addRagConfig: (
     config: Omit<CreatedRagConfig, "id">,
   ) => { ok: true } | { ok: false; reason: string };
+  replaceRagConfigs: (configs: CreatedRagConfig[]) => void;
   updateRagConfig: (
     configId: string,
     config: Omit<CreatedRagConfig, "id">,
@@ -824,6 +847,7 @@ export const useFlowStore = create<FlowState>()(
       selectedLlmSubsection: "providers",
       beans: [],
       dataSources: [],
+      dataSourceTenants: [],
       securityConfigs: [],
       llmConfigs: [],
       ragConfigs: [],
@@ -936,6 +960,7 @@ export const useFlowStore = create<FlowState>()(
 
         return { ok: true };
       },
+      replaceBeans: (beans) => set({ beans }),
       removeBean: (beanId) =>
         set((state) => ({
           beans: state.beans.filter((bean) => bean.id !== beanId),
@@ -995,6 +1020,79 @@ export const useFlowStore = create<FlowState>()(
 
         return { ok: true };
       },
+      replaceDataSources: (dataSources) => set({ dataSources }),
+      addDataSourceTenant: (tenant) => {
+        const trimmedTenantName = tenant.tenantName.trim();
+        const trimmedDataSourceKey = tenant.dataSourceKey.trim();
+
+        if (!trimmedTenantName) {
+          return { ok: false, reason: "Tenant name is required." };
+        }
+
+        if (!trimmedDataSourceKey) {
+          return { ok: false, reason: "Select a datasource for the tenant." };
+        }
+
+        const currentState = get();
+
+        if (currentState.dataSourceTenants.some((item) => item.tenantName === trimmedTenantName)) {
+          return { ok: false, reason: "A tenant mapping with that name already exists." };
+        }
+
+        set((state) => ({
+          dataSourceTenants: [
+            ...state.dataSourceTenants,
+            {
+              id: `datasource-tenant-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              tenantName: trimmedTenantName,
+              dataSourceKey: trimmedDataSourceKey,
+            },
+          ],
+        }));
+
+        return { ok: true };
+      },
+      replaceDataSourceTenants: (tenants) => set({ dataSourceTenants: tenants }),
+      updateDataSourceTenant: (tenantId, tenant) => {
+        const trimmedTenantName = tenant.tenantName.trim();
+        const trimmedDataSourceKey = tenant.dataSourceKey.trim();
+
+        if (!trimmedTenantName) {
+          return { ok: false, reason: "Tenant name is required." };
+        }
+
+        if (!trimmedDataSourceKey) {
+          return { ok: false, reason: "Select a datasource for the tenant." };
+        }
+
+        const currentState = get();
+
+        if (
+          currentState.dataSourceTenants.some(
+            (item) => item.id !== tenantId && item.tenantName === trimmedTenantName,
+          )
+        ) {
+          return { ok: false, reason: "A tenant mapping with that name already exists." };
+        }
+
+        set((state) => ({
+          dataSourceTenants: state.dataSourceTenants.map((item) =>
+            item.id === tenantId
+              ? {
+                  ...item,
+                  tenantName: trimmedTenantName,
+                  dataSourceKey: trimmedDataSourceKey,
+                }
+              : item,
+          ),
+        }));
+
+        return { ok: true };
+      },
+      removeDataSourceTenant: (tenantId) =>
+        set((state) => ({
+          dataSourceTenants: state.dataSourceTenants.filter((tenant) => tenant.id !== tenantId),
+        })),
       removeDataSource: (dataSourceId) =>
         set((state) => ({
           dataSources: state.dataSources.filter((dataSource) => dataSource.id !== dataSourceId),
@@ -1132,6 +1230,7 @@ export const useFlowStore = create<FlowState>()(
 
         return { ok: true };
       },
+      replaceLlmConfigs: (configs) => set({ llmConfigs: configs }),
       updateLlmConfig: (configId, config) => {
         const trimmedProviderId = config.providerId.trim();
 
@@ -1199,6 +1298,7 @@ export const useFlowStore = create<FlowState>()(
 
         return { ok: true };
       },
+      replaceRagConfigs: (configs) => set({ ragConfigs: configs }),
       updateRagConfig: (configId, config) => {
         const trimmedRagId = config.ragId.trim();
 
@@ -1783,6 +1883,7 @@ export const useFlowStore = create<FlowState>()(
         selectedLlmSubsection: state.selectedLlmSubsection,
         beans: state.beans,
         dataSources: state.dataSources,
+        dataSourceTenants: state.dataSourceTenants,
         securityConfigs: state.securityConfigs,
         llmConfigs: state.llmConfigs,
         ragConfigs: state.ragConfigs,
