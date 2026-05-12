@@ -10,6 +10,9 @@ type StepNodeType = Exclude<BuiltInComponentType, "start">;
 type StepNodeData = {
   label?: string;
   config?: Record<string, unknown>;
+  componentKey?: string;
+  description?: string;
+  accentColor?: string;
 };
 
 type StepNodeProps = NodeProps<StepNodeData>;
@@ -28,6 +31,23 @@ function getNodeDescription(type: StepNodeType, config?: Record<string, unknown>
 
 export default function StepNode({ id, type, data, selected }: StepNodeProps) {
   const deleteNode = useFlowStore((state) => state.deleteNode);
+  const customComponents = useFlowStore((state) => state.customComponents);
+  const componentKey = data?.componentKey ?? type ?? "";
+  const customComponent = customComponents.find((component) => component.type === componentKey) ?? null;
+
+  if (customComponent) {
+    return (
+      <FlowNodeCard
+        id={id}
+        title={data?.label || customComponent.label}
+        description={data?.description || customComponent.description || customComponent.type}
+        accentColor={data?.accentColor || customComponent.color}
+        Icon={nodeTypeMeta.process.Icon}
+        selected={selected}
+        onDelete={deleteNode}
+      />
+    );
+  }
 
   if (!isStepNodeType(type)) {
     return null;

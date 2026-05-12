@@ -12,7 +12,7 @@ import type { DataSourceStrategy } from "@/config/datasourceCatalog";
 
 type InsertableNodeType = Exclude<ComponentType, "start">;
 type SidebarView = "components" | "workflows" | "configs";
-type ConfigSection = "beans" | "datasources" | "security" | "llms" | "endpoints";
+type ConfigSection = "beans" | "datasources" | "security" | "llms" | "endpoints" | "components";
 type LlmSubsection = "providers" | "rag";
 export type EndpointProtocol = "api" | "grpc" | "sse" | "ws";
 
@@ -81,6 +81,33 @@ export type CreatedEndpointConfig = {
   folderPath: string;
   fileName: string;
   content: string;
+};
+
+export type ComponentFieldControl = "text" | "textarea" | "select" | "checkbox";
+
+export type ComponentFieldOption = {
+  label: string;
+  value: string;
+};
+
+export type ComponentFieldDefinition = {
+  key: string;
+  label: string;
+  control: ComponentFieldControl;
+  placeholder?: string;
+  helperText?: string;
+  options?: ComponentFieldOption[];
+};
+
+export type CreatedComponentTemplate = {
+  id: string;
+  type: string;
+  label: string;
+  description: string;
+  color: string;
+  fields: ComponentFieldDefinition[];
+  config: Record<string, unknown>;
+  dependencies: MavenDependencyDefinition[];
 };
 
 type AppNodeData = {
@@ -157,6 +184,7 @@ type PersistedFlowState = {
   llmConfigs?: CreatedLlmConfig[];
   ragConfigs?: CreatedRagConfig[];
   endpointConfigs?: CreatedEndpointConfig[];
+  customComponents?: CreatedComponentTemplate[];
 };
 
 type WorkflowPomDependency = MavenDependencyDefinition;
@@ -198,12 +226,15 @@ function createInitialWorkflow(id = DEFAULT_WORKFLOW_ID, name = "Root"): Workflo
 function createFlowNode(
   componentKey: ComponentType,
   position: XYPosition,
+  customComponents: CreatedComponentTemplate[] = [],
 ): AppNode {
-  if (!isBuiltInComponent(componentKey)) {
+  const customComponent = customComponents.find((component) => component.type === componentKey);
+
+  if (!isBuiltInComponent(componentKey) && !customComponent) {
     throw new Error(`Unsupported component type: ${componentKey}`);
   }
 
-  const builtInType = componentKey;
+  const builtInType = isBuiltInComponent(componentKey) ? componentKey : "process";
   const id = `${componentKey}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const labelMap: Record<BuiltInComponentType, string> = {
     start: "From",
@@ -229,12 +260,19 @@ function createFlowNode(
 
   const node: AppNode = {
     id,
-    type: builtInType,
+    type: customComponent ? "customStep" : builtInType,
     position,
     data: {
-      label: labelMap[builtInType],
-      config: defaultConfigMap[builtInType] ?? {},
+      label: customComponent?.label ?? labelMap[builtInType],
+      config: customComponent
+        ? {
+            ...customComponent.config,
+            dependencies: customComponent.dependencies,
+          }
+        : defaultConfigMap[builtInType] ?? {},
       componentKey,
+      description: customComponent?.description,
+      accentColor: customComponent?.color,
     },
   };
 
@@ -419,6 +457,102 @@ function normalizeDependencyList(raw: unknown): WorkflowPomDependency[] {
   });
 }
 
+function isValidHexColor(value: string) {
+  return /^#[0-9a-f]{6}$/i.test(value.trim());
+}
+
+function normalizeComponentTemplate(
+  template: Omit<CreatedComponentTemplate, "id">,
+): Omit<CreatedComponentTemplate, "id"> | { error: string } {
+  const type = template.type.trim();
+  const label = template.label.trim();
+
+  if (!type) {
+    return { error: "Component type is required." };
+  }
+
+  if (!/^[a-z][a-z0-9-]*$/i.test(type)) {
+    return { error: "Component type can only use letters, numbers, and hyphens." };
+  }
+
+  if (isBuiltInComponent(type) || type === "customStep") {
+    return { error: "That component type is reserved by the built-in catalog." };
+  }
+
+  if (!label) {
+    return { error: "Component label is required." };
+  }
+
+  if (!isValidHexColor(template.color)) {
+    return { error: "Component color must be a six-digit hex value, such as #14b8a6." };
+  }
+
+  const fieldKeys = new Set<string>();
+  type FieldValidationResult = ComponentFieldDefinition | { error: string };
+  const fields: FieldValidationResult[] = template.fields.map((field) => {
+    const key = field.key.trim();
+    const fieldLabel = field.label.trim();
+
+    if (!key) {
+      return { error: "Every field needs a key." };
+    }
+
+    if (fieldKeys.has(key)) {
+      return { error: `Duplicate field key: ${key}.` };
+    }
+
+    if (!["text", "textarea", "select", "checkbox"].includes(field.control)) {
+      return { error: `Unsupported control for ${key}.` };
+    }
+
+    if (field.control === "select" && (!field.options || field.options.length === 0)) {
+      return { error: `Select field ${key} needs at least one option.` };
+    }
+
+    fieldKeys.add(key);
+
+    return {
+      key,
+      label: fieldLabel || key,
+      control: field.control,
+      ...(field.placeholder?.trim() ? { placeholder: field.placeholder.trim() } : {}),
+      ...(field.helperText?.trim() ? { helperText: field.helperText.trim() } : {}),
+      ...(field.control === "select"
+        ? {
+            options: (field.options ?? [])
+              .map((option) => ({
+                label: option.label.trim() || option.value.trim(),
+                value: option.value.trim(),
+              }))
+              .filter((option) => option.value),
+          }
+        : {}),
+    };
+  });
+  const invalidField = fields.find((field): field is { error: string } => "error" in field);
+
+  if (invalidField) {
+    return { error: invalidField.error };
+  }
+
+  const normalizedFields = fields.filter(
+    (field): field is ComponentFieldDefinition => !("error" in field),
+  );
+
+  return {
+    type,
+    label,
+    description: template.description.trim(),
+    color: template.color.trim(),
+    fields: normalizedFields,
+    config:
+      template.config && typeof template.config === "object" && !Array.isArray(template.config)
+        ? template.config
+        : {},
+    dependencies: normalizeDependencyList(template.dependencies),
+  };
+}
+
 function collectWorkflowDependencies(workflow: WorkflowRecord): WorkflowPomDependency[] {
   const dependencyMap = new Map<string, WorkflowPomDependency>();
 
@@ -426,15 +560,13 @@ function collectWorkflowDependencies(workflow: WorkflowRecord): WorkflowPomDepen
     for (const node of canvas.nodes) {
       const componentKey = node.data?.componentKey;
 
-      if (!componentKey || !isBuiltInComponent(componentKey)) {
-        continue;
-      }
+      if (componentKey && isBuiltInComponent(componentKey)) {
+        for (const dependency of getComponentDependencies(componentKey)) {
+          const key = `${dependency.groupId}:${dependency.artifactId}`;
 
-      for (const dependency of getComponentDependencies(componentKey)) {
-        const key = `${dependency.groupId}:${dependency.artifactId}`;
-
-        if (!dependencyMap.has(key)) {
-          dependencyMap.set(key, dependency);
+          if (!dependencyMap.has(key)) {
+            dependencyMap.set(key, dependency);
+          }
         }
       }
 
@@ -603,6 +735,7 @@ function normalizePersistedState(
   const llmConfigs = persistedState?.llmConfigs ?? [];
   const ragConfigs = persistedState?.ragConfigs ?? [];
   const endpointConfigs = persistedState?.endpointConfigs ?? [];
+  const customComponents = persistedState?.customComponents ?? [];
   const isSidebarOpen = persistedState?.isSidebarOpen ?? false;
   const sidebarView = persistedState?.sidebarView ?? "components";
   const selectedConfigSection = persistedState?.selectedConfigSection ?? "beans";
@@ -658,6 +791,7 @@ function normalizePersistedState(
       llmConfigs,
       ragConfigs,
       endpointConfigs,
+      customComponents,
     };
   }
 
@@ -703,6 +837,7 @@ function normalizePersistedState(
     llmConfigs,
     ragConfigs,
     endpointConfigs,
+    customComponents,
   };
 }
 
@@ -727,6 +862,7 @@ interface FlowState {
   llmConfigs: CreatedLlmConfig[];
   ragConfigs: CreatedRagConfig[];
   endpointConfigs: CreatedEndpointConfig[];
+  customComponents: CreatedComponentTemplate[];
   setNodes: (nodes: AppNode[]) => void;
   setEdges: (edges: AppEdge[]) => void;
   addNode: (componentKey: ComponentType, position: XYPosition) => void;
@@ -794,14 +930,24 @@ interface FlowState {
   addEndpointConfig: (
     config: Omit<CreatedEndpointConfig, "id">,
   ) => { ok: true } | { ok: false; reason: string };
+  replaceEndpointConfigs: (configs: CreatedEndpointConfig[]) => void;
   updateEndpointConfig: (
     configId: string,
     config: Omit<CreatedEndpointConfig, "id">,
   ) => { ok: true } | { ok: false; reason: string };
   removeEndpointConfig: (configId: string) => void;
+  addCustomComponent: (
+    component: Omit<CreatedComponentTemplate, "id">,
+  ) => { ok: true } | { ok: false; reason: string };
+  updateCustomComponent: (
+    componentId: string,
+    component: Omit<CreatedComponentTemplate, "id">,
+  ) => { ok: true } | { ok: false; reason: string };
+  removeCustomComponent: (componentId: string) => void;
   exportWorkflow: () => WorkflowExport;
   exportPomXml: () => string;
   importWorkflow: (raw: unknown, fallbackName?: string) => boolean;
+  createWorkflow: (name?: string) => { id: string; name: string };
   selectWorkflow: (workflowId: string) => void;
   deleteWorkflow: (workflowId: string) => void;
   updateEdgeData: (edgeId: string, data: Record<string, unknown>) => void;
@@ -852,6 +998,7 @@ export const useFlowStore = create<FlowState>()(
       llmConfigs: [],
       ragConfigs: [],
       endpointConfigs: [],
+      customComponents: [],
 
       setNodes: (nodes) =>
         set((state) => {
@@ -902,7 +1049,7 @@ export const useFlowStore = create<FlowState>()(
           }
 
           const currentCanvas = activeWorkflow.canvases[activeWorkflow.currentCanvasId];
-          const newNode = createFlowNode(componentKey, position);
+          const newNode = createFlowNode(componentKey, position, state.customComponents);
           const nextCanvases: Record<string, CanvasState> = {
             ...activeWorkflow.canvases,
             [activeWorkflow.currentCanvasId]: {
@@ -1374,6 +1521,7 @@ export const useFlowStore = create<FlowState>()(
 
         return { ok: true };
       },
+      replaceEndpointConfigs: (configs) => set({ endpointConfigs: configs }),
       updateEndpointConfig: (configId, config) => {
         const normalizedFolderPath = config.folderPath
           .trim()
@@ -1419,6 +1567,66 @@ export const useFlowStore = create<FlowState>()(
       removeEndpointConfig: (configId) =>
         set((state) => ({
           endpointConfigs: state.endpointConfigs.filter((item) => item.id !== configId),
+        })),
+      addCustomComponent: (component) => {
+        const normalized = normalizeComponentTemplate(component);
+
+        if ("error" in normalized) {
+          return { ok: false, reason: normalized.error };
+        }
+
+        const currentState = get();
+
+        if (
+          currentState.customComponents.some(
+            (item) => item.type.toLowerCase() === normalized.type.toLowerCase(),
+          )
+        ) {
+          return { ok: false, reason: "A component with that type already exists." };
+        }
+
+        set((state) => ({
+          customComponents: [
+            ...state.customComponents,
+            {
+              id: `component-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              ...normalized,
+            },
+          ],
+        }));
+
+        return { ok: true };
+      },
+      updateCustomComponent: (componentId, component) => {
+        const normalized = normalizeComponentTemplate(component);
+
+        if ("error" in normalized) {
+          return { ok: false, reason: normalized.error };
+        }
+
+        const currentState = get();
+
+        if (
+          currentState.customComponents.some(
+            (item) =>
+              item.id !== componentId &&
+              item.type.toLowerCase() === normalized.type.toLowerCase(),
+          )
+        ) {
+          return { ok: false, reason: "A component with that type already exists." };
+        }
+
+        set((state) => ({
+          customComponents: state.customComponents.map((item) =>
+            item.id === componentId ? { id: item.id, ...normalized } : item,
+          ),
+        }));
+
+        return { ok: true };
+      },
+      removeCustomComponent: (componentId) =>
+        set((state) => ({
+          customComponents: state.customComponents.filter((item) => item.id !== componentId),
         })),
       exportWorkflow: () => {
         const state = get();
@@ -1467,6 +1675,39 @@ export const useFlowStore = create<FlowState>()(
         }));
 
         return true;
+      },
+
+      createWorkflow: (name = "Workflow") => {
+        const currentWorkflows = get().workflows;
+        const workflowName = dedupeWorkflowName(name, currentWorkflows);
+        const workflowId = createWorkflowId(workflowName);
+        const rootCanvasId = `canvas-${workflowId}`;
+        const workflow: WorkflowRecord = {
+          id: workflowId,
+          name: workflowName,
+          rootCanvasId,
+          currentCanvasId: rootCanvasId,
+          canvasStack: [rootCanvasId],
+          canvases: {
+            [rootCanvasId]: createCanvas(rootCanvasId, workflowName),
+          },
+        };
+
+        set((state) => ({
+          workflows: {
+            ...state.workflows,
+            [workflow.id]: workflow,
+          },
+          workflowOrder: [...state.workflowOrder, workflow.id],
+          activeWorkflowId: workflow.id,
+          canvases: workflow.canvases,
+          currentCanvasId: workflow.currentCanvasId,
+          canvasStack: workflow.canvasStack,
+          selectedNode: null,
+          selectedEdge: null,
+        }));
+
+        return { id: workflow.id, name: workflow.name };
       },
 
       selectWorkflow: (workflowId) =>
@@ -1745,6 +1986,7 @@ export const useFlowStore = create<FlowState>()(
                   y: (sourceNode.position.y + targetNode.position.y) / 2,
                 }
               : { x: 200, y: 200 },
+            state.customComponents,
           );
 
           const remainingEdges = currentCanvas.edges.filter((edge) => edge.id !== edgeId);
@@ -1888,6 +2130,7 @@ export const useFlowStore = create<FlowState>()(
         llmConfigs: state.llmConfigs,
         ragConfigs: state.ragConfigs,
         endpointConfigs: state.endpointConfigs,
+        customComponents: state.customComponents,
       }),
     },
   ),

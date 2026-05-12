@@ -12,6 +12,7 @@ import {
 import {
   useFlowStore,
   type CreatedBean,
+  type CreatedComponentTemplate,
   type CreatedDataSource,
   type CreatedDataSourceTenant,
   type CreatedSecurityConfig,
@@ -40,14 +41,21 @@ type DataSourceEditorState = {
 type SecurityEditorState = {
   fileName: string;
   content: string;
+  authMethod: AuthMethod;
+  includePrincipal: string;
   authTenants: AuthTenantEditorState[];
   authorizePolicy: AuthorizePolicyEditorState;
 };
+
+type ComponentTemplateDraft = Omit<CreatedComponentTemplate, "id">;
+
+type AuthMethod = "apikey" | "basic" | "hmac" | "jwt";
 
 type AuthClientEditorState = {
   id: string;
   name: string;
   secret: string;
+  password: string;
   enabled: boolean;
 };
 
@@ -56,6 +64,13 @@ type AuthTenantEditorState = {
   name: string;
   keyHeader: string;
   secretHeader: string;
+  jwtType: "RS" | "HS";
+  roleKeyClaims: string;
+  usernameKeyClaims: string;
+  dataKeysClaims: string;
+  claimsHeaderMapping: string;
+  publicKeyUrl: string;
+  jwtSecret: string;
   clients: AuthClientEditorState[];
 };
 
@@ -87,6 +102,53 @@ function createBeanEditorState(): BeanEditorState {
     className: "",
     constructorArgs: ["", ""],
   };
+}
+
+const DEFAULT_COMPONENT_TEMPLATE: ComponentTemplateDraft = {
+  type: "custom-processor",
+  label: "Custom Processor",
+  description: "Configure a reusable route step with text, dropdown, and checkbox fields.",
+  color: "#14b8a6",
+  fields: [
+    {
+      key: "ref",
+      label: "Processor reference",
+      control: "text",
+      placeholder: "processorRef",
+      helperText: "Saved as the processor reference for this component.",
+    },
+    {
+      key: "mode",
+      label: "Mode",
+      control: "select",
+      options: [
+        { label: "Simple", value: "simple" },
+        { label: "Advanced", value: "advanced" },
+      ],
+    },
+    {
+      key: "notes",
+      label: "Notes",
+      control: "textarea",
+      placeholder: "Optional configuration notes",
+    },
+    {
+      key: "enabled",
+      label: "Enabled",
+      control: "checkbox",
+    },
+  ],
+  config: {
+    ref: "processorRef",
+    mode: "simple",
+    notes: "",
+    enabled: true,
+  },
+  dependencies: [],
+};
+
+function serializeComponentTemplate(template: ComponentTemplateDraft) {
+  return JSON.stringify(template, null, 2);
 }
 
 function createBeanEditorFromItem(bean: CreatedBean): BeanEditorState {
@@ -232,6 +294,7 @@ function createAuthClientEditorState(
     id: `client-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     name: overrides.name ?? "",
     secret: overrides.secret ?? "",
+    password: overrides.password ?? "",
     enabled: overrides.enabled ?? true,
   };
 }
@@ -246,6 +309,13 @@ function createAuthTenantEditorState(
     name: overrides.name ?? "",
     keyHeader: overrides.keyHeader ?? "x-api-key",
     secretHeader: overrides.secretHeader ?? "x-api-secret",
+    jwtType: overrides.jwtType ?? "RS",
+    roleKeyClaims: overrides.roleKeyClaims ?? "realm_access.roles",
+    usernameKeyClaims: overrides.usernameKeyClaims ?? "preferred_username",
+    dataKeysClaims: overrides.dataKeysClaims ?? "name\nemail",
+    claimsHeaderMapping: overrides.claimsHeaderMapping ?? '{\n  "name": "NAME",\n  "email": "EMAIL"\n}',
+    publicKeyUrl: overrides.publicKeyUrl ?? "",
+    jwtSecret: overrides.jwtSecret ?? "",
     clients: overrides.clients ?? [createAuthClientEditorState()],
   };
 }
@@ -259,21 +329,83 @@ function createDefaultAuthTenants(): AuthTenantEditorState[] {
   ];
 }
 
-function buildAuthConfig(tenants: AuthTenantEditorState[]) {
+function parseClaimsList(value: string) {
+  return value
+    .split(/\r?\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseClaimsHeaderMapping(value: string) {
+  try {
+    const parsed = JSON.parse(value) as Record<string, string>;
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+function buildAuthConfig(
+  tenants: AuthTenantEditorState[],
+  method: AuthMethod,
+  includePrincipal = "false",
+) {
+  if (method === "jwt") {
+    return {
+      includePrincipal,
+      tenants: Object.fromEntries(
+        tenants.map((tenant) => {
+          const tenantPayload =
+            tenant.jwtType === "HS"
+              ? {
+                  type: tenant.jwtType,
+                  jwtSecret: tenant.jwtSecret,
+                }
+              : {
+                  type: tenant.jwtType,
+                  roleKeyClaims: tenant.roleKeyClaims.trim(),
+                  usernameKeyClaims: tenant.usernameKeyClaims.trim(),
+                  dataKeysClaims: parseClaimsList(tenant.dataKeysClaims),
+                  ...(Object.keys(parseClaimsHeaderMapping(tenant.claimsHeaderMapping)).length > 0
+                    ? { claimsHeaderMapping: parseClaimsHeaderMapping(tenant.claimsHeaderMapping) }
+                    : {}),
+                  publicKeyUrl: tenant.publicKeyUrl.trim(),
+                };
+
+          return [tenant.name.trim(), tenantPayload];
+        }),
+      ),
+    };
+  }
+
   return {
     tenants: Object.fromEntries(
       tenants.map((tenant) => [
         tenant.name.trim(),
         {
-          keyHeader: tenant.keyHeader.trim(),
-          secretHeader: tenant.secretHeader.trim(),
+          ...(method === "apikey"
+            ? {
+                keyHeader: tenant.keyHeader.trim(),
+                secretHeader: tenant.secretHeader.trim(),
+              }
+            : {}),
           clients: Object.fromEntries(
             tenant.clients.map((client) => [
               client.name.trim(),
-              {
-                secret: client.secret,
-                enabled: client.enabled,
-              },
+              method === "basic"
+                ? {
+                    password: client.password,
+                    enabled: client.enabled,
+                  }
+                : {
+                    secret: client.secret,
+                    enabled: client.enabled,
+                  },
             ]),
           ),
         },
@@ -282,19 +414,68 @@ function buildAuthConfig(tenants: AuthTenantEditorState[]) {
   };
 }
 
-function serializeAuthConfig(tenants: AuthTenantEditorState[]) {
-  return JSON.stringify(buildAuthConfig(tenants), null, 2);
+function serializeAuthConfig(
+  tenants: AuthTenantEditorState[],
+  method: AuthMethod,
+  includePrincipal = "false",
+) {
+  return JSON.stringify(buildAuthConfig(tenants, method, includePrincipal), null, 2);
 }
 
-function parseAuthTenants(content: string): AuthTenantEditorState[] {
+function detectAuthMethod(content: string, fileName = ""): AuthMethod {
+  const lowerFileName = fileName.toLowerCase();
+
+  if (lowerFileName.includes("basic")) return "basic";
+  if (lowerFileName.includes("hmac")) return "hmac";
+  if (lowerFileName.includes("jwt")) return "jwt";
+  if (lowerFileName.includes("apikey") || lowerFileName.includes("api-key")) return "apikey";
+
   try {
     const parsed = JSON.parse(content) as {
+      includePrincipal?: string;
+      tenants?: Record<string, Record<string, unknown>>;
+    };
+    const firstTenant = parsed.tenants ? Object.values(parsed.tenants)[0] : undefined;
+    const firstClient =
+      firstTenant?.clients && typeof firstTenant.clients === "object" && !Array.isArray(firstTenant.clients)
+        ? Object.values(firstTenant.clients as Record<string, Record<string, unknown>>)[0]
+        : undefined;
+
+    if (parsed.includePrincipal !== undefined || firstTenant?.type || firstTenant?.publicKeyUrl || firstTenant?.jwtSecret) {
+      return "jwt";
+    }
+
+    if (firstClient?.password !== undefined) {
+      return "basic";
+    }
+
+    if (firstTenant?.keyHeader || firstTenant?.secretHeader) {
+      return "apikey";
+    }
+  } catch {
+    // Fall through to the API key default.
+  }
+
+  return "apikey";
+}
+
+function parseAuthTenants(content: string, method = detectAuthMethod(content)): AuthTenantEditorState[] {
+  try {
+    const parsed = JSON.parse(content) as {
+      includePrincipal?: string;
       tenants?: Record<
         string,
         {
           keyHeader?: string;
           secretHeader?: string;
-          clients?: Record<string, { secret?: string; enabled?: boolean }>;
+          clients?: Record<string, { secret?: string; password?: string; enabled?: boolean }>;
+          type?: "RS" | "HS";
+          roleKeyClaims?: string;
+          usernameKeyClaims?: string;
+          dataKeysClaims?: string[];
+          claimsHeaderMapping?: Record<string, string>;
+          publicKeyUrl?: string;
+          jwtSecret?: string;
         }
       >;
     };
@@ -310,12 +491,27 @@ function parseAuthTenants(content: string): AuthTenantEditorState[] {
         name: tenantName,
         keyHeader: tenantValue?.keyHeader ?? "x-api-key",
         secretHeader: tenantValue?.secretHeader ?? "x-api-secret",
+        jwtType: tenantValue?.type ?? "RS",
+        roleKeyClaims: tenantValue?.roleKeyClaims ?? "realm_access.roles",
+        usernameKeyClaims: tenantValue?.usernameKeyClaims ?? "preferred_username",
+        dataKeysClaims: Array.isArray(tenantValue?.dataKeysClaims)
+          ? tenantValue.dataKeysClaims.join("\n")
+          : "name\nemail",
+        claimsHeaderMapping: tenantValue?.claimsHeaderMapping
+          ? JSON.stringify(tenantValue.claimsHeaderMapping, null, 2)
+          : "",
+        publicKeyUrl: tenantValue?.publicKeyUrl ?? "",
+        jwtSecret: tenantValue?.jwtSecret ?? "",
         clients:
-          tenantValue?.clients && typeof tenantValue.clients === "object" && !Array.isArray(tenantValue.clients)
+          method !== "jwt" &&
+          tenantValue?.clients &&
+          typeof tenantValue.clients === "object" &&
+          !Array.isArray(tenantValue.clients)
             ? Object.entries(tenantValue.clients).map(([clientName, clientValue]) =>
                 createAuthClientEditorState({
                   name: clientName,
                   secret: clientValue?.secret ?? "",
+                  password: clientValue?.password ?? "",
                   enabled: clientValue?.enabled ?? true,
                 }),
               )
@@ -532,19 +728,25 @@ const SECURITY_DEFAULTS: Record<
   {
     fileName: string;
     content: string;
+    authMethod: AuthMethod;
+    includePrincipal: string;
     authTenants: AuthTenantEditorState[];
     authorizePolicy: AuthorizePolicyEditorState;
   }
 > = {
   auth: {
     fileName: "apikey.json",
-    content: serializeAuthConfig(createDefaultAuthTenants()),
+    content: serializeAuthConfig(createDefaultAuthTenants(), "apikey"),
+    authMethod: "apikey",
+    includePrincipal: "false",
     authTenants: createDefaultAuthTenants(),
     authorizePolicy: createDefaultAuthorizePolicy(),
   },
   authorize: {
     fileName: "policy.json",
     content: serializeAuthorizeConfig(createDefaultAuthorizePolicy()),
+    authMethod: "apikey",
+    includePrincipal: "false",
     authTenants: createDefaultAuthTenants(),
     authorizePolicy: createDefaultAuthorizePolicy(),
   },
@@ -556,6 +758,8 @@ function createSecurityEditorState(subsection: SecuritySubsection): SecurityEdit
   return {
     fileName: defaults.fileName,
     content: defaults.content,
+    authMethod: defaults.authMethod,
+    includePrincipal: defaults.includePrincipal,
     authTenants:
       subsection === "auth" ? defaults.authTenants : createDefaultAuthTenants(),
     authorizePolicy:
@@ -564,11 +768,25 @@ function createSecurityEditorState(subsection: SecuritySubsection): SecurityEdit
 }
 
 function createSecurityEditorFromItem(item: CreatedSecurityConfig): SecurityEditorState {
+  const authMethod = item.subsection === "auth" ? detectAuthMethod(item.content, item.fileName) : "apikey";
+  let includePrincipal = "false";
+
+  if (item.subsection === "auth" && authMethod === "jwt") {
+    try {
+      const parsed = JSON.parse(item.content) as { includePrincipal?: string };
+      includePrincipal = parsed.includePrincipal ?? "false";
+    } catch {
+      includePrincipal = "false";
+    }
+  }
+
   return {
     fileName: item.fileName,
     content: item.content,
+    authMethod,
+    includePrincipal,
     authTenants:
-      item.subsection === "auth" ? parseAuthTenants(item.content) : createDefaultAuthTenants(),
+      item.subsection === "auth" ? parseAuthTenants(item.content, authMethod) : createDefaultAuthTenants(),
     authorizePolicy:
       item.subsection === "authorize" ? parseAuthorizePolicy(item.content) : createDefaultAuthorizePolicy(),
   };
@@ -723,6 +941,247 @@ function SectionTitle({
         {title}
       </h2>
       <p style={{ margin: 0, color: "#64748b", fontSize: 14, lineHeight: 1.6 }}>{subtitle}</p>
+    </div>
+  );
+}
+
+function ComponentBuilderWorkspace() {
+  const { customComponents, addCustomComponent, updateCustomComponent, removeCustomComponent } = useFlowStore();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editor, setEditor] = useState(() => serializeComponentTemplate(DEFAULT_COMPONENT_TEMPLATE));
+  const [error, setError] = useState<string | null>(null);
+
+  const selectedComponent = customComponents.find((component) => component.id === selectedId) ?? null;
+
+  const parseEditor = () => {
+    const parsed = JSON.parse(editor) as ComponentTemplateDraft;
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Template must be a JSON object.");
+    }
+
+    if (!Array.isArray(parsed.fields)) {
+      throw new Error("`fields` must be a JSON array.");
+    }
+
+    if (!parsed.config || typeof parsed.config !== "object" || Array.isArray(parsed.config)) {
+      throw new Error("`config` must be a JSON object.");
+    }
+
+    return parsed;
+  };
+
+  const handleCreate = () => {
+    try {
+      const result = addCustomComponent(parseEditor());
+
+      if (!result.ok) {
+        setError(result.reason);
+        return;
+      }
+
+      setError(null);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Component template is not valid JSON.");
+    }
+  };
+
+  const handleUpdate = () => {
+    if (!selectedId) {
+      setError("Select a component template from the list to edit it.");
+      return;
+    }
+
+    try {
+      const result = updateCustomComponent(selectedId, parseEditor());
+
+      if (!result.ok) {
+        setError(result.reason);
+        return;
+      }
+
+      setError(null);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Component template is not valid JSON.");
+    }
+  };
+
+  return (
+    <div style={workspaceGridStyle}>
+      <section style={workspacePanelStyle}>
+        <SectionTitle
+          title={selectedComponent ? "Edit Component Template" : "Create Component Template"}
+          subtitle="Define a route-step template as JSON, including text boxes, dropdowns, and checkbox controls."
+        />
+        <div
+          style={{
+            marginTop: 18,
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            flex: 1,
+            minHeight: 0,
+            overflow: "auto",
+            paddingRight: 6,
+          }}
+        >
+          <textarea
+            value={editor}
+            spellCheck={false}
+            onChange={(event) => setEditor(event.target.value)}
+            style={{
+              ...fieldStyle,
+              minHeight: 520,
+              resize: "vertical",
+              fontFamily: "Consolas, 'Courier New', monospace",
+              fontSize: 13,
+              lineHeight: 1.55,
+            }}
+          />
+          <p style={{ margin: 0, color: "#64748b", fontSize: 12, lineHeight: 1.55 }}>
+            Field controls support `text`, `textarea`, `select`, and `checkbox`. The `config`
+            object provides the defaults that are applied when users drag the component onto the canvas.
+          </p>
+        </div>
+        <div style={{ flexShrink: 0 }}>
+          {error ? <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{error}</p> : null}
+          <div style={stickyActionBarStyle}>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedId(null);
+                setEditor(serializeComponentTemplate(DEFAULT_COMPONENT_TEMPLATE));
+                setError(null);
+              }}
+              style={secondaryButtonStyle}
+            >
+              New Template
+            </button>
+            <button type="button" onClick={handleCreate} style={primaryButtonStyle}>
+              Create Component
+            </button>
+            <button type="button" onClick={handleUpdate} style={secondaryButtonStyle}>
+              Edit Component
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section style={workspacePanelStyle}>
+        <SectionTitle
+          title="Component Templates"
+          subtitle="Saved templates appear in the Components sidebar and can be dragged into the route."
+        />
+        <div
+          style={{
+            marginTop: 18,
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            flex: 1,
+            minHeight: 0,
+            overflow: "auto",
+            paddingRight: 6,
+          }}
+        >
+          {customComponents.length > 0 ? (
+            customComponents.map((component) => (
+              <div key={component.id} style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedId(component.id);
+                    setEditor(serializeComponentTemplate(component));
+                    setError(null);
+                  }}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    borderRadius: 16,
+                    border:
+                      component.id === selectedId
+                        ? "1px solid rgba(96, 165, 250, 0.5)"
+                        : "1px solid rgba(71, 85, 105, 0.3)",
+                    background:
+                      component.id === selectedId
+                        ? "rgba(30, 64, 175, 0.18)"
+                        : "rgba(255, 255, 255, 0.96)",
+                    padding: "12px 46px 12px 16px",
+                    color: "#0f172a",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span
+                      style={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: 999,
+                        background: component.color,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span style={{ fontSize: 14, fontWeight: 700, overflowWrap: "anywhere" }}>
+                      {component.label}
+                    </span>
+                  </div>
+                  <div style={listItemMetaStyle}>{component.type}</div>
+                  <div style={listItemMetaStyle}>
+                    {component.fields.length} field{component.fields.length === 1 ? "" : "s"}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Delete ${component.label}`}
+                  onClick={() => {
+                    removeCustomComponent(component.id);
+                    if (selectedId === component.id) {
+                      setSelectedId(null);
+                      setEditor(serializeComponentTemplate(DEFAULT_COMPONENT_TEMPLATE));
+                      setError(null);
+                    }
+                  }}
+                  style={{
+                    ...deleteIconButtonStyle,
+                    position: "absolute",
+                    top: "50%",
+                    right: 12,
+                    transform: "translateY(-50%)",
+                  }}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ width: 14, height: 14 }}
+                  >
+                    <path d="M9 3.75h6a1 1 0 0 1 1 1V6H8V4.75a1 1 0 0 1 1-1Z" />
+                    <path d="M4.75 6h14.5" />
+                    <path d="M6.75 6.75 7.6 19a2 2 0 0 0 2 1.86h4.8a2 2 0 0 0 2-1.86l.85-12.25" />
+                    <path d="M10 10.25v6.5" />
+                    <path d="M14 10.25v6.5" />
+                  </svg>
+                </button>
+              </div>
+            ))
+          ) : (
+            <div
+              style={{
+                borderRadius: 16,
+                border: "1px dashed rgba(71, 85, 105, 0.45)",
+                padding: "18px 16px",
+                color: "#64748b",
+                textAlign: "center",
+              }}
+            >
+              No component templates created yet.
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
@@ -2001,7 +2460,10 @@ function SecurityWorkspace() {
     (item) => item.subsection === selectedSecuritySubsection,
   );
   const selectedItem = filteredConfigs.find((item) => item.id === selectedId) ?? null;
-  const authPreview = useMemo(() => serializeAuthConfig(editor.authTenants), [editor.authTenants]);
+  const authPreview = useMemo(
+    () => serializeAuthConfig(editor.authTenants, editor.authMethod, editor.includePrincipal),
+    [editor.authMethod, editor.authTenants, editor.includePrincipal],
+  );
   const authorizePreview = useMemo(
     () => serializeAuthorizeConfig(editor.authorizePolicy),
     [editor.authorizePolicy],
@@ -2011,6 +2473,20 @@ function SecurityWorkspace() {
     selectSecuritySubsection(section);
     setSelectedId(null);
     setEditor(createSecurityEditorState(section));
+    setError(null);
+  };
+
+  const handleAuthMethodChange = (method: AuthMethod) => {
+    setSelectedId(null);
+    setEditor((current) => ({
+      ...current,
+      authMethod: method,
+      fileName: `${method}.json`,
+      authTenants:
+        current.authTenants.length > 0
+          ? current.authTenants
+          : createDefaultAuthTenants(),
+    }));
     setError(null);
   };
 
@@ -2036,8 +2512,28 @@ function SecurityWorkspace() {
 
       tenantNames.add(normalizedTenantName);
 
-      if (!tenant.keyHeader.trim() || !tenant.secretHeader.trim()) {
+      if (editor.authMethod === "apikey" && (!tenant.keyHeader.trim() || !tenant.secretHeader.trim())) {
         throw new Error(`Tenant ${tenantName} must include both key and secret headers.`);
+      }
+
+      if (editor.authMethod === "jwt") {
+        if (tenant.jwtType === "RS") {
+          if (!tenant.roleKeyClaims.trim() || !tenant.usernameKeyClaims.trim() || !tenant.publicKeyUrl.trim()) {
+            throw new Error(`JWT tenant ${tenantName} needs role claims, username claims, and public key URL.`);
+          }
+
+          try {
+            JSON.parse(tenant.claimsHeaderMapping || "{}");
+          } catch {
+            throw new Error(`JWT tenant ${tenantName} has invalid claims header mapping JSON.`);
+          }
+        }
+
+        if (tenant.jwtType === "HS" && !tenant.jwtSecret.trim()) {
+          throw new Error(`JWT tenant ${tenantName} needs a JWT secret.`);
+        }
+
+        continue;
       }
 
       if (tenant.clients.length === 0) {
@@ -2204,8 +2700,60 @@ function SecurityWorkspace() {
               ))}
             </div>
 
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={fieldLabelStyle}>File Name</span>
+              <input
+                value={editor.fileName}
+                onChange={(event) =>
+                  setEditor((current) => ({
+                    ...current,
+                    fileName: event.target.value,
+                    authMethod:
+                      selectedSecuritySubsection === "auth"
+                        ? detectAuthMethod("", event.target.value)
+                        : current.authMethod,
+                  }))
+                }
+                placeholder={selectedSecuritySubsection === "auth" ? "apikey.json" : "policy.json"}
+                style={fieldStyle}
+              />
+            </label>
+
             {selectedSecuritySubsection === "auth" ? (
               <div style={{ display: "grid", gap: 14 }}>
+                <label style={{ display: "grid", gap: 6 }}>
+                  <span style={fieldLabelStyle}>Authentication Method</span>
+                  <select
+                    value={editor.authMethod}
+                    onChange={(event) => handleAuthMethodChange(event.target.value as AuthMethod)}
+                    style={fieldStyle}
+                  >
+                    <option value="apikey">API Key</option>
+                    <option value="basic">Basic</option>
+                    <option value="hmac">HMAC</option>
+                    <option value="jwt">JWT</option>
+                  </select>
+                </label>
+
+                {editor.authMethod === "jwt" ? (
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Include Principal</span>
+                    <select
+                      value={editor.includePrincipal}
+                      onChange={(event) =>
+                        setEditor((current) => ({
+                          ...current,
+                          includePrincipal: event.target.value,
+                        }))
+                      }
+                      style={fieldStyle}
+                    >
+                      <option value="false">false</option>
+                      <option value="true">true</option>
+                    </select>
+                  </label>
+                ) : null}
+
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                   <span style={fieldLabelStyle}>Tenants</span>
                   <button
@@ -2219,7 +2767,12 @@ function SecurityWorkspace() {
                             name: `tenant${current.authTenants.length + 1}`,
                             clients: [
                               createAuthClientEditorState({
-                                name: `apikey${current.authTenants.length + 1}`,
+                                name:
+                                  current.authMethod === "basic"
+                                    ? `user${current.authTenants.length + 1}`
+                                    : current.authMethod === "hmac"
+                                      ? `app${current.authTenants.length + 1}`
+                                      : `apikey${current.authTenants.length + 1}`,
                               }),
                             ],
                           }),
@@ -2284,40 +2837,167 @@ function SecurityWorkspace() {
                             style={fieldStyle}
                           />
                         </label>
-                        <label style={{ display: "grid", gap: 6 }}>
-                          <span style={fieldLabelStyle}>Key Header</span>
-                          <input
-                            value={tenant.keyHeader}
-                            onChange={(event) =>
-                              setEditor((current) => ({
-                                ...current,
-                                authTenants: current.authTenants.map((item) =>
-                                  item.id === tenant.id ? { ...item, keyHeader: event.target.value } : item,
-                                ),
-                              }))
-                            }
-                            placeholder="x-api-key"
-                            style={fieldStyle}
-                          />
-                        </label>
-                        <label style={{ display: "grid", gap: 6 }}>
-                          <span style={fieldLabelStyle}>Secret Header</span>
-                          <input
-                            value={tenant.secretHeader}
-                            onChange={(event) =>
-                              setEditor((current) => ({
-                                ...current,
-                                authTenants: current.authTenants.map((item) =>
-                                  item.id === tenant.id ? { ...item, secretHeader: event.target.value } : item,
-                                ),
-                              }))
-                            }
-                            placeholder="x-api-secret"
-                            style={fieldStyle}
-                          />
-                        </label>
+                        {editor.authMethod === "apikey" ? (
+                          <>
+                            <label style={{ display: "grid", gap: 6 }}>
+                              <span style={fieldLabelStyle}>Key Header</span>
+                              <input
+                                value={tenant.keyHeader}
+                                onChange={(event) =>
+                                  setEditor((current) => ({
+                                    ...current,
+                                    authTenants: current.authTenants.map((item) =>
+                                      item.id === tenant.id ? { ...item, keyHeader: event.target.value } : item,
+                                    ),
+                                  }))
+                                }
+                                placeholder="x-api-key"
+                                style={fieldStyle}
+                              />
+                            </label>
+                            <label style={{ display: "grid", gap: 6 }}>
+                              <span style={fieldLabelStyle}>Secret Header</span>
+                              <input
+                                value={tenant.secretHeader}
+                                onChange={(event) =>
+                                  setEditor((current) => ({
+                                    ...current,
+                                    authTenants: current.authTenants.map((item) =>
+                                      item.id === tenant.id ? { ...item, secretHeader: event.target.value } : item,
+                                    ),
+                                  }))
+                                }
+                                placeholder="x-api-secret"
+                                style={fieldStyle}
+                              />
+                            </label>
+                          </>
+                        ) : null}
                       </div>
 
+                      {editor.authMethod === "jwt" ? (
+                        <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+                          <label style={{ display: "grid", gap: 6 }}>
+                            <span style={fieldLabelStyle}>JWT Type</span>
+                            <select
+                              value={tenant.jwtType}
+                              onChange={(event) =>
+                                setEditor((current) => ({
+                                  ...current,
+                                  authTenants: current.authTenants.map((item) =>
+                                    item.id === tenant.id ? { ...item, jwtType: event.target.value as "RS" | "HS" } : item,
+                                  ),
+                                }))
+                              }
+                              style={fieldStyle}
+                            >
+                              <option value="RS">RS</option>
+                              <option value="HS">HS</option>
+                            </select>
+                          </label>
+                          {tenant.jwtType === "HS" ? (
+                            <label style={{ display: "grid", gap: 6 }}>
+                              <span style={fieldLabelStyle}>JWT Secret</span>
+                              <input
+                                value={tenant.jwtSecret}
+                                onChange={(event) =>
+                                  setEditor((current) => ({
+                                    ...current,
+                                    authTenants: current.authTenants.map((item) =>
+                                      item.id === tenant.id ? { ...item, jwtSecret: event.target.value } : item,
+                                    ),
+                                  }))
+                                }
+                                placeholder="base64-secret"
+                                style={fieldStyle}
+                              />
+                            </label>
+                          ) : (
+                            <>
+                              <label style={{ display: "grid", gap: 6 }}>
+                                <span style={fieldLabelStyle}>Role Key Claims</span>
+                                <input
+                                  value={tenant.roleKeyClaims}
+                                  onChange={(event) =>
+                                    setEditor((current) => ({
+                                      ...current,
+                                      authTenants: current.authTenants.map((item) =>
+                                        item.id === tenant.id ? { ...item, roleKeyClaims: event.target.value } : item,
+                                      ),
+                                    }))
+                                  }
+                                  placeholder="realm_access.roles"
+                                  style={fieldStyle}
+                                />
+                              </label>
+                              <label style={{ display: "grid", gap: 6 }}>
+                                <span style={fieldLabelStyle}>Username Key Claims</span>
+                                <input
+                                  value={tenant.usernameKeyClaims}
+                                  onChange={(event) =>
+                                    setEditor((current) => ({
+                                      ...current,
+                                      authTenants: current.authTenants.map((item) =>
+                                        item.id === tenant.id ? { ...item, usernameKeyClaims: event.target.value } : item,
+                                      ),
+                                    }))
+                                  }
+                                  placeholder="preferred_username"
+                                  style={fieldStyle}
+                                />
+                              </label>
+                              <label style={{ display: "grid", gap: 6 }}>
+                                <span style={fieldLabelStyle}>Public Key URL</span>
+                                <input
+                                  value={tenant.publicKeyUrl}
+                                  onChange={(event) =>
+                                    setEditor((current) => ({
+                                      ...current,
+                                      authTenants: current.authTenants.map((item) =>
+                                        item.id === tenant.id ? { ...item, publicKeyUrl: event.target.value } : item,
+                                      ),
+                                    }))
+                                  }
+                                  placeholder="http://localhost:8081/realms/test/protocol/openid-connect/certs"
+                                  style={fieldStyle}
+                                />
+                              </label>
+                              <label style={{ display: "grid", gap: 6 }}>
+                                <span style={fieldLabelStyle}>Data Keys Claims</span>
+                                <textarea
+                                  value={tenant.dataKeysClaims}
+                                  onChange={(event) =>
+                                    setEditor((current) => ({
+                                      ...current,
+                                      authTenants: current.authTenants.map((item) =>
+                                        item.id === tenant.id ? { ...item, dataKeysClaims: event.target.value } : item,
+                                      ),
+                                    }))
+                                  }
+                                  placeholder={"name\nemail"}
+                                  style={{ ...fieldStyle, minHeight: 92, resize: "vertical" }}
+                                />
+                              </label>
+                              <label style={{ display: "grid", gap: 6 }}>
+                                <span style={fieldLabelStyle}>Claims Header Mapping</span>
+                                <textarea
+                                  value={tenant.claimsHeaderMapping}
+                                  onChange={(event) =>
+                                    setEditor((current) => ({
+                                      ...current,
+                                      authTenants: current.authTenants.map((item) =>
+                                        item.id === tenant.id ? { ...item, claimsHeaderMapping: event.target.value } : item,
+                                      ),
+                                    }))
+                                  }
+                                  placeholder={'{\n  "name": "NAME",\n  "email": "EMAIL"\n}'}
+                                  style={{ ...fieldStyle, minHeight: 92, resize: "vertical", fontFamily: "monospace" }}
+                                />
+                              </label>
+                            </>
+                          )}
+                        </div>
+                      ) : (
                       <div style={{ display: "grid", gap: 10 }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                           <span style={fieldLabelStyle}>Clients</span>
@@ -2333,7 +3013,12 @@ function SecurityWorkspace() {
                                         clients: [
                                           ...item.clients,
                                           createAuthClientEditorState({
-                                            name: `apikey${item.clients.length + 1}`,
+                                            name:
+                                              editor.authMethod === "basic"
+                                                ? `user${item.clients.length + 1}`
+                                                : editor.authMethod === "hmac"
+                                                  ? `app${item.clients.length + 1}`
+                                                  : `apikey${item.clients.length + 1}`,
                                           }),
                                         ],
                                       }
@@ -2411,14 +3096,14 @@ function SecurityWorkspace() {
                                         ),
                                       }))
                                     }
-                                    placeholder="apikey1"
+                                    placeholder={editor.authMethod === "basic" ? "uname" : editor.authMethod === "hmac" ? "app1" : "apikey1"}
                                     style={fieldStyle}
                                   />
                                 </label>
                                 <label style={{ display: "grid", gap: 6 }}>
-                                  <span style={fieldLabelStyle}>Secret</span>
+                                  <span style={fieldLabelStyle}>{editor.authMethod === "basic" ? "Password" : "Secret"}</span>
                                   <input
-                                    value={client.secret}
+                                    value={editor.authMethod === "basic" ? client.password : client.secret}
                                     onChange={(event) =>
                                       setEditor((current) => ({
                                         ...current,
@@ -2428,7 +3113,9 @@ function SecurityWorkspace() {
                                                 ...item,
                                                 clients: item.clients.map((clientItem) =>
                                                   clientItem.id === client.id
-                                                    ? { ...clientItem, secret: event.target.value }
+                                                    ? editor.authMethod === "basic"
+                                                      ? { ...clientItem, password: event.target.value }
+                                                      : { ...clientItem, secret: event.target.value }
                                                     : clientItem,
                                                 ),
                                               }
@@ -2436,7 +3123,7 @@ function SecurityWorkspace() {
                                         ),
                                       }))
                                     }
-                                    placeholder="client secret"
+                                    placeholder={editor.authMethod === "basic" ? "password" : "client secret"}
                                     style={fieldStyle}
                                   />
                                 </label>
@@ -2469,6 +3156,7 @@ function SecurityWorkspace() {
                           ))}
                         </div>
                       </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -3107,6 +3795,10 @@ export default function ConfigurationWorkspace() {
             ? {
                 title: "Endpoints Configuration"
               }
+          : selectedConfigSection === "components"
+            ? {
+                title: "Component Builder"
+              }
           : {
               title: "Security Configuration"
             },
@@ -3155,6 +3847,8 @@ export default function ConfigurationWorkspace() {
         <LlmConfigurationWorkspace />
       ) : selectedConfigSection === "endpoints" ? (
         <EndpointsConfigurationWorkspace />
+      ) : selectedConfigSection === "components" ? (
+        <ComponentBuilderWorkspace />
       ) : (
         <SecurityWorkspace />
       )}

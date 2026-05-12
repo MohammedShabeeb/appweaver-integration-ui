@@ -132,7 +132,7 @@ const selectIconStyle: React.CSSProperties = {
 };
 
 export default function ConfigPanel() {
-  const { selectedNode, selectedEdge, updateNodeData, deleteEdge, deleteNode } = useFlowStore();
+  const { selectedNode, selectedEdge, updateNodeData, deleteEdge, deleteNode, customComponents } = useFlowStore();
 
   if (!selectedNode && !selectedEdge) {
     return null;
@@ -170,17 +170,21 @@ export default function ConfigPanel() {
   }
 
   const type = selectedNode.type;
+  const componentKey = selectedNode.data.componentKey ?? type ?? "";
+  const customComponent = customComponents.find((component) => component.type === componentKey) ?? null;
 
   if (type === "start") {
     return null;
   }
 
-  const nodeMeta = nodeTypeMeta[type as keyof typeof nodeTypeMeta];
+  const nodeMeta = nodeTypeMeta[type as keyof typeof nodeTypeMeta] ?? nodeTypeMeta.process;
   const config = (selectedNode.data.config as Record<string, unknown> | undefined) ?? {};
   const selectedClazzValue = String(config.clazz ?? "java.util.Map");
   const selectedClazzOption =
     JAVA_CLASS_OPTIONS.find((option) => option.value === selectedClazzValue) ?? JAVA_CLASS_OPTIONS[0];
-  const panelDescription =
+  const panelDescription = customComponent
+    ? customComponent.description || "Configure this custom component from its template fields."
+    :
     type === "marshal"
       ? "Convert the body into JSON using the selected Java class."
       : type === "unmarshal"
@@ -201,7 +205,7 @@ export default function ConfigPanel() {
           }}
         >
         {nodeMeta ? <nodeMeta.Icon style={{ width: 16, height: 16, color: "var(--workflow-accent)" }} /> : null}
-        {nodeMeta ? nodeMeta.label : type} Config
+        {customComponent ? customComponent.label : nodeMeta ? nodeMeta.label : type} Config
       </h2>
 
       <p style={{ ...helperTextStyle, marginTop: -4, marginBottom: 14 }}>{panelDescription}</p>
@@ -321,6 +325,102 @@ export default function ConfigPanel() {
             </label>
           </div>
         )}
+
+        {customComponent ? (
+          <div style={sectionStyle}>
+            {customComponent.fields.map((field) => {
+              const value = config[field.key];
+
+              if (field.control === "checkbox") {
+                return (
+                  <label
+                    key={field.key}
+                    style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(value)}
+                      onChange={(event) =>
+                        updateNodeData(selectedNode.id, {
+                          config: { [field.key]: event.target.checked },
+                        })
+                      }
+                    />
+                    <span style={{ fontWeight: 700 }}>{field.label}</span>
+                  </label>
+                );
+              }
+
+              if (field.control === "select") {
+                return (
+                  <label key={field.key}>
+                    <span style={labelStyle}>{field.label}</span>
+                    <div style={selectWrapStyle}>
+                      <select
+                        value={String(value ?? field.options?.[0]?.value ?? "")}
+                        style={selectStyle}
+                        onChange={(event) =>
+                          updateNodeData(selectedNode.id, {
+                            config: { [field.key]: event.target.value },
+                          })
+                        }
+                      >
+                        {(field.options ?? []).map((option) => (
+                          <option key={option.value} value={option.value} style={optionStyle}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={selectIconStyle}
+                        aria-hidden="true"
+                      >
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </div>
+                    {field.helperText ? <p style={helperTextStyle}>{field.helperText}</p> : null}
+                  </label>
+                );
+              }
+
+              return (
+                <label key={field.key}>
+                  <span style={labelStyle}>{field.label}</span>
+                  {field.control === "textarea" ? (
+                    <textarea
+                      value={String(value ?? "")}
+                      placeholder={field.placeholder}
+                      style={{ ...inputStyle, minHeight: 92, resize: "vertical" }}
+                      onChange={(event) =>
+                        updateNodeData(selectedNode.id, {
+                          config: { [field.key]: event.target.value },
+                        })
+                      }
+                    />
+                  ) : (
+                    <input
+                      value={String(value ?? "")}
+                      placeholder={field.placeholder}
+                      style={inputStyle}
+                      onChange={(event) =>
+                        updateNodeData(selectedNode.id, {
+                          config: { [field.key]: event.target.value },
+                        })
+                      }
+                    />
+                  )}
+                  {field.helperText ? <p style={helperTextStyle}>{field.helperText}</p> : null}
+                </label>
+              );
+            })}
+          </div>
+        ) : null}
 
         <button type="button" style={deleteBtnStyle} onClick={() => deleteNode(selectedNode.id)}>
           Delete component

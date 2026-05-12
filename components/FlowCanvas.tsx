@@ -29,6 +29,7 @@ const nodeTypes = {
   marshal: StepNode,
   unmarshal: StepNode,
   process: StepNode,
+  customStep: StepNode,
 };
 
 const edgeTypes = {
@@ -57,6 +58,7 @@ export default function FlowCanvas() {
     goBackCanvas,
     openCanvasFromBreadcrumb,
     openSidebar,
+    customComponents,
   } = useFlowStore();
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const reactFlowRef = useRef<ReactFlowInstance | null>(null);
@@ -92,8 +94,28 @@ export default function FlowCanvas() {
         },
       }));
 
-    return builtInResults.slice(0, 8);
-  }, [searchValue]);
+    const customResults = customComponents
+      .filter((component) => {
+        return (
+          component.label.toLowerCase().includes(query) ||
+          component.type.toLowerCase().includes(query) ||
+          component.description.toLowerCase().includes(query)
+        );
+      })
+      .map((component) => ({
+        id: `component-${component.type}`,
+        kind: "Component" as const,
+        title: component.label,
+        subtitle: component.type,
+        target: {
+          kind: "component" as const,
+          groupId: "processor",
+          componentKey: component.type,
+        },
+      }));
+
+    return [...builtInResults, ...customResults].slice(0, 8);
+  }, [customComponents, searchValue]);
 
   const canUseEndpoint = useCallback(
     (params: Connection) => {
@@ -441,6 +463,9 @@ export default function FlowCanvas() {
         }}
         onPaneClick={clearSelection}
         fitView
+        fitViewOptions={{ padding: 0.35, maxZoom: 0.85 }}
+        minZoom={0.35}
+        maxZoom={1.4}
         style={{ background: "linear-gradient(180deg, #ffffff 0%, #f7fafc 100%)" }}
       >
         <Background color="#d7dee8" gap={20} size={1} />

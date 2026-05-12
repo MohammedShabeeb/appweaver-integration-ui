@@ -39,10 +39,10 @@ const deleteBtnStyle: CSSProperties = {
 function buildCardStyle(accentColor: string, selected?: boolean): CSSProperties {
   return {
     position: "relative",
-    width: 220,
-    minHeight: 132,
-    padding: "14px 14px 12px",
-    borderRadius: 18,
+    width: 168,
+    minHeight: 96,
+    padding: "12px",
+    borderRadius: 14,
     border: `1px solid ${selected ? `${accentColor}8a` : "rgba(255, 255, 255, 0.12)"}`,
     background:
       "radial-gradient(circle at top left, rgba(255,255,255,0.06), rgba(255,255,255,0) 34%), linear-gradient(180deg, rgba(10, 15, 28, 0.98), rgba(15, 23, 42, 0.98))",
@@ -93,24 +93,24 @@ export default function FlowNodeCard({
         <div
           style={{
             display: "inline-flex",
-            height: 34,
-            width: 34,
+            height: 28,
+            width: 28,
             alignItems: "center",
             justifyContent: "center",
-            borderRadius: 12,
+            borderRadius: 10,
             background: accentColor,
             color: "#fff",
             boxShadow: `0 12px 28px ${accentColor}55`,
             flexShrink: 0,
           }}
         >
-          <Icon style={{ width: 18, height: 18 }} />
+          <Icon style={{ width: 15, height: 15 }} />
         </div>
         <div
           style={{
             flex: 1,
             minWidth: 0,
-            fontSize: 15,
+            fontSize: 13,
             fontWeight: 700,
             lineHeight: 1.28,
             letterSpacing: "-0.02em",
@@ -131,12 +131,16 @@ export default function FlowNodeCard({
         <div
           style={{
             marginTop: 14,
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: 500,
-            lineHeight: 1.65,
+            lineHeight: 1.45,
             color: "rgba(226, 232, 240, 0.82)",
             maxWidth: "100%",
             overflowWrap: "anywhere",
+            overflow: "hidden",
+            display: "-webkit-box",
+            WebkitBoxOrient: "vertical",
+            WebkitLineClamp: 2,
             letterSpacing: "-0.01em",
             fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
           }}

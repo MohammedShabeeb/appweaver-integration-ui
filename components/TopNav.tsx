@@ -248,6 +248,16 @@ export default function TopNav() {
               >
                 Endpoints
               </button>
+              <button
+                type="button"
+                className="sidebar-group-menu-item"
+                onClick={() => {
+                  openConfigSection("components");
+                  setIsConfigMenuOpen(false);
+                }}
+              >
+                Components
+              </button>
             </div>
           ) : null}
         </div>

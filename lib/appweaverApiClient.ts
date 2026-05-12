@@ -54,6 +54,26 @@ export type AppWeaverRagConfig = {
   };
 };
 
+export type AppWeaverRestRouteConfig = {
+  enabled?: boolean;
+  name: string;
+  path: string;
+  index?: number;
+  description?: string;
+  config: {
+    routeId?: string;
+    method: string;
+    path: string;
+    to: string;
+    rateLimiter?: string;
+    policyName?: string;
+    contentType?: string;
+    enableCors?: boolean;
+    virtualThreadEnabled?: boolean;
+    description?: string;
+  };
+};
+
 type RequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
   timeoutMs?: number;
@@ -71,6 +91,10 @@ const appWeaverEndpoints = {
     llmProvider: (id: string) => `/system/llm/provider/${encodeURIComponent(id)}`,
     llmRagConfigs: "/system/llm/rag",
     llmRagConfig: (id: string) => `/system/llm/rag/${encodeURIComponent(id)}`,
+    restRoutes: "/system/routes/rest-routes",
+    restRoutesByPath: (path: string) =>
+      `/system/routes/rest-routes?path=${encodeURIComponent(path)}`,
+    restRoute: (name: string) => `/system/routes/rest-routes/${encodeURIComponent(name)}`,
   },
 };
 
@@ -172,7 +196,7 @@ export const appWeaverApiClient = {
       list: () => request<AppWeaverBeanConfig[]>(appWeaverEndpoints.system.beans),
       get: (name: string) => request<AppWeaverBeanConfig>(appWeaverEndpoints.system.bean(name)),
       create: (name: string, bean: AppWeaverBeanConfig) =>
-        request<AppWeaverBeanConfig>(appWeaverEndpoints.system.bean(name), {
+        request<AppWeaverBeanConfig>(appWeaverEndpoints.system.beans, {
           method: "POST",
           body: normalizeBeanPayload({ ...bean, name }),
         }),
@@ -270,6 +294,30 @@ export const appWeaverApiClient = {
             method: "DELETE",
           }),
       },
+    },
+    restRoutes: {
+      list: (path?: string) =>
+        request<AppWeaverRestRouteConfig[]>(
+          path?.trim()
+            ? appWeaverEndpoints.system.restRoutesByPath(path.trim())
+            : appWeaverEndpoints.system.restRoutes,
+        ),
+      get: (name: string) =>
+        request<AppWeaverRestRouteConfig>(appWeaverEndpoints.system.restRoute(name)),
+      create: (route: AppWeaverRestRouteConfig) =>
+        request<AppWeaverRestRouteConfig>(appWeaverEndpoints.system.restRoutes, {
+          method: "POST",
+          body: route,
+        }),
+      update: (name: string, route: AppWeaverRestRouteConfig) =>
+        request<AppWeaverRestRouteConfig>(appWeaverEndpoints.system.restRoute(name), {
+          method: "PUT",
+          body: { ...route, name },
+        }),
+      remove: (name: string) =>
+        request<AppWeaverRestRouteConfig | null>(appWeaverEndpoints.system.restRoute(name), {
+          method: "DELETE",
+        }),
     },
   },
 };

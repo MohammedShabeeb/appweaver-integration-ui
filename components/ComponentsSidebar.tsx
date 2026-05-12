@@ -75,6 +75,7 @@ function createDataSourceEditorState(dataSourceKey: string): DataSourceEditorSta
 
 export default function ComponentsSidebar() {
   const {
+    createWorkflow,
     deleteWorkflow,
     activeWorkflowId,
     addBean,
@@ -89,10 +90,12 @@ export default function ComponentsSidebar() {
     toggleSidebar,
     workflowOrder,
     workflows,
+    customComponents,
   } = useFlowStore();
   const [pendingDeleteWorkflow, setPendingDeleteWorkflow] = useState<PendingDeleteWorkflow | null>(
     null,
   );
+  const [workflowName, setWorkflowName] = useState("");
   const [highlightedTarget, setHighlightedTarget] = useState<string | null>(null);
   const [selectedBeanName, setSelectedBeanName] = useState(beanCatalog[0]?.name ?? "");
   const [beanEditor, setBeanEditor] = useState<BeanEditorState>(() =>
@@ -127,6 +130,22 @@ export default function ComponentsSidebar() {
         })),
     [],
   );
+  const customStepItems = useMemo(
+    () =>
+      customComponents.map((item) => ({
+        type: item.type,
+        label: item.label,
+        color: item.color,
+        Icon: nodeTypeMeta.process.Icon,
+        description: item.description || item.type,
+      })),
+    [customComponents],
+  );
+
+  const handleCreateWorkflow = () => {
+    createWorkflow(workflowName.trim() || "Workflow");
+    setWorkflowName("");
+  };
 
   useEffect(() => {
     const handleFocusSearchTarget = (event: Event) => {
@@ -288,14 +307,14 @@ export default function ComponentsSidebar() {
               </div>
               <div className="sidebar-group-panel">
                 <div className="sidebar-group-items sidebar-group-items-compact">
-                  {stepItems.map((item) => {
+                  {[...stepItems, ...customStepItems].map((item) => {
                     const Icon = item.Icon;
 
                     return (
                       <div
                         key={item.type}
                         id={`sidebar-component-${item.type}`}
-                        className={`sidebar-item ${item.bgClass ?? ""} ${
+                        className={`sidebar-item ${"bgClass" in item ? item.bgClass ?? "" : ""} ${
                           highlightedTarget === `sidebar-component-${item.type}`
                             ? "sidebar-search-match"
                             : ""
@@ -320,7 +339,7 @@ export default function ComponentsSidebar() {
                             width: 42,
                             height: 42,
                             borderRadius: 12,
-                            ...(item.bgClass ? {} : { background: `${item.color}1f` }),
+                            ...("bgClass" in item && item.bgClass ? {} : { background: `${item.color}1f` }),
                           }}
                         >
                           <Icon className="h-5 w-5" />
@@ -378,7 +397,13 @@ export default function ComponentsSidebar() {
                     className="sidebar-group-title"
                     style={{ fontSize: 12, letterSpacing: "0.08em", color: "#64748b" }}
                   >
-                    {selectedConfigSection === "beans" ? "Beans" : "Datasources"}
+                    {selectedConfigSection === "beans"
+                      ? "Beans"
+                      : selectedConfigSection === "datasources"
+                        ? "Datasources"
+                        : selectedConfigSection === "components"
+                          ? "Component Builder"
+                          : "Use the top menu"}
                   </span>
                 </div>
                 {selectedConfigSection === "beans" ? (
@@ -815,6 +840,41 @@ export default function ComponentsSidebar() {
           </div>
         ) : (
           <div className="sidebar-items">
+            <form
+              className="sidebar-workflow-create"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleCreateWorkflow();
+              }}
+            >
+              <label className="sidebar-workflow-create-label" htmlFor="workflow-name-input">
+                New Workflow
+              </label>
+              <div className="sidebar-workflow-create-row">
+                <input
+                  id="workflow-name-input"
+                  className="sidebar-workflow-create-input"
+                  value={workflowName}
+                  onChange={(event) => setWorkflowName(event.target.value)}
+                  placeholder="Workflow name"
+                />
+                <button type="submit" className="sidebar-workflow-create-button">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
+                  </svg>
+                  <span className="sr-only">Create workflow</span>
+                </button>
+              </div>
+            </form>
             {workflowOrder.map((workflowId) => {
               const workflow = workflows[workflowId];
 

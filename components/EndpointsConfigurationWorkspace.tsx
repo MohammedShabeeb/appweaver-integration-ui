@@ -3,6 +3,10 @@
 import { useMemo, useState } from "react";
 
 import {
+  appWeaverApiClient,
+  type AppWeaverRestRouteConfig,
+} from "@/lib/appweaverApiClient";
+import {
   useFlowStore,
   type CreatedEndpointConfig,
   type EndpointProtocol,
@@ -166,6 +170,65 @@ function buildApiRouteContent(editor: ApiRouteEditorState) {
   );
 }
 
+function createEndpointId(routeName: string) {
+  return `endpoint-api-${encodeURIComponent(routeName)}`;
+}
+
+function normalizeBackendRestRoute(route: AppWeaverRestRouteConfig): CreatedEndpointConfig {
+  const routeName = route.name || route.config.routeId || route.config.path || "rest-route";
+
+  return {
+    id: createEndpointId(routeName),
+    protocol: "api",
+    folderPath: route.path ?? "",
+    fileName: `${routeName}.json`,
+    content: JSON.stringify(
+      {
+        routeId: route.config.routeId ?? route.name,
+        method: route.config.method ?? "get",
+        path: route.config.path ?? "",
+        to: route.config.to ?? "",
+        rateLimiter: route.config.rateLimiter ?? "rateLimiter",
+        policyName: route.config.policyName ?? "policy2",
+        contentType: route.config.contentType ?? "application/json",
+        enableCors: route.config.enableCors ?? true,
+        description: route.config.description ?? route.description ?? "",
+      },
+      null,
+      2,
+    ),
+  };
+}
+
+function getRestRouteNameFromItem(item: CreatedEndpointConfig) {
+  return item.fileName.replace(/\.json$/i, "");
+}
+
+function buildBackendRestRoute(
+  editor: ApiRouteEditorState,
+  routeGroupPath: string,
+): AppWeaverRestRouteConfig {
+  const routeId = editor.routeId.trim();
+
+  return {
+    enabled: true,
+    name: routeId,
+    path: routeGroupPath.trim(),
+    description: editor.description.trim(),
+    config: {
+      routeId,
+      method: editor.method,
+      path: editor.path.trim(),
+      to: editor.route.trim(),
+      rateLimiter: editor.rateLimiter,
+      policyName: editor.policyName,
+      contentType: editor.contentType.trim() || "application/json",
+      enableCors: editor.enableCors,
+      description: editor.description.trim(),
+    },
+  };
+}
+
 function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div style={{ display: "grid", gap: 6 }}>
@@ -194,12 +257,22 @@ const deleteIconButtonStyle: React.CSSProperties = { display: "inline-flex", ali
 const listItemMetaStyle: React.CSSProperties = { marginTop: 4, fontSize: 12, color: "#64748b", overflowWrap: "anywhere", wordBreak: "break-word", lineHeight: 1.55 };
 
 export default function EndpointsConfigurationWorkspace() {
-  const { endpointConfigs, addEndpointConfig, updateEndpointConfig, removeEndpointConfig } = useFlowStore();
+  const {
+    endpointConfigs,
+    addEndpointConfig,
+    replaceEndpointConfigs,
+    updateEndpointConfig,
+    removeEndpointConfig,
+  } = useFlowStore();
   const [selectedProtocol, setSelectedProtocol] = useState<EndpointProtocol>("api");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editor, setEditor] = useState<EndpointEditorState>(() => createEditorState("api"));
   const [apiEditor, setApiEditor] = useState<ApiRouteEditorState>(() => createApiRouteEditorState());
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [restRoutePath, setRestRoutePath] = useState("routes/llm");
+  const [routeLookupName, setRouteLookupName] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const selectedItem = endpointConfigs.find((item) => item.id === selectedId) ?? null;
   const protocolItems = endpointConfigs.filter((item) => item.protocol === selectedProtocol);
@@ -217,13 +290,14 @@ export default function EndpointsConfigurationWorkspace() {
     setEditor(createEditorState(protocol));
     setApiEditor(createApiRouteEditorState());
     setError(null);
+    setMessage(null);
   };
 
   const buildPayload = () => {
     if (selectedProtocol === "api") {
       const payload = {
         protocol: selectedProtocol,
-        folderPath: "routes/llm",
+        folderPath: restRoutePath.trim(),
         fileName: `${apiEditor.routeId.trim() || "route"}.json`,
         content: buildApiRouteContent(apiEditor),
       };
@@ -245,6 +319,11 @@ export default function EndpointsConfigurationWorkspace() {
 
       if (!apiEditor.route.trim()) {
         setError("Route target is required.");
+        return null;
+      }
+
+      if (!restRoutePath.trim()) {
+        setError("Route group path is required.");
         return null;
       }
 
@@ -278,28 +357,70 @@ export default function EndpointsConfigurationWorkspace() {
     return payload;
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     const payload = buildPayload();
     if (!payload) return;
+
+    if (selectedProtocol === "api") {
+      try {
+        await appWeaverApiClient.system.restRoutes.create(
+          buildBackendRestRoute(apiEditor, restRoutePath),
+        );
+      } catch (issue) {
+        setError(issue instanceof Error ? issue.message : "Could not create the REST route.");
+        setMessage(null);
+        return;
+      }
+    }
+
     const result = addEndpointConfig(payload);
     if (!result.ok) return void setError(result.reason);
     setError(null);
+    setMessage(selectedProtocol === "api" ? `Created REST route "${apiEditor.routeId.trim()}".` : null);
     setSelectedId(null);
     setEditor(createEditorState(selectedProtocol));
     setApiEditor(createApiRouteEditorState());
   };
 
-  const handleUpdate = () => {
+  const handleUpdate = async () => {
     if (!selectedId) return void setError("Select an endpoint config from the list to edit it.");
     const payload = buildPayload();
     if (!payload) return;
+
+    if (selectedProtocol === "api" && selectedItem) {
+      try {
+        await appWeaverApiClient.system.restRoutes.update(
+          getRestRouteNameFromItem(selectedItem),
+          buildBackendRestRoute(apiEditor, restRoutePath),
+        );
+      } catch (issue) {
+        setError(issue instanceof Error ? issue.message : "Could not update the REST route.");
+        setMessage(null);
+        return;
+      }
+    }
+
     const result = updateEndpointConfig(selectedId, payload);
     if (!result.ok) return void setError(result.reason);
     setError(null);
+    setMessage(selectedProtocol === "api" ? `Updated REST route "${apiEditor.routeId.trim()}".` : null);
   };
 
-  const handleDelete = (configId: string) => {
+  const handleDelete = async (configId: string) => {
+    const config = endpointConfigs.find((item) => item.id === configId);
+
+    if (config?.protocol === "api") {
+      try {
+        await appWeaverApiClient.system.restRoutes.remove(getRestRouteNameFromItem(config));
+      } catch (issue) {
+        setError(issue instanceof Error ? issue.message : "Could not delete the REST route.");
+        setMessage(null);
+        return;
+      }
+    }
+
     removeEndpointConfig(configId);
+    setMessage(config?.protocol === "api" ? `Deleted REST route "${config.fileName.replace(/\.json$/i, "")}".` : null);
     if (selectedId === configId) {
       setSelectedId(null);
       setEditor(createEditorState(selectedProtocol));
@@ -314,8 +435,70 @@ export default function EndpointsConfigurationWorkspace() {
     setEditor(createEditorFromItem(item));
     if (item.protocol === "api") {
       setApiEditor(createApiRouteEditorFromItem(item));
+      setRestRoutePath(item.folderPath || "routes/llm");
     }
     setError(null);
+  };
+
+  const loadRestRoutes = async () => {
+    setIsLoading(true);
+    setMessage(null);
+
+    try {
+      const backendRoutes = await appWeaverApiClient.system.restRoutes.list(restRoutePath);
+      const normalizedRoutes = (Array.isArray(backendRoutes) ? backendRoutes : [backendRoutes]).map(
+        normalizeBackendRestRoute,
+      );
+
+      replaceEndpointConfigs([
+        ...endpointConfigs.filter((item) => item.protocol !== "api"),
+        ...normalizedRoutes,
+      ]);
+      setError(null);
+      setMessage(`Loaded ${normalizedRoutes.length} REST route${normalizedRoutes.length === 1 ? "" : "s"}.`);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not load REST routes.");
+      setMessage(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadRestRouteByName = async () => {
+    const trimmedName = routeLookupName.trim();
+
+    if (!trimmedName) {
+      setError("Enter a REST route name to fetch.");
+      return;
+    }
+
+    setIsLoading(true);
+    setMessage(null);
+
+    try {
+      const backendRoute = await appWeaverApiClient.system.restRoutes.get(trimmedName);
+      const normalizedRoute = normalizeBackendRestRoute(backendRoute);
+      const nextEndpointConfigs = [
+        ...endpointConfigs.filter(
+          (item) => item.protocol !== "api" || getRestRouteNameFromItem(item) !== trimmedName,
+        ),
+        normalizedRoute,
+      ];
+
+      replaceEndpointConfigs(nextEndpointConfigs);
+      setSelectedProtocol("api");
+      setSelectedId(normalizedRoute.id);
+      setRestRoutePath(normalizedRoute.folderPath || "routes/llm");
+      setApiEditor(createApiRouteEditorFromItem(normalizedRoute));
+      setEditor(createEditorFromItem(normalizedRoute));
+      setError(null);
+      setMessage(`Loaded REST route "${trimmedName}".`);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not load that REST route.");
+      setMessage(null);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -381,7 +564,10 @@ export default function EndpointsConfigurationWorkspace() {
                   <span style={fieldLabelStyle}>REST Notes</span>
                   <div style={{ color: "#0f172a", fontSize: 14, fontWeight: 700 }}>{`${apiEditor.routeId.trim() || "route"}.json`}</div>
                   <div style={listItemMetaStyle}>Protocol: API / REST</div>
-                  <div style={listItemMetaStyle}>Saved under the REST route collection for API endpoints.</div>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Route Group Path</span>
+                    <input value={restRoutePath} onChange={(event) => setRestRoutePath(event.target.value)} placeholder="routes/llm" style={fieldStyle} />
+                  </label>
                   <label style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}>
                     <input type="checkbox" checked={apiEditor.enableCors} onChange={(event) => setApiEditor((current) => ({ ...current, enableCors: event.target.checked }))} />
                     Enable CORS
@@ -405,9 +591,17 @@ export default function EndpointsConfigurationWorkspace() {
         </div>
         <div style={{ flexShrink: 0 }}>
           {error ? <p style={{ margin: 0, color: "#dc2626", fontSize: 13, fontWeight: 600 }}>{error}</p> : null}
+          {message ? <p style={{ margin: error ? "8px 0 0" : 0, color: "#047857", fontSize: 13, fontWeight: 600 }}>{message}</p> : null}
           <div style={stickyActionBarStyle}>
-            <button type="button" onClick={handleCreate} style={primaryButtonStyle}>Create Endpoint Config</button>
-            <button type="button" onClick={handleUpdate} style={secondaryButtonStyle}>Edit Endpoint Config</button>
+            <button type="button" onClick={() => void handleCreate()} style={primaryButtonStyle}>Create Endpoint Config</button>
+            <button type="button" onClick={() => void handleUpdate()} style={secondaryButtonStyle}>Edit Endpoint Config</button>
+            {selectedProtocol === "api" ? (
+              <>
+                <button type="button" onClick={() => void loadRestRoutes()} disabled={isLoading} style={secondaryButtonStyle}>{isLoading ? "Loading..." : "Load REST Routes"}</button>
+                <input value={routeLookupName} onChange={(event) => setRouteLookupName(event.target.value)} placeholder="route name" style={{ ...fieldStyle, width: 180, minHeight: 43, padding: "9px 12px" }} />
+                <button type="button" onClick={() => void loadRestRouteByName()} disabled={isLoading} style={secondaryButtonStyle}>Get By Name</button>
+              </>
+            ) : null}
             {selectedProtocol === "api" ? (
               <button
                 type="button"
@@ -459,7 +653,7 @@ export default function EndpointsConfigurationWorkspace() {
                           <div style={{ fontSize: 14, fontWeight: 700, overflowWrap: "anywhere" }}>{item.fileName}</div>
                           <div style={listItemMetaStyle}>{item.folderPath || `${item.protocol} root`}</div>
                         </button>
-                        <button type="button" aria-label={`Delete ${item.fileName}`} onClick={() => handleDelete(item.id)} style={{ ...deleteIconButtonStyle, position: "absolute", top: "50%", right: 12, transform: "translateY(-50%)" }}>
+                        <button type="button" aria-label={`Delete ${item.fileName}`} onClick={() => void handleDelete(item.id)} style={{ ...deleteIconButtonStyle, position: "absolute", top: "50%", right: 12, transform: "translateY(-50%)" }}>
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}><path d="M9 3.75h6a1 1 0 0 1 1 1V6H8V4.75a1 1 0 0 1 1-1Z" /><path d="M4.75 6h14.5" /><path d="M6.75 6.75 7.6 19a2 2 0 0 0 2 1.86h4.8a2 2 0 0 0 2-1.86l.85-12.25" /><path d="M10 10.25v6.5" /><path d="M14 10.25v6.5" /></svg>
                         </button>
                       </div>
