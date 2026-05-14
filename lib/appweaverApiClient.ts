@@ -60,7 +60,7 @@ export type AppWeaverRestRouteConfig = {
   path: string;
   index?: number;
   description?: string;
-  config: {
+  config?: {
     routeId?: string;
     method: string;
     path: string;
@@ -71,6 +71,26 @@ export type AppWeaverRestRouteConfig = {
     enableCors?: boolean;
     virtualThreadEnabled?: boolean;
     description?: string;
+  };
+};
+
+export type AppWeaverDirectRouteStep = {
+  type: string;
+  [key: string]: unknown;
+};
+
+export type AppWeaverDirectRouteConfig = {
+  enabled?: boolean;
+  name: string;
+  path: string;
+  index?: number;
+  description?: string;
+  config?: {
+    routeId?: string;
+    contentType?: string;
+    from?: string;
+    steps: AppWeaverDirectRouteStep[];
+    [key: string]: unknown;
   };
 };
 
@@ -95,6 +115,8 @@ const appWeaverEndpoints = {
     restRoutesByPath: (path: string) =>
       `/system/routes/rest-routes?path=${encodeURIComponent(path)}`,
     restRoute: (name: string) => `/system/routes/rest-routes/${encodeURIComponent(name)}`,
+    directRoutes: "/system/routes/direct-routes",
+    directRoute: (name: string) => `/system/routes/direct-routes/${encodeURIComponent(name)}`,
   },
 };
 
@@ -128,7 +150,7 @@ async function request<T>(path: string, requestOptions: RequestOptions = {}): Pr
 
     const payload = await parseResponseBody(response);
 
-    if (!response.ok) {
+    if (!response.ok && response.status !== 302) {
       throw createApiError(response, payload);
     }
 
@@ -187,6 +209,66 @@ function normalizeBeanPayload(bean: AppWeaverBeanConfig): AppWeaverBeanConfig {
     constructorArgs: [],
     enabled: true,
     ...bean,
+  };
+}
+
+function normalizeRestRoutePayload(route: AppWeaverRestRouteConfig): AppWeaverRestRouteConfig {
+  const routeName = route.name.trim();
+  const routePath = route.path.trim();
+  const routeConfig = route.config;
+
+  if (!routeConfig) {
+    throw new Error("REST route config is required.");
+  }
+
+  const configPath = routeConfig.path.trim();
+  const routeTarget = routeConfig.to.trim();
+
+  return {
+    enabled: route.enabled ?? true,
+    name: routeName,
+    path: routePath,
+    index: route.index ?? 0,
+    description: route.description?.trim() ?? "",
+    config: {
+      ...routeConfig,
+      routeId: routeName,
+      method: routeConfig.method.toLowerCase(),
+      path: configPath,
+      to: routeTarget,
+      contentType: routeConfig.contentType?.trim() || "application/json",
+      enableCors: routeConfig.enableCors ?? true,
+      description: routeConfig.description?.trim() ?? route.description?.trim() ?? "",
+    },
+  };
+}
+
+function normalizeDirectRoutePayload(route: AppWeaverDirectRouteConfig): AppWeaverDirectRouteConfig {
+  const routeName = route.name.trim();
+  const routePath = route.path.trim();
+  const routeConfig = route.config;
+
+  if (!routeConfig) {
+    throw new Error("Direct route config is required.");
+  }
+
+  if (!routeName) {
+    throw new Error("Direct route name is required.");
+  }
+
+  return {
+    enabled: route.enabled ?? true,
+    name: routeName,
+    path: routePath,
+    index: route.index ?? 0,
+    description: route.description?.trim() ?? "",
+    config: {
+      ...routeConfig,
+      routeId: routeConfig.routeId?.trim() || routeName,
+      from: routeConfig.from?.trim() ?? "",
+      contentType: routeConfig.contentType?.trim() || "application/json",
+      steps: routeConfig.steps,
+    },
   };
 }
 
@@ -307,16 +389,28 @@ export const appWeaverApiClient = {
       create: (route: AppWeaverRestRouteConfig) =>
         request<AppWeaverRestRouteConfig>(appWeaverEndpoints.system.restRoutes, {
           method: "POST",
-          body: route,
+          body: normalizeRestRoutePayload(route),
         }),
       update: (name: string, route: AppWeaverRestRouteConfig) =>
         request<AppWeaverRestRouteConfig>(appWeaverEndpoints.system.restRoute(name), {
           method: "PUT",
-          body: { ...route, name },
+          body: normalizeRestRoutePayload({ ...route, name }),
         }),
       remove: (name: string) =>
         request<AppWeaverRestRouteConfig | null>(appWeaverEndpoints.system.restRoute(name), {
           method: "DELETE",
+        }),
+    },
+    directRoutes: {
+      create: (route: AppWeaverDirectRouteConfig) =>
+        request<AppWeaverDirectRouteConfig>(appWeaverEndpoints.system.directRoutes, {
+          method: "POST",
+          body: normalizeDirectRoutePayload(route),
+        }),
+      update: (name: string, route: AppWeaverDirectRouteConfig) =>
+        request<AppWeaverDirectRouteConfig>(appWeaverEndpoints.system.directRoute(name), {
+          method: "PUT",
+          body: normalizeDirectRoutePayload({ ...route, name }),
         }),
     },
   },

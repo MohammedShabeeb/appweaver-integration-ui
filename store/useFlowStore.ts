@@ -2,7 +2,6 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { Edge, Node, XYPosition } from "reactflow";
 import {
-  getComponentDependencies,
   type MavenDependencyDefinition,
   type ComponentType,
   type BuiltInComponentType,
@@ -84,6 +83,7 @@ export type CreatedEndpointConfig = {
 };
 
 export type ComponentFieldControl = "text" | "textarea" | "select" | "checkbox";
+export type ComponentFieldTarget = "config" | "properties";
 
 export type ComponentFieldOption = {
   label: string;
@@ -94,6 +94,7 @@ export type ComponentFieldDefinition = {
   key: string;
   label: string;
   control: ComponentFieldControl;
+  target?: ComponentFieldTarget;
   placeholder?: string;
   helperText?: string;
   options?: ComponentFieldOption[];
@@ -149,12 +150,35 @@ type WorkflowExport = {
   canvases: Record<string, CanvasState>;
 };
 
+type BackendRouteStep = {
+  type: string;
+  [key: string]: unknown;
+};
+
+type BackendRouteConfigExport = {
+  routeId: string;
+  from: string;
+  contentType: string;
+  steps: BackendRouteStep[];
+};
+
+type BackendRouteExport = {
+  enabled: boolean;
+  name: string;
+  path: string;
+  index: number;
+  description: string;
+  config: BackendRouteConfigExport;
+};
+
 type RouteImportStep = {
   type?: string;
   name?: string;
   library?: string;
   clazz?: string;
   ref?: string;
+  message?: string;
+  logLevel?: string;
   dependencies?: unknown;
 };
 
@@ -163,6 +187,15 @@ type RouteImportDefinition = {
   from?: string;
   contentType?: string;
   steps?: RouteImportStep[];
+};
+
+type RouteImportEnvelope = {
+  enabled?: boolean;
+  name?: string;
+  path?: string;
+  index?: number;
+  description?: string;
+  config?: RouteImportDefinition;
 };
 
 type PersistedFlowState = {
@@ -187,7 +220,7 @@ type PersistedFlowState = {
   customComponents?: CreatedComponentTemplate[];
 };
 
-type WorkflowPomDependency = MavenDependencyDefinition;
+type WorkflowDependency = MavenDependencyDefinition;
 
 const DEFAULT_WORKFLOW_ID = "workflow-root";
 const ROOT_CANVAS_ID = "root-canvas";
@@ -241,6 +274,7 @@ function createFlowNode(
     marshal: "Marshal",
     unmarshal: "Unmarshal",
     process: "Process",
+    log: "Log",
   };
   const defaultConfigMap: Partial<Record<BuiltInComponentType, Record<string, unknown>>> = {
     marshal: {
@@ -255,6 +289,11 @@ function createFlowNode(
     },
     process: {
       ref: "processorRef",
+    },
+    log: {
+      message: "Processing exchange",
+      name: "DEFAULT",
+      logLevel: "INFO",
     },
   };
 
@@ -434,17 +473,17 @@ function normalizeImportedWorkflow(
   };
 }
 
-function normalizeDependencyList(raw: unknown): WorkflowPomDependency[] {
+function normalizeDependencyList(raw: unknown): WorkflowDependency[] {
   if (!Array.isArray(raw)) {
     return [];
   }
 
-  return raw.filter((item): item is WorkflowPomDependency => {
+  return raw.filter((item): item is WorkflowDependency => {
     if (!item || typeof item !== "object") {
       return false;
     }
 
-    const candidate = item as Partial<WorkflowPomDependency>;
+    const candidate = item as Partial<WorkflowDependency>;
 
     return (
       typeof candidate.groupId === "string" &&
@@ -505,6 +544,8 @@ function normalizeComponentTemplate(
       return { error: `Unsupported control for ${key}.` };
     }
 
+    const target = "target" in field && field.target === "properties" ? field.target : "config";
+
     if (field.control === "select" && (!field.options || field.options.length === 0)) {
       return { error: `Select field ${key} needs at least one option.` };
     }
@@ -515,6 +556,7 @@ function normalizeComponentTemplate(
       key,
       label: fieldLabel || key,
       control: field.control,
+      ...(target === "properties" ? { target } : {}),
       ...(field.placeholder?.trim() ? { placeholder: field.placeholder.trim() } : {}),
       ...(field.helperText?.trim() ? { helperText: field.helperText.trim() } : {}),
       ...(field.control === "select"
@@ -553,74 +595,99 @@ function normalizeComponentTemplate(
   };
 }
 
-function collectWorkflowDependencies(workflow: WorkflowRecord): WorkflowPomDependency[] {
-  const dependencyMap = new Map<string, WorkflowPomDependency>();
-
-  for (const canvas of Object.values(workflow.canvases)) {
-    for (const node of canvas.nodes) {
-      const componentKey = node.data?.componentKey;
-
-      if (componentKey && isBuiltInComponent(componentKey)) {
-        for (const dependency of getComponentDependencies(componentKey)) {
-          const key = `${dependency.groupId}:${dependency.artifactId}`;
-
-          if (!dependencyMap.has(key)) {
-            dependencyMap.set(key, dependency);
-          }
-        }
-      }
-
-      const configDependencies = normalizeDependencyList(node.data?.config?.dependencies);
-
-      for (const dependency of configDependencies) {
-        const key = `${dependency.groupId}:${dependency.artifactId}`;
-
-        if (!dependencyMap.has(key)) {
-          dependencyMap.set(key, dependency);
-        }
-      }
-    }
+function stripBackendConfig(config: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!config) {
+    return {};
   }
 
-  return [...dependencyMap.values()];
+  const backendConfig = { ...config };
+  delete backendConfig.dependencies;
+  return backendConfig;
 }
 
-function createPomXml(workflow: WorkflowRecord) {
-  const artifactId =
-    workflow.name
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "camel-workflow";
-  const dependencies = collectWorkflowDependencies(workflow);
-  const dependencyBlocks =
-    dependencies.length > 0
-      ? dependencies
-          .map(
-            (dependency) => `    <dependency>
-      <groupId>${dependency.groupId}</groupId>
-      <artifactId>${dependency.artifactId}</artifactId>
-      <version>${dependency.version}</version>
-    </dependency>`,
-          )
-          .join("\n")
-      : "    <!-- No additional component dependencies required -->";
+function stringValueOrDefault(value: unknown, fallback: string) {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-  <modelVersion>4.0.0</modelVersion>
-  <groupId>com.example</groupId>
-  <artifactId>${artifactId}</artifactId>
-  <version>1.0.0-SNAPSHOT</version>
-  <name>${workflow.name}</name>
+function numberValueOrDefault(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
 
-  <dependencies>
-${dependencyBlocks}
-  </dependencies>
-</project>
-`;
+function buildDefaultRouteName(routeId: string) {
+  const trimmedRouteId = routeId.trim();
+
+  if (!trimmedRouteId) {
+    return "route";
+  }
+
+  return `${trimmedRouteId.charAt(0).toLowerCase()}${trimmedRouteId.slice(1)}Route`;
+}
+
+function getRouteOrderedNodes(canvas: CanvasState): AppNode[] {
+  const startNode = canvas.nodes.find((node) => node.type === "start") ?? canvas.nodes[0] ?? null;
+  const nodeMap = new Map(canvas.nodes.map((node) => [node.id, node]));
+  const orderedNodes: AppNode[] = [];
+  const visited = new Set<string>();
+
+  const visitNext = (nodeId: string) => {
+    const outgoingEdges = canvas.edges.filter((edge) => edge.source === nodeId);
+
+    for (const edge of outgoingEdges) {
+      if (!edge.target || visited.has(edge.target)) {
+        continue;
+      }
+
+      const targetNode = nodeMap.get(edge.target);
+
+      if (!targetNode || targetNode.type === "start") {
+        continue;
+      }
+
+      visited.add(targetNode.id);
+      orderedNodes.push(targetNode);
+      visitNext(targetNode.id);
+    }
+  };
+
+  if (startNode) {
+    visitNext(startNode.id);
+  }
+
+  return orderedNodes;
+}
+
+function createBackendRouteJson(workflow: WorkflowRecord): BackendRouteExport {
+  const rootCanvas = workflow.canvases[workflow.rootCanvasId];
+  const startNode = rootCanvas?.nodes.find((node) => node.type === "start") ?? null;
+  const startConfig = startNode?.data?.config ?? {};
+  const steps =
+    rootCanvas
+      ? getRouteOrderedNodes(rootCanvas).map((node) => ({
+          type: String(node.data?.componentKey ?? node.type ?? ""),
+          ...stripBackendConfig(node.data?.config),
+        }))
+      : [];
+  const routeId = stringValueOrDefault(startConfig.routeId, workflow.name);
+  const routeName = stringValueOrDefault(
+    startConfig.name ?? startConfig.routeName,
+    buildDefaultRouteName(routeId),
+  );
+  const routePath = String(startConfig.path ?? startConfig.routePath ?? "").trim();
+  const description = String(startConfig.description ?? "").trim();
+
+  return {
+    enabled: typeof startConfig.enabled === "boolean" ? startConfig.enabled : true,
+    name: routeName,
+    path: routePath,
+    index: numberValueOrDefault(startConfig.index, 0),
+    description,
+    config: {
+      routeId,
+      from: String(startConfig.from ?? ""),
+      contentType: String(startConfig.contentType ?? "application/json"),
+      steps,
+    },
+  };
 }
 
 function buildWorkflowFromRouteDefinition(
@@ -632,15 +699,21 @@ function buildWorkflowFromRouteDefinition(
     return null;
   }
 
-  const route = raw as RouteImportDefinition;
+  const envelope = raw as RouteImportEnvelope;
+  const route = envelope.config && typeof envelope.config === "object"
+    ? envelope.config
+    : raw as RouteImportDefinition;
 
   if (!Array.isArray(route.steps)) {
     return null;
   }
 
   const supportedSteps = route.steps.filter(
-    (step): step is RouteImportStep & { type: "marshal" | "unmarshal" | "process" } =>
-      step?.type === "marshal" || step?.type === "unmarshal" || step?.type === "process",
+    (step): step is RouteImportStep & { type: BuiltInComponentType } =>
+      step?.type === "marshal" ||
+      step?.type === "unmarshal" ||
+      step?.type === "process" ||
+      step?.type === "log",
   );
 
   if (supportedSteps.length !== route.steps.length) {
@@ -648,6 +721,7 @@ function buildWorkflowFromRouteDefinition(
   }
 
   const workflowNameSource =
+    (typeof envelope.name === "string" && envelope.name.trim()) ||
     (typeof route.routeId === "string" && route.routeId.trim()) ||
     (typeof fallbackName === "string" && fallbackName.trim()) ||
     "Imported Route";
@@ -664,6 +738,11 @@ function buildWorkflowFromRouteDefinition(
       from: route.from ?? "",
       routeId: route.routeId ?? "",
       contentType: route.contentType ?? "",
+      enabled: envelope.enabled ?? true,
+      name: envelope.name ?? "",
+      path: envelope.path ?? "",
+      index: envelope.index ?? 0,
+      description: envelope.description ?? "",
     },
   };
 
@@ -680,15 +759,24 @@ function buildWorkflowFromRouteDefinition(
       label:
         componentKey === "process"
           ? step.ref?.trim() || "Process"
-          : componentKey === "marshal"
-            ? "Marshal"
-            : "Unmarshal",
+          : componentKey === "log"
+            ? step.name?.trim() || "Log"
+            : componentKey === "marshal"
+              ? "Marshal"
+              : "Unmarshal",
       config:
         componentKey === "process"
           ? {
               ref: step.ref ?? "",
               dependencies: normalizeDependencyList(step.dependencies),
             }
+          : componentKey === "log"
+            ? {
+                message: typeof step.message === "string" ? step.message : "Processing exchange",
+                name: step.name ?? "DEFAULT",
+                logLevel: typeof step.logLevel === "string" ? step.logLevel : "INFO",
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
           : {
               name: step.name ?? "json",
               library: step.library ?? "Jackson",
@@ -743,7 +831,7 @@ function normalizePersistedState(
   const selectedLlmSubsection = persistedState?.selectedLlmSubsection ?? "providers";
 
   const shouldPruneLegacyNode = (node: AppNode) =>
-    !["start", "marshal", "unmarshal", "process"].includes(node.type ?? "");
+    !["start", "marshal", "unmarshal", "process", "log"].includes(node.type ?? "");
 
   if (persistedState?.workflows && Object.keys(persistedState.workflows).length > 0) {
     const workflowOrder =
@@ -945,7 +1033,7 @@ interface FlowState {
   ) => { ok: true } | { ok: false; reason: string };
   removeCustomComponent: (componentId: string) => void;
   exportWorkflow: () => WorkflowExport;
-  exportPomXml: () => string;
+  exportBackendRouteJson: () => BackendRouteExport;
   importWorkflow: (raw: unknown, fallbackName?: string) => boolean;
   createWorkflow: (name?: string) => { id: string; name: string };
   selectWorkflow: (workflowId: string) => void;
@@ -1643,11 +1731,11 @@ export const useFlowStore = create<FlowState>()(
           canvases: activeWorkflow.canvases,
         };
       },
-      exportPomXml: () => {
+      exportBackendRouteJson: () => {
         const state = get();
         const activeWorkflow = state.workflows[state.activeWorkflowId];
 
-        return createPomXml(activeWorkflow);
+        return createBackendRouteJson(activeWorkflow);
       },
 
       importWorkflow: (raw, fallbackName = "Imported Workflow") => {

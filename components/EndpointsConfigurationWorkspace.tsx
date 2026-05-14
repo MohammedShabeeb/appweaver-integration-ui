@@ -31,7 +31,7 @@ type ApiRouteEditorState = {
 };
 
 const DEFAULT_CONTENT = '{\n  "routeId": "",\n  "workflow": "",\n  "description": ""\n}';
-const REST_METHOD_OPTIONS = ["get", "post", "put", "patch", "delete"];
+const REST_METHOD_OPTIONS = ["get", "post", "put", "delete"];
 const POLICY_OPTIONS = ["policy1", "policy2", "policy3"];
 const RATE_LIMITER_OPTIONS = ["rateLimiter", "strictRateLimiter", "publicRateLimiter"];
 const API_INDEX_CONTENT = `[
@@ -152,10 +152,12 @@ function createApiRouteEditorFromItem(item: CreatedEndpointConfig): ApiRouteEdit
   }
 }
 
-function buildApiRouteContent(editor: ApiRouteEditorState) {
+function buildApiRouteContent(editor: ApiRouteEditorState, routeNameOverride?: string) {
+  const routeId = (routeNameOverride ?? editor.routeId).trim();
+
   return JSON.stringify(
     {
-      routeId: editor.routeId.trim(),
+      routeId,
       method: editor.method,
       path: editor.path.trim(),
       to: editor.route.trim(),
@@ -175,7 +177,8 @@ function createEndpointId(routeName: string) {
 }
 
 function normalizeBackendRestRoute(route: AppWeaverRestRouteConfig): CreatedEndpointConfig {
-  const routeName = route.name || route.config.routeId || route.config.path || "rest-route";
+  const routeName = route.name || route.config?.routeId || route.config?.path || "rest-route";
+  const routeConfig = route.config;
 
   return {
     id: createEndpointId(routeName),
@@ -184,15 +187,15 @@ function normalizeBackendRestRoute(route: AppWeaverRestRouteConfig): CreatedEndp
     fileName: `${routeName}.json`,
     content: JSON.stringify(
       {
-        routeId: route.config.routeId ?? route.name,
-        method: route.config.method ?? "get",
-        path: route.config.path ?? "",
-        to: route.config.to ?? "",
-        rateLimiter: route.config.rateLimiter ?? "rateLimiter",
-        policyName: route.config.policyName ?? "policy2",
-        contentType: route.config.contentType ?? "application/json",
-        enableCors: route.config.enableCors ?? true,
-        description: route.config.description ?? route.description ?? "",
+        routeId: routeConfig?.routeId ?? route.name,
+        method: routeConfig?.method ?? "get",
+        path: routeConfig?.path ?? "",
+        to: routeConfig?.to ?? "",
+        rateLimiter: routeConfig?.rateLimiter ?? "rateLimiter",
+        policyName: routeConfig?.policyName ?? "policy2",
+        contentType: routeConfig?.contentType ?? "application/json",
+        enableCors: routeConfig?.enableCors ?? true,
+        description: routeConfig?.description ?? route.description ?? "",
       },
       null,
       2,
@@ -207,8 +210,9 @@ function getRestRouteNameFromItem(item: CreatedEndpointConfig) {
 function buildBackendRestRoute(
   editor: ApiRouteEditorState,
   routeGroupPath: string,
+  routeNameOverride?: string,
 ): AppWeaverRestRouteConfig {
-  const routeId = editor.routeId.trim();
+  const routeId = (routeNameOverride ?? editor.routeId).trim();
 
   return {
     enabled: true,
@@ -293,13 +297,14 @@ export default function EndpointsConfigurationWorkspace() {
     setMessage(null);
   };
 
-  const buildPayload = () => {
+  const buildPayload = (routeNameOverride?: string) => {
     if (selectedProtocol === "api") {
+      const routeName = (routeNameOverride ?? apiEditor.routeId).trim();
       const payload = {
         protocol: selectedProtocol,
         folderPath: restRoutePath.trim(),
-        fileName: `${apiEditor.routeId.trim() || "route"}.json`,
-        content: buildApiRouteContent(apiEditor),
+        fileName: `${routeName || "route"}.json`,
+        content: buildApiRouteContent(apiEditor, routeName),
       };
 
       if (!payload.fileName) {
@@ -307,7 +312,7 @@ export default function EndpointsConfigurationWorkspace() {
         return null;
       }
 
-      if (!apiEditor.routeId.trim()) {
+      if (!routeName) {
         setError("Route id is required.");
         return null;
       }
@@ -384,14 +389,15 @@ export default function EndpointsConfigurationWorkspace() {
 
   const handleUpdate = async () => {
     if (!selectedId) return void setError("Select an endpoint config from the list to edit it.");
-    const payload = buildPayload();
+    const currentRouteName = selectedItem ? getRestRouteNameFromItem(selectedItem) : undefined;
+    const payload = buildPayload(currentRouteName);
     if (!payload) return;
 
-    if (selectedProtocol === "api" && selectedItem) {
+    if (selectedProtocol === "api" && selectedItem && currentRouteName) {
       try {
         await appWeaverApiClient.system.restRoutes.update(
-          getRestRouteNameFromItem(selectedItem),
-          buildBackendRestRoute(apiEditor, restRoutePath),
+          currentRouteName,
+          buildBackendRestRoute(apiEditor, restRoutePath, currentRouteName),
         );
       } catch (issue) {
         setError(issue instanceof Error ? issue.message : "Could not update the REST route.");
@@ -403,7 +409,7 @@ export default function EndpointsConfigurationWorkspace() {
     const result = updateEndpointConfig(selectedId, payload);
     if (!result.ok) return void setError(result.reason);
     setError(null);
-    setMessage(selectedProtocol === "api" ? `Updated REST route "${apiEditor.routeId.trim()}".` : null);
+    setMessage(selectedProtocol === "api" ? `Updated REST route "${currentRouteName ?? apiEditor.routeId.trim()}".` : null);
   };
 
   const handleDelete = async (configId: string) => {
@@ -445,10 +451,18 @@ export default function EndpointsConfigurationWorkspace() {
     setMessage(null);
 
     try {
-      const backendRoutes = await appWeaverApiClient.system.restRoutes.list(restRoutePath);
-      const normalizedRoutes = (Array.isArray(backendRoutes) ? backendRoutes : [backendRoutes]).map(
-        normalizeBackendRestRoute,
+      const routeSummaries = await appWeaverApiClient.system.restRoutes.list();
+      const routeList = Array.isArray(routeSummaries) ? routeSummaries : [routeSummaries];
+      const backendRoutes = await Promise.all(
+        routeList.map(async (route) => {
+          try {
+            return await appWeaverApiClient.system.restRoutes.get(route.name);
+          } catch {
+            return route;
+          }
+        }),
       );
+      const normalizedRoutes = backendRoutes.map(normalizeBackendRestRoute);
 
       replaceEndpointConfigs([
         ...endpointConfigs.filter((item) => item.protocol !== "api"),
@@ -536,7 +550,7 @@ export default function EndpointsConfigurationWorkspace() {
                   <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
                     <label style={{ display: "grid", gap: 6 }}>
                       <span style={fieldLabelStyle}>Route Id</span>
-                      <input value={apiEditor.routeId} onChange={(event) => setApiEditor((current) => ({ ...current, routeId: event.target.value }))} placeholder="multiChatRoute" style={fieldStyle} />
+                      <input value={selectedItem?.protocol === "api" ? getRestRouteNameFromItem(selectedItem) : apiEditor.routeId} readOnly={selectedItem?.protocol === "api"} onChange={(event) => setApiEditor((current) => ({ ...current, routeId: event.target.value }))} placeholder="multiChatRoute" style={{ ...fieldStyle, background: selectedItem?.protocol === "api" ? "#f8fafc" : fieldStyle.background }} />
                     </label>
                     <label style={{ display: "grid", gap: 6 }}>
                       <span style={fieldLabelStyle}>Policy Name</span>
@@ -557,7 +571,7 @@ export default function EndpointsConfigurationWorkspace() {
                   </label>
                   <label style={{ display: "grid", gap: 6 }}>
                     <span style={fieldLabelStyle}>JSON</span>
-                    <textarea value={buildApiRouteContent(apiEditor)} readOnly style={{ ...fieldStyle, minHeight: 180, resize: "vertical", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", background: "#f8fafc" }} />
+                    <textarea value={buildApiRouteContent(apiEditor, selectedItem?.protocol === "api" ? getRestRouteNameFromItem(selectedItem) : undefined)} readOnly style={{ ...fieldStyle, minHeight: 180, resize: "vertical", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace", background: "#f8fafc" }} />
                   </label>
                 </div>
                 <div style={{ borderRadius: 26, border: "1px solid rgba(203, 213, 225, 0.95)", background: "rgba(248, 250, 252, 0.92)", padding: 18, display: "grid", gap: 12, alignContent: "start" }}>

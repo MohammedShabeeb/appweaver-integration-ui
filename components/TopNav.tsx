@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 
+import { appWeaverApiClient } from "@/lib/appweaverApiClient";
 import { useFlowStore } from "@/store/useFlowStore";
 
 const workflowAccent = "#2DB780";
@@ -23,8 +24,8 @@ function buildTopNavButtonStyle(isHighlighted: boolean): CSSProperties {
 export default function TopNav() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const {
+    exportBackendRouteJson,
     exportWorkflow,
-    exportPomXml,
     importWorkflow,
     isSidebarOpen,
     openConfigSection,
@@ -34,6 +35,7 @@ export default function TopNav() {
   } = useFlowStore();
   const [isConfigMenuOpen, setIsConfigMenuOpen] = useState(false);
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
+  const [isPublishingRoute, setIsPublishingRoute] = useState(false);
   const configMenuRef = useRef<HTMLDivElement | null>(null);
 
   const handleSidebarToggle = (view: "workflows" | "components" | "configs") => {
@@ -82,18 +84,39 @@ export default function TopNav() {
     URL.revokeObjectURL(url);
   };
 
-  const handleSavePom = () => {
-    const pomXml = exportPomXml();
-    const blob = new Blob([pomXml], { type: "application/xml" });
+  const handleSaveBackendRoute = () => {
+    const route = exportBackendRouteJson();
+    const safeName =
+      route.name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "route";
+    const blob = new Blob([JSON.stringify(route, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
 
     link.href = url;
-    link.download = "pom.xml";
+    link.download = `${safeName}.route.json`;
     document.body.appendChild(link);
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+  };
+
+  const handlePublishBackendRoute = async () => {
+    const route = exportBackendRouteJson();
+
+    setIsPublishingRoute(true);
+
+    try {
+      await appWeaverApiClient.system.directRoutes.create(route);
+      window.alert(`Created direct route "${route.name}" in AppWeaver.`);
+    } catch (issue) {
+      window.alert(issue instanceof Error ? issue.message : "Could not create the direct route.");
+    } finally {
+      setIsPublishingRoute(false);
+    }
   };
 
   const handleImportChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -324,12 +347,12 @@ export default function TopNav() {
         <div className="topnav-action">
           <button
             type="button"
-            aria-label="Export pom.xml"
+            aria-label="Export backend route JSON"
             className="topnav-btn"
-            style={buildTopNavButtonStyle(hoveredButton === "pom")}
-            onClick={handleSavePom}
-            onMouseEnter={() => setHoveredButton("pom")}
-            onMouseLeave={() => setHoveredButton((current) => (current === "pom" ? null : current))}
+            style={buildTopNavButtonStyle(hoveredButton === "backend-route")}
+            onClick={handleSaveBackendRoute}
+            onMouseEnter={() => setHoveredButton("backend-route")}
+            onMouseLeave={() => setHoveredButton((current) => (current === "backend-route" ? null : current))}
           >
             <svg
               viewBox="0 0 24 24"
@@ -347,7 +370,37 @@ export default function TopNav() {
               <path d="M10 9h1" />
             </svg>
           </button>
-          <span className="topnav-tooltip">Export pom.xml</span>
+          <span className="topnav-tooltip">Export backend route JSON</span>
+        </div>
+        <div className="topnav-action">
+          <button
+            type="button"
+            aria-label="Create backend direct route"
+            className="topnav-btn"
+            disabled={isPublishingRoute}
+            style={buildTopNavButtonStyle(hoveredButton === "publish-backend-route")}
+            onClick={handlePublishBackendRoute}
+            onMouseEnter={() => setHoveredButton("publish-backend-route")}
+            onMouseLeave={() => setHoveredButton((current) => (current === "publish-backend-route" ? null : current))}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="topnav-btn-icon"
+            >
+              <path d="M12 3v12" />
+              <path d="m7 8 5-5 5 5" />
+              <path d="M5 21h14" />
+              <path d="M5 17h14" />
+            </svg>
+          </button>
+          <span className="topnav-tooltip">
+            {isPublishingRoute ? "Creating direct route" : "Create backend direct route"}
+          </span>
         </div>
         <div className="topnav-action">
           <button

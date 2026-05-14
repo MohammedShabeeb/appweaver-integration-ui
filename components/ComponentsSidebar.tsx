@@ -32,7 +32,7 @@ type DataSourceEditorState = {
 };
 
 type StepListItem = {
-  type: "marshal" | "unmarshal" | "process";
+  type: "marshal" | "unmarshal" | "process" | "log";
   label: string;
   color: string;
   bgClass?: string;
@@ -44,6 +44,7 @@ const stepDescriptions: Record<StepListItem["type"], string> = {
   marshal: "Serialize data and choose the `clazz` value from a dropdown.",
   unmarshal: "Deserialize data and choose the `clazz` value from a dropdown.",
   process: "Run a processor bean by entering its `ref` name.",
+  log: "Write a log message with logger name and level.",
 };
 
 function createBeanEditorState(beanName: string): BeanEditorState {

@@ -12,6 +12,8 @@ import {
 import {
   useFlowStore,
   type CreatedBean,
+  type ComponentFieldControl,
+  type ComponentFieldTarget,
   type CreatedComponentTemplate,
   type CreatedDataSource,
   type CreatedDataSourceTenant,
@@ -48,6 +50,28 @@ type SecurityEditorState = {
 };
 
 type ComponentTemplateDraft = Omit<CreatedComponentTemplate, "id">;
+
+type ComponentFieldDraft = {
+  id: string;
+  key: string;
+  label: string;
+  control: ComponentFieldControl;
+  target: ComponentFieldTarget;
+  placeholder: string;
+  helperText: string;
+  optionsText: string;
+  defaultValue: string;
+  defaultChecked: boolean;
+};
+
+type ComponentBuilderState = {
+  type: string;
+  label: string;
+  description: string;
+  color: string;
+  fields: ComponentFieldDraft[];
+  dependenciesText: string;
+};
 
 type AuthMethod = "apikey" | "basic" | "hmac" | "jwt";
 
@@ -121,6 +145,7 @@ const DEFAULT_COMPONENT_TEMPLATE: ComponentTemplateDraft = {
       key: "mode",
       label: "Mode",
       control: "select",
+      target: "properties",
       options: [
         { label: "Simple", value: "simple" },
         { label: "Advanced", value: "advanced" },
@@ -130,25 +155,163 @@ const DEFAULT_COMPONENT_TEMPLATE: ComponentTemplateDraft = {
       key: "notes",
       label: "Notes",
       control: "textarea",
+      target: "properties",
       placeholder: "Optional configuration notes",
     },
     {
       key: "enabled",
       label: "Enabled",
       control: "checkbox",
+      target: "properties",
     },
   ],
   config: {
     ref: "processorRef",
-    mode: "simple",
-    notes: "",
-    enabled: true,
+    properties: {
+      mode: "simple",
+      notes: "",
+      enabled: true,
+    },
   },
   dependencies: [],
 };
 
 function serializeComponentTemplate(template: ComponentTemplateDraft) {
   return JSON.stringify(template, null, 2);
+}
+
+function createComponentFieldDraft(
+  overrides: Partial<Omit<ComponentFieldDraft, "id">> = {},
+): ComponentFieldDraft {
+  return {
+    id: `field-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    key: overrides.key ?? "propertyName",
+    label: overrides.label ?? "Property name",
+    control: overrides.control ?? "text",
+    target: overrides.target ?? "properties",
+    placeholder: overrides.placeholder ?? "",
+    helperText: overrides.helperText ?? "",
+    optionsText: overrides.optionsText ?? "Option A=option-a\nOption B=option-b",
+    defaultValue: overrides.defaultValue ?? "",
+    defaultChecked: overrides.defaultChecked ?? true,
+  };
+}
+
+function getTemplateDefaultValue(template: ComponentTemplateDraft, fieldKey: string, target: ComponentFieldTarget) {
+  const config = template.config ?? {};
+
+  if (target === "properties") {
+    const properties = config.properties;
+
+    if (properties && typeof properties === "object" && !Array.isArray(properties)) {
+      return (properties as Record<string, unknown>)[fieldKey];
+    }
+
+    return undefined;
+  }
+
+  return config[fieldKey];
+}
+
+function createBuilderStateFromTemplate(template: ComponentTemplateDraft): ComponentBuilderState {
+  return {
+    type: template.type,
+    label: template.label,
+    description: template.description,
+    color: template.color,
+    dependenciesText: JSON.stringify(template.dependencies ?? [], null, 2),
+    fields: template.fields.map((field) => {
+      const target = field.target ?? "config";
+      const defaultValue = getTemplateDefaultValue(template, field.key, target);
+
+      return createComponentFieldDraft({
+        key: field.key,
+        label: field.label,
+        control: field.control,
+        target,
+        placeholder: field.placeholder ?? "",
+        helperText: field.helperText ?? "",
+        optionsText: (field.options ?? [])
+          .map((option) => `${option.label}=${option.value}`)
+          .join("\n"),
+        defaultValue:
+          field.control === "checkbox"
+            ? ""
+            : typeof defaultValue === "string"
+              ? defaultValue
+              : defaultValue === undefined
+                ? ""
+                : JSON.stringify(defaultValue),
+        defaultChecked: Boolean(defaultValue),
+      });
+    }),
+  };
+}
+
+function parseOptions(optionsText: string) {
+  return optionsText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [labelSource, ...valueParts] = line.split("=");
+      const label = labelSource.trim();
+      const value = valueParts.join("=").trim() || label;
+
+      return { label, value };
+    });
+}
+
+function parseComponentDefaultValue(field: ComponentFieldDraft) {
+  if (field.control === "checkbox") {
+    return field.defaultChecked;
+  }
+
+  if (field.control === "select") {
+    return field.defaultValue.trim() || parseOptions(field.optionsText)[0]?.value || "";
+  }
+
+  return field.defaultValue;
+}
+
+function buildComponentTemplateFromState(state: ComponentBuilderState): ComponentTemplateDraft {
+  const config: Record<string, unknown> = {};
+  const properties: Record<string, unknown> = {};
+  const fields = state.fields.map((field) => {
+    const key = field.key.trim();
+    const label = field.label.trim() || key;
+    const defaultValue = parseComponentDefaultValue(field);
+
+    if (field.target === "properties") {
+      properties[key] = defaultValue;
+    } else {
+      config[key] = defaultValue;
+    }
+
+    return {
+      key,
+      label,
+      control: field.control,
+      ...(field.target === "properties" ? { target: field.target } : {}),
+      ...(field.placeholder.trim() ? { placeholder: field.placeholder.trim() } : {}),
+      ...(field.helperText.trim() ? { helperText: field.helperText.trim() } : {}),
+      ...(field.control === "select" ? { options: parseOptions(field.optionsText) } : {}),
+    };
+  });
+
+  if (Object.keys(properties).length > 0) {
+    config.properties = properties;
+  }
+
+  return {
+    type: state.type.trim(),
+    label: state.label.trim(),
+    description: state.description.trim(),
+    color: state.color.trim(),
+    fields,
+    config,
+    dependencies: JSON.parse(state.dependenciesText || "[]"),
+  };
 }
 
 function createBeanEditorFromItem(bean: CreatedBean): BeanEditorState {
@@ -948,32 +1111,45 @@ function SectionTitle({
 function ComponentBuilderWorkspace() {
   const { customComponents, addCustomComponent, updateCustomComponent, removeCustomComponent } = useFlowStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editor, setEditor] = useState(() => serializeComponentTemplate(DEFAULT_COMPONENT_TEMPLATE));
+  const [builder, setBuilder] = useState<ComponentBuilderState>(() =>
+    createBuilderStateFromTemplate(DEFAULT_COMPONENT_TEMPLATE),
+  );
   const [error, setError] = useState<string | null>(null);
 
   const selectedComponent = customComponents.find((component) => component.id === selectedId) ?? null;
+  const previewTemplate = useMemo(() => {
+    try {
+      return buildComponentTemplateFromState(builder);
+    } catch {
+      return null;
+    }
+  }, [builder]);
+  const previewJson = previewTemplate
+    ? serializeComponentTemplate(previewTemplate)
+    : "Fix the builder inputs to preview JSON.";
 
-  const parseEditor = () => {
-    const parsed = JSON.parse(editor) as ComponentTemplateDraft;
+  const updateField = (fieldId: string, nextField: Partial<ComponentFieldDraft>) => {
+    setBuilder((current) => ({
+      ...current,
+      fields: current.fields.map((field) =>
+        field.id === fieldId ? { ...field, ...nextField } : field,
+      ),
+    }));
+  };
 
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("Template must be a JSON object.");
+  const createTemplate = () => {
+    const template = buildComponentTemplateFromState(builder);
+
+    if (!Array.isArray(template.dependencies)) {
+      throw new Error("Dependencies must be a JSON array.");
     }
 
-    if (!Array.isArray(parsed.fields)) {
-      throw new Error("`fields` must be a JSON array.");
-    }
-
-    if (!parsed.config || typeof parsed.config !== "object" || Array.isArray(parsed.config)) {
-      throw new Error("`config` must be a JSON object.");
-    }
-
-    return parsed;
+    return template;
   };
 
   const handleCreate = () => {
     try {
-      const result = addCustomComponent(parseEditor());
+      const result = addCustomComponent(createTemplate());
 
       if (!result.ok) {
         setError(result.reason);
@@ -982,7 +1158,7 @@ function ComponentBuilderWorkspace() {
 
       setError(null);
     } catch (issue) {
-      setError(issue instanceof Error ? issue.message : "Component template is not valid JSON.");
+      setError(issue instanceof Error ? issue.message : "Component template is not valid.");
     }
   };
 
@@ -993,7 +1169,7 @@ function ComponentBuilderWorkspace() {
     }
 
     try {
-      const result = updateCustomComponent(selectedId, parseEditor());
+      const result = updateCustomComponent(selectedId, createTemplate());
 
       if (!result.ok) {
         setError(result.reason);
@@ -1002,7 +1178,7 @@ function ComponentBuilderWorkspace() {
 
       setError(null);
     } catch (issue) {
-      setError(issue instanceof Error ? issue.message : "Component template is not valid JSON.");
+      setError(issue instanceof Error ? issue.message : "Component template is not valid.");
     }
   };
 
@@ -1011,37 +1187,190 @@ function ComponentBuilderWorkspace() {
       <section style={workspacePanelStyle}>
         <SectionTitle
           title={selectedComponent ? "Edit Component Template" : "Create Component Template"}
-          subtitle="Define a route-step template as JSON, including text boxes, dropdowns, and checkbox controls."
+          subtitle="Build a component by choosing the properties users can fill in later."
         />
         <div
           style={{
             marginTop: 18,
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
+            display: "grid",
+            gap: 16,
             flex: 1,
             minHeight: 0,
             overflow: "auto",
             paddingRight: 6,
           }}
         >
-          <textarea
-            value={editor}
-            spellCheck={false}
-            onChange={(event) => setEditor(event.target.value)}
-            style={{
-              ...fieldStyle,
-              minHeight: 520,
-              resize: "vertical",
-              fontFamily: "Consolas, 'Courier New', monospace",
-              fontSize: 13,
-              lineHeight: 1.55,
-            }}
-          />
-          <p style={{ margin: 0, color: "#64748b", fontSize: 12, lineHeight: 1.55 }}>
-            Field controls support `text`, `textarea`, `select`, and `checkbox`. The `config`
-            object provides the defaults that are applied when users drag the component onto the canvas.
-          </p>
+          <div style={{ ...panelStyle, padding: 16, boxShadow: "none" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={fieldLabelStyle}>Component Type</span>
+                <input
+                  value={builder.type}
+                  onChange={(event) => setBuilder((current) => ({ ...current, type: event.target.value }))}
+                  placeholder="log-test"
+                  style={fieldStyle}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={fieldLabelStyle}>Label</span>
+                <input
+                  value={builder.label}
+                  onChange={(event) => setBuilder((current) => ({ ...current, label: event.target.value }))}
+                  placeholder="Test for Minimal Direct Route"
+                  style={fieldStyle}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={fieldLabelStyle}>Accent Color</span>
+                <input
+                  type="color"
+                  value={builder.color}
+                  onChange={(event) => setBuilder((current) => ({ ...current, color: event.target.value }))}
+                  style={{ ...fieldStyle, height: 46, padding: 8 }}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={fieldLabelStyle}>Dependencies JSON</span>
+                <input
+                  value={builder.dependenciesText}
+                  onChange={(event) => setBuilder((current) => ({ ...current, dependenciesText: event.target.value }))}
+                  placeholder="[]"
+                  style={fieldStyle}
+                />
+              </label>
+            </div>
+            <label style={{ display: "grid", gap: 6, marginTop: 12 }}>
+              <span style={fieldLabelStyle}>Description</span>
+              <textarea
+                value={builder.description}
+                onChange={(event) => setBuilder((current) => ({ ...current, description: event.target.value }))}
+                placeholder="Direct route step description"
+                style={{ ...fieldStyle, minHeight: 84, resize: "vertical" }}
+              />
+            </label>
+          </div>
+
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <SectionTitle
+                title="Component Properties"
+                subtitle="Add text boxes, text areas, dropdowns, or checkboxes users can fill in from the node panel."
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setBuilder((current) => ({
+                    ...current,
+                    fields: [...current.fields, createComponentFieldDraft()],
+                  }))
+                }
+                style={{ ...secondaryButtonStyle, padding: "10px 12px", fontSize: 12 }}
+              >
+                Add Property
+              </button>
+            </div>
+
+            {builder.fields.map((field, index) => (
+              <div key={field.id} style={{ ...panelStyle, padding: 14, boxShadow: "none" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>
+                    Property {index + 1}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setBuilder((current) => ({
+                        ...current,
+                        fields: current.fields.filter((item) => item.id !== field.id),
+                      }))
+                    }
+                    style={deleteIconButtonStyle}
+                    aria-label={`Remove property ${index + 1}`}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+                      <path d="M9 3.75h6a1 1 0 0 1 1 1V6H8V4.75a1 1 0 0 1 1-1Z" />
+                      <path d="M4.75 6h14.5" />
+                      <path d="M6.75 6.75 7.6 19a2 2 0 0 0 2 1.86h4.8a2 2 0 0 0 2-1.86l.85-12.25" />
+                    </svg>
+                  </button>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Property Key</span>
+                    <input value={field.key} onChange={(event) => updateField(field.id, { key: event.target.value })} placeholder="message" style={fieldStyle} />
+                  </label>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Label</span>
+                    <input value={field.label} onChange={(event) => updateField(field.id, { label: event.target.value })} placeholder="Message" style={fieldStyle} />
+                  </label>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Control</span>
+                    <select value={field.control} onChange={(event) => updateField(field.id, { control: event.target.value as ComponentFieldControl })} style={fieldStyle}>
+                      <option value="text">Text Box</option>
+                      <option value="textarea">Text Area</option>
+                      <option value="select">Dropdown</option>
+                      <option value="checkbox">Checkbox</option>
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Save To</span>
+                    <select value={field.target} onChange={(event) => updateField(field.id, { target: event.target.value as ComponentFieldTarget })} style={fieldStyle}>
+                      <option value="properties">config.properties</option>
+                      <option value="config">config</option>
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={fieldLabelStyle}>Placeholder</span>
+                    <input value={field.placeholder} onChange={(event) => updateField(field.id, { placeholder: event.target.value })} placeholder="Optional placeholder" style={fieldStyle} />
+                  </label>
+                  {field.control === "checkbox" ? (
+                    <label style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 28, color: "#334155", fontSize: 13, fontWeight: 700 }}>
+                      <input type="checkbox" checked={field.defaultChecked} onChange={(event) => updateField(field.id, { defaultChecked: event.target.checked })} />
+                      Checked by default
+                    </label>
+                  ) : (
+                    <label style={{ display: "grid", gap: 6 }}>
+                      <span style={fieldLabelStyle}>Default Value</span>
+                      <input value={field.defaultValue} onChange={(event) => updateField(field.id, { defaultValue: event.target.value })} placeholder="Default value" style={fieldStyle} />
+                    </label>
+                  )}
+                </div>
+                {field.control === "select" ? (
+                  <label style={{ display: "grid", gap: 6, marginTop: 12 }}>
+                    <span style={fieldLabelStyle}>Dropdown Options</span>
+                    <textarea
+                      value={field.optionsText}
+                      onChange={(event) => updateField(field.id, { optionsText: event.target.value })}
+                      placeholder={"Simple=simple\nAdvanced=advanced"}
+                      style={{ ...fieldStyle, minHeight: 84, resize: "vertical", fontFamily: "Consolas, 'Courier New', monospace" }}
+                    />
+                  </label>
+                ) : null}
+                <label style={{ display: "grid", gap: 6, marginTop: 12 }}>
+                  <span style={fieldLabelStyle}>Helper Text</span>
+                  <input value={field.helperText} onChange={(event) => updateField(field.id, { helperText: event.target.value })} placeholder="Shown under the field in the node properties panel" style={fieldStyle} />
+                </label>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: "grid", gap: 8 }}>
+            <span style={fieldLabelStyle}>Preview JSON</span>
+            <textarea
+              value={previewJson}
+              readOnly
+              spellCheck={false}
+              style={{
+                ...fieldStyle,
+                minHeight: 260,
+                resize: "vertical",
+                fontFamily: "Consolas, 'Courier New', monospace",
+                fontSize: 13,
+                lineHeight: 1.55,
+                background: "#f8fafc",
+              }}
+            />
+          </div>
         </div>
         <div style={{ flexShrink: 0 }}>
           {error ? <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{error}</p> : null}
@@ -1050,7 +1379,7 @@ function ComponentBuilderWorkspace() {
               type="button"
               onClick={() => {
                 setSelectedId(null);
-                setEditor(serializeComponentTemplate(DEFAULT_COMPONENT_TEMPLATE));
+                setBuilder(createBuilderStateFromTemplate(DEFAULT_COMPONENT_TEMPLATE));
                 setError(null);
               }}
               style={secondaryButtonStyle}
@@ -1091,7 +1420,7 @@ function ComponentBuilderWorkspace() {
                   type="button"
                   onClick={() => {
                     setSelectedId(component.id);
-                    setEditor(serializeComponentTemplate(component));
+                    setBuilder(createBuilderStateFromTemplate(component));
                     setError(null);
                   }}
                   style={{
@@ -1137,7 +1466,7 @@ function ComponentBuilderWorkspace() {
                     removeCustomComponent(component.id);
                     if (selectedId === component.id) {
                       setSelectedId(null);
-                      setEditor(serializeComponentTemplate(DEFAULT_COMPONENT_TEMPLATE));
+                      setBuilder(createBuilderStateFromTemplate(DEFAULT_COMPONENT_TEMPLATE));
                       setError(null);
                     }
                   }}

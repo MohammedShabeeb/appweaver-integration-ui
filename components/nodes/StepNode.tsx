@@ -21,14 +21,6 @@ function isStepNodeType(type: string | undefined): type is StepNodeType {
   return Boolean(type && type !== "start" && isBuiltInComponent(type));
 }
 
-function getNodeDescription(type: StepNodeType, config?: Record<string, unknown>) {
-  if (type === "process") {
-    return `ref: ${String(config?.ref ?? "processorRef")}`;
-  }
-
-  return `clazz: ${String(config?.clazz ?? "java.util.Map")}`;
-}
-
 export default function StepNode({ id, type, data, selected }: StepNodeProps) {
   const deleteNode = useFlowStore((state) => state.deleteNode);
   const customComponents = useFlowStore((state) => state.customComponents);
@@ -39,8 +31,8 @@ export default function StepNode({ id, type, data, selected }: StepNodeProps) {
     return (
       <FlowNodeCard
         id={id}
-        title={data?.label || customComponent.label}
-        description={data?.description || customComponent.description || customComponent.type}
+        title={customComponent.label}
+        description={customComponent.description || customComponent.type}
         accentColor={data?.accentColor || customComponent.color}
         Icon={nodeTypeMeta.process.Icon}
         selected={selected}
@@ -64,8 +56,8 @@ export default function StepNode({ id, type, data, selected }: StepNodeProps) {
   return (
     <FlowNodeCard
       id={id}
-      title={data?.label || nodeTypeMeta[type].label}
-      description={getNodeDescription(type, data?.config)}
+      title={nodeTypeMeta[type].label}
+      description={meta.description}
       accentColor={meta.accentColor}
       Icon={Icon}
       selected={selected}

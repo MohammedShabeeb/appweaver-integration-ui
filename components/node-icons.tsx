@@ -59,6 +59,18 @@ export function ProcessIcon(props: IconProps) {
   );
 }
 
+export function LogIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M5 6h14" />
+      <path d="M5 10h10" />
+      <path d="M5 14h12" />
+      <path d="M5 18h7" />
+      <circle cx="18" cy="18" r="2" />
+    </BaseIcon>
+  );
+}
+
 export function ConnectorIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>
@@ -85,5 +97,9 @@ export const nodeTypeMeta = {
   process: {
     label: "Process",
     Icon: ProcessIcon,
+  },
+  log: {
+    label: "Log",
+    Icon: LogIcon,
   },
 } as const;

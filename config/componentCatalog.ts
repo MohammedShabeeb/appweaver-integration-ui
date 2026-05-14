@@ -1,7 +1,7 @@
 import componentCatalogJson from "./component-catalog.json";
 
 export type ComponentGroupId = "processor";
-export type BuiltInComponentType = "start" | "marshal" | "unmarshal" | "process";
+export type BuiltInComponentType = "start" | "marshal" | "unmarshal" | "process" | "log";
 export type ComponentType = string;
 
 type ComponentGroupDefinition = {

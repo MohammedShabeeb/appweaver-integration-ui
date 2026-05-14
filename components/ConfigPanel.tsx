@@ -14,6 +14,8 @@ const JAVA_CLASS_OPTIONS = [
   { label: "List", value: "java.util.List", hint: "Ordered JSON array" },
 ] as const;
 
+const LOG_LEVEL_OPTIONS = ["DEBUG", "INFO", "WARN", "ERROR"] as const;
+
 const panelStyle: React.CSSProperties = {
   position: "absolute",
   right: 16,
@@ -131,6 +133,34 @@ const selectIconStyle: React.CSSProperties = {
   border: "1px solid rgba(var(--workflow-accent-rgb), 0.14)",
 };
 
+function getProperties(config: Record<string, unknown>) {
+  const properties = config.properties;
+  return properties && typeof properties === "object" && !Array.isArray(properties)
+    ? (properties as Record<string, unknown>)
+    : {};
+}
+
+function getCustomFieldValue(config: Record<string, unknown>, field: { key: string; target?: string }) {
+  return field.target === "properties" ? getProperties(config)[field.key] : config[field.key];
+}
+
+function buildCustomFieldUpdate(
+  config: Record<string, unknown>,
+  field: { key: string; target?: string },
+  value: unknown,
+) {
+  if (field.target !== "properties") {
+    return { [field.key]: value };
+  }
+
+  return {
+    properties: {
+      ...getProperties(config),
+      [field.key]: value,
+    },
+  };
+}
+
 export default function ConfigPanel() {
   const { selectedNode, selectedEdge, updateNodeData, deleteEdge, deleteNode, customComponents } = useFlowStore();
 
@@ -189,7 +219,9 @@ export default function ConfigPanel() {
       ? "Convert the body into JSON using the selected Java class."
       : type === "unmarshal"
         ? "Read incoming JSON into the selected Java class."
-        : "Run a processor bean by its Spring or Camel reference name.";
+        : type === "log"
+          ? "Write a message through the backend LogHandler."
+          : "Run a processor bean by its Spring or Camel reference name.";
 
   return (
     <div style={panelStyle}>
@@ -211,21 +243,6 @@ export default function ConfigPanel() {
       <p style={{ ...helperTextStyle, marginTop: -4, marginBottom: 14 }}>{panelDescription}</p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <label>
-          <span style={labelStyle}>Display label</span>
-          <input
-            value={selectedNode.data.label || ""}
-            placeholder={nodeMeta?.label || "Component"}
-            style={inputStyle}
-            onChange={(event) =>
-              updateNodeData(selectedNode.id, {
-                label: event.target.value,
-              })
-            }
-          />
-          <p style={helperTextStyle}>This is the name shown on the node card in the canvas.</p>
-        </label>
-
         {(type === "marshal" || type === "unmarshal") && (
           <div style={sectionStyle}>
             <label>
@@ -326,10 +343,85 @@ export default function ConfigPanel() {
           </div>
         )}
 
+        {type === "log" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Message</span>
+              <textarea
+                value={String(config.message ?? "")}
+                placeholder="Processing exchange ${body}"
+                style={{ ...inputStyle, minHeight: 92, resize: "vertical" }}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { message: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>
+                Saved as `message`. Simple expressions such as <code>{"${body}"}</code> are evaluated by the backend.
+              </p>
+            </label>
+            <label>
+              <span style={labelStyle}>Logger name</span>
+              <input
+                value={String(config.name ?? "")}
+                placeholder="DEFAULT or AUDIT"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { name: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>
+                Saved as `name`. `AUDIT` uses the audit logging path in `LogHandler`.
+              </p>
+            </label>
+            <label>
+              <span style={labelStyle}>Log level</span>
+              <div style={selectWrapStyle}>
+                <select
+                  value={String(config.logLevel ?? "INFO")}
+                  style={selectStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { logLevel: event.target.value },
+                    })
+                  }
+                >
+                  {LOG_LEVEL_OPTIONS.map((level) => (
+                    <option key={level} value={level} style={optionStyle}>
+                      {level}
+                    </option>
+                  ))}
+                </select>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={selectIconStyle}
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+              <p style={helperTextStyle}>Saved as `logLevel`. The backend defaults to `INFO` when omitted.</p>
+            </label>
+          </div>
+        )}
+
         {customComponent ? (
           <div style={sectionStyle}>
             {customComponent.fields.map((field) => {
-              const value = config[field.key];
+              const value = getCustomFieldValue(config, field);
+              const helperText = field.helperText
+                ? field.helperText
+                : field.target === "properties"
+                  ? `Saved as properties.${field.key}.`
+                  : null;
 
               if (field.control === "checkbox") {
                 return (
@@ -342,7 +434,7 @@ export default function ConfigPanel() {
                       checked={Boolean(value)}
                       onChange={(event) =>
                         updateNodeData(selectedNode.id, {
-                          config: { [field.key]: event.target.checked },
+                          config: buildCustomFieldUpdate(config, field, event.target.checked),
                         })
                       }
                     />
@@ -361,7 +453,7 @@ export default function ConfigPanel() {
                         style={selectStyle}
                         onChange={(event) =>
                           updateNodeData(selectedNode.id, {
-                            config: { [field.key]: event.target.value },
+                            config: buildCustomFieldUpdate(config, field, event.target.value),
                           })
                         }
                       >
@@ -384,7 +476,7 @@ export default function ConfigPanel() {
                         <path d="m6 9 6 6 6-6" />
                       </svg>
                     </div>
-                    {field.helperText ? <p style={helperTextStyle}>{field.helperText}</p> : null}
+                    {helperText ? <p style={helperTextStyle}>{helperText}</p> : null}
                   </label>
                 );
               }
@@ -399,7 +491,7 @@ export default function ConfigPanel() {
                       style={{ ...inputStyle, minHeight: 92, resize: "vertical" }}
                       onChange={(event) =>
                         updateNodeData(selectedNode.id, {
-                          config: { [field.key]: event.target.value },
+                          config: buildCustomFieldUpdate(config, field, event.target.value),
                         })
                       }
                     />
@@ -410,12 +502,12 @@ export default function ConfigPanel() {
                       style={inputStyle}
                       onChange={(event) =>
                         updateNodeData(selectedNode.id, {
-                          config: { [field.key]: event.target.value },
+                          config: buildCustomFieldUpdate(config, field, event.target.value),
                         })
                       }
                     />
                   )}
-                  {field.helperText ? <p style={helperTextStyle}>{field.helperText}</p> : null}
+                  {helperText ? <p style={helperTextStyle}>{helperText}</p> : null}
                 </label>
               );
             })}

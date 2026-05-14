@@ -50,6 +50,14 @@
       "color": "#f472b6",
       "bgClass": "sidebar-item-switch",
       "dependencies": []
+    },
+    {
+      "type": "log",
+      "defaultGroup": "processor",
+      "singleEndpointOnly": false,
+      "color": "#22c55e",
+      "bgClass": "sidebar-item-log",
+      "dependencies": []
     }
   ]
 }

@@ -15,7 +15,7 @@ In scope:
 - Export active workflow as versioned JSON.
 - Import current workflow export JSON.
 - Import supported route definition JSON.
-- Export generated `pom.xml` dependencies for the active workflow.
+- Export backend route JSON for the active workflow.
 
 Out of scope:
 
@@ -26,10 +26,10 @@ Out of scope:
 ## Acceptance Criteria
 
 - Workflow export includes version, workflow id, name, timestamp, root canvas, current canvas, stack, and canvases.
+- Backend route export includes route metadata and ordered component steps without canvas layout, selection, dimensions, handles, or edge records.
 - Importing a valid workflow creates a new workflow and makes it active.
-- Importing a supported route definition creates start, marshal, unmarshal, and process nodes in order.
+- Importing a supported route definition creates start, marshal, unmarshal, process, and log nodes in order.
 - Unsupported route steps are rejected instead of partially imported.
-- Exported `pom.xml` includes dependencies from component catalog definitions and node config dependencies.
 - Duplicate workflow names are deduplicated on import.
 
 ## Data And State

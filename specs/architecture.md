@@ -24,9 +24,7 @@ State is persisted to `localStorage` under `nextui-flow-store`. Store migrations
 
 ## Import And Export Contracts
 
-Workflow export produces versioned JSON with workflow metadata, canvas stack, and canvas records. Workflow import accepts current workflow exports and supported route definitions with `marshal`, `unmarshal`, and `process` steps.
-
-`pom.xml` export derives Maven dependencies from built-in component catalog entries and node-level dependency configuration.
+Workflow export produces versioned JSON with workflow metadata, canvas stack, and canvas records. Backend route export produces JSON with route metadata and ordered component steps only, excluding canvas layout and React Flow runtime fields. Workflow import accepts current workflow exports and supported route definitions with `marshal`, `unmarshal`, `process`, and `log` steps.
 
 ## Implementation Rules
 

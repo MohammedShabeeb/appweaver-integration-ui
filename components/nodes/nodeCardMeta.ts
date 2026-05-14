@@ -9,6 +9,7 @@ const defaultDescriptions: Record<string, string> = {
   marshal: "Serialize the message body with a selected class type.",
   unmarshal: "Deserialize the message body with a selected class type.",
   process: "Invoke a processor bean using its ref value.",
+  log: "Write route details to the configured logger.",
 };
 
 function toTag(label?: string | null) {

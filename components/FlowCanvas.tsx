@@ -29,6 +29,7 @@ const nodeTypes = {
   marshal: StepNode,
   unmarshal: StepNode,
   process: StepNode,
+  log: StepNode,
   customStep: StepNode,
 };
 

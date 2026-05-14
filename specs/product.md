@@ -12,11 +12,11 @@ Next UI is a browser-based workflow and configuration builder for Camel-style in
 
 ## Current Product Surface
 
-- Visual workflow canvas with start, marshal, unmarshal, and process nodes.
+- Visual workflow canvas with start, marshal, unmarshal, process, and log nodes.
 - Insertable connectors between workflow steps.
 - Workflow management with multiple canvases and nested child canvases.
 - Import of workflow exports and supported route JSON definitions.
-- Export of workflow JSON and generated `pom.xml`.
+- Export of workflow JSON and backend route JSON.
 - Configuration workspaces for beans, datasources, security, LLM providers, RAG, and endpoints.
 - Catalog-driven built-in components and datasource templates.
 - Local browser persistence through the Zustand store.

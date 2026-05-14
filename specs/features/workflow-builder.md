@@ -30,6 +30,7 @@ Out of scope:
 
 - A new workflow starts with a start node and no extra connectors.
 - Supported built-in components are created with sensible default configuration.
+- Log components expose `message`, `name`, and `logLevel` fields matching the backend `LogStep` contract.
 - A component inserted on a connector replaces that connector with two connected edges.
 - Selecting a configurable node opens its configuration panel.
 - Deleting a node removes attached connectors.
