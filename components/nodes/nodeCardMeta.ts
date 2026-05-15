@@ -7,7 +7,10 @@ import {
 const defaultDescriptions: Record<string, string> = {
   start: "Entry point for your workflow.",
   marshal: "Serialize the message body with a selected class type.",
-  unmarshal: "Deserialize the message body with a selected class type.",
+  unmarshal: "Read JSON, CSV, or XML into the message body.",
+  setBody: "Replace the message body with an expression or constant value.",
+  setHeader: "Set a message header from an expression or constant value.",
+  validate: "Reject invalid payloads with configured validation rules.",
   process: "Invoke a processor bean using its ref value.",
   log: "Write route details to the configured logger.",
 };

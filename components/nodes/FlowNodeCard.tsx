@@ -10,6 +10,7 @@ type FlowNodeCardProps = {
   accentColor: string;
   Icon: (props: IconProps) => ReactNode;
   selected?: boolean;
+  disabled?: boolean;
   onDelete?: (id: string) => void;
   sourceHandles?: boolean;
   targetHandles?: boolean;
@@ -36,7 +37,7 @@ const deleteBtnStyle: CSSProperties = {
   fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
 };
 
-function buildCardStyle(accentColor: string, selected?: boolean): CSSProperties {
+function buildCardStyle(accentColor: string, selected?: boolean, disabled?: boolean): CSSProperties {
   return {
     position: "relative",
     width: 168,
@@ -52,6 +53,8 @@ function buildCardStyle(accentColor: string, selected?: boolean): CSSProperties 
       : "0 18px 40px rgba(2, 6, 23, 0.24)",
     backdropFilter: "blur(14px)",
     transition: "box-shadow 0.2s ease, border-color 0.2s ease",
+    opacity: disabled ? 0.56 : 1,
+    filter: disabled ? "grayscale(0.35)" : "none",
   };
 }
 
@@ -62,12 +65,13 @@ export default function FlowNodeCard({
   accentColor,
   Icon,
   selected,
+  disabled,
   onDelete,
   sourceHandles = true,
   targetHandles = true,
 }: FlowNodeCardProps) {
   return (
-    <div style={buildCardStyle(accentColor, selected)}>
+    <div style={buildCardStyle(accentColor, selected, disabled)}>
       {selected && id && onDelete ? (
         <button
           type="button"
@@ -146,6 +150,24 @@ export default function FlowNodeCard({
           }}
         >
           {description}
+        </div>
+      ) : null}
+
+      {disabled ? (
+        <div
+          style={{
+            marginTop: 8,
+            display: "inline-flex",
+            borderRadius: 999,
+            border: "1px solid rgba(148, 163, 184, 0.28)",
+            padding: "3px 7px",
+            fontSize: 10,
+            fontWeight: 700,
+            color: "rgba(226, 232, 240, 0.78)",
+            fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
+          }}
+        >
+          Disabled
         </div>
       ) : null}
 

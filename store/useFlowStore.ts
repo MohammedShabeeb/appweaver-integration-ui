@@ -173,12 +173,22 @@ type BackendRouteExport = {
 
 type RouteImportStep = {
   type?: string;
+  disabled?: boolean;
+  parameters?: Record<string, unknown>;
   name?: string;
   library?: string;
   clazz?: string;
+  useList?: boolean;
+  delimiter?: string;
+  skipHeader?: boolean;
+  useMap?: boolean;
   ref?: string;
+  expression?: string;
+  data?: unknown;
   message?: string;
   logLevel?: string;
+  rules?: unknown;
+  validationStatusCode?: number;
   dependencies?: unknown;
 };
 
@@ -273,24 +283,55 @@ function createFlowNode(
     start: "From",
     marshal: "Marshal",
     unmarshal: "Unmarshal",
+    setBody: "Set Body",
+    setHeader: "Set Header",
+    validate: "Validate",
     process: "Process",
     log: "Log",
   };
   const defaultConfigMap: Partial<Record<BuiltInComponentType, Record<string, unknown>>> = {
     marshal: {
+      disabled: false,
       name: "json",
       library: "Jackson",
       clazz: "java.util.Map",
     },
     unmarshal: {
+      disabled: false,
       name: "json",
       library: "Jackson",
       clazz: "java.util.Map",
+      useList: false,
+      delimiter: ",",
+      skipHeader: false,
+      useMap: false,
+    },
+    setBody: {
+      disabled: false,
+      name: "setBody",
+      expression: "${body}",
+    },
+    setHeader: {
+      disabled: false,
+      name: "Content-Type",
+      expression: "application/json",
+    },
+    validate: {
+      disabled: false,
+      rules: [
+        {
+          expression: "body != null",
+          errorMessage: "Request body is required",
+        },
+      ],
+      validationStatusCode: 400,
     },
     process: {
+      disabled: false,
       ref: "processorRef",
     },
     log: {
+      disabled: false,
       message: "Processing exchange",
       name: "DEFAULT",
       logLevel: "INFO",
@@ -305,6 +346,7 @@ function createFlowNode(
       label: customComponent?.label ?? labelMap[builtInType],
       config: customComponent
         ? {
+            disabled: false,
             ...customComponent.config,
             dependencies: customComponent.dependencies,
           }
@@ -602,6 +644,20 @@ function stripBackendConfig(config: Record<string, unknown> | undefined): Record
 
   const backendConfig = { ...config };
   delete backendConfig.dependencies;
+
+  if (backendConfig.disabled === false) {
+    delete backendConfig.disabled;
+  }
+
+  if (
+    backendConfig.parameters &&
+    typeof backendConfig.parameters === "object" &&
+    !Array.isArray(backendConfig.parameters) &&
+    Object.keys(backendConfig.parameters).length === 0
+  ) {
+    delete backendConfig.parameters;
+  }
+
   return backendConfig;
 }
 
@@ -662,10 +718,12 @@ function createBackendRouteJson(workflow: WorkflowRecord): BackendRouteExport {
   const startConfig = startNode?.data?.config ?? {};
   const steps =
     rootCanvas
-      ? getRouteOrderedNodes(rootCanvas).map((node) => ({
-          type: String(node.data?.componentKey ?? node.type ?? ""),
-          ...stripBackendConfig(node.data?.config),
-        }))
+      ? getRouteOrderedNodes(rootCanvas)
+          .filter((node) => node.data?.config?.disabled !== true)
+          .map((node) => ({
+            type: String(node.data?.componentKey ?? node.type ?? ""),
+            ...stripBackendConfig(node.data?.config),
+          }))
       : [];
   const routeId = stringValueOrDefault(startConfig.routeId, workflow.name);
   const routeName = stringValueOrDefault(
@@ -712,6 +770,9 @@ function buildWorkflowFromRouteDefinition(
     (step): step is RouteImportStep & { type: BuiltInComponentType } =>
       step?.type === "marshal" ||
       step?.type === "unmarshal" ||
+      step?.type === "setBody" ||
+      step?.type === "setHeader" ||
+      step?.type === "validate" ||
       step?.type === "process" ||
       step?.type === "log",
   );
@@ -761,26 +822,78 @@ function buildWorkflowFromRouteDefinition(
           ? step.ref?.trim() || "Process"
           : componentKey === "log"
             ? step.name?.trim() || "Log"
-            : componentKey === "marshal"
-              ? "Marshal"
-              : "Unmarshal",
+            : componentKey === "setBody"
+              ? step.name?.trim() || "Set Body"
+              : componentKey === "setHeader"
+              ? step.name?.trim() || "Set Header"
+              : componentKey === "validate"
+                ? "Validate"
+              : componentKey === "marshal"
+                ? "Marshal"
+                : componentKey === "unmarshal"
+                  ? "Unmarshal"
+                  : "Set Header",
       config:
         componentKey === "process"
           ? {
               ref: step.ref ?? "",
+              disabled: Boolean(step.disabled),
+              parameters: step.parameters ?? {},
               dependencies: normalizeDependencyList(step.dependencies),
-            }
+              }
+          : componentKey === "unmarshal"
+            ? {
+                name: step.name ?? "json",
+                library: step.library ?? "Jackson",
+                clazz: step.clazz ?? "java.util.Map",
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
+                useList: Boolean(step.useList),
+                delimiter: typeof step.delimiter === "string" ? step.delimiter : ",",
+                skipHeader: Boolean(step.skipHeader),
+                useMap: Boolean(step.useMap),
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
+          : componentKey === "validate"
+            ? {
+                rules: Array.isArray(step.rules) ? step.rules : [],
+                validationStatusCode: typeof step.validationStatusCode === "number" ? step.validationStatusCode : 400,
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
+          : componentKey === "setBody"
+            ? {
+                name: step.name ?? "setBody",
+                expression: step.expression ?? "${body}",
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
+                ...(step.data !== undefined ? { data: step.data } : {}),
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
+          : componentKey === "setHeader"
+            ? {
+                name: step.name ?? "Content-Type",
+                expression: step.expression ?? "application/json",
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
           : componentKey === "log"
             ? {
                 message: typeof step.message === "string" ? step.message : "Processing exchange",
                 name: step.name ?? "DEFAULT",
                 logLevel: typeof step.logLevel === "string" ? step.logLevel : "INFO",
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
                 dependencies: normalizeDependencyList(step.dependencies),
               }
           : {
               name: step.name ?? "json",
               library: step.library ?? "Jackson",
               clazz: step.clazz ?? "java.util.Map",
+              disabled: Boolean(step.disabled),
+              parameters: step.parameters ?? {},
               dependencies: normalizeDependencyList(step.dependencies),
             },
     };
@@ -831,7 +944,7 @@ function normalizePersistedState(
   const selectedLlmSubsection = persistedState?.selectedLlmSubsection ?? "providers";
 
   const shouldPruneLegacyNode = (node: AppNode) =>
-    !["start", "marshal", "unmarshal", "process", "log"].includes(node.type ?? "");
+    !["start", "marshal", "unmarshal", "setBody", "setHeader", "validate", "process", "log"].includes(node.type ?? "");
 
   if (persistedState?.workflows && Object.keys(persistedState.workflows).length > 0) {
     const workflowOrder =

@@ -12,7 +12,7 @@ Next UI is a browser-based workflow and configuration builder for Camel-style in
 
 ## Current Product Surface
 
-- Visual workflow canvas with start, marshal, unmarshal, process, and log nodes.
+- Visual workflow canvas with start, unmarshal, set body, set header, validate, and log nodes available in the component picker.
 - Insertable connectors between workflow steps.
 - Workflow management with multiple canvases and nested child canvases.
 - Import of workflow exports and supported route JSON definitions.

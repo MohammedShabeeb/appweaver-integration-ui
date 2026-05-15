@@ -21,13 +21,16 @@ import { useFlowStore } from "@/store/useFlowStore";
 import FromNode from "./nodes/StartNode";
 import StepNode from "./nodes/StepNode";
 import InsertableEdge from "./edges/InsertableEdge";
-import { componentDefinitions } from "@/config/componentCatalog";
+import { visibleComponentDefinitions } from "@/config/componentCatalog";
 import { nodeTypeMeta } from "./node-icons";
 
 const nodeTypes = {
   start: FromNode,
   marshal: StepNode,
   unmarshal: StepNode,
+  setBody: StepNode,
+  setHeader: StepNode,
+  validate: StepNode,
   process: StepNode,
   log: StepNode,
   customStep: StepNode,
@@ -74,7 +77,7 @@ export default function FlowCanvas() {
       return [];
     }
 
-    const builtInResults = componentDefinitions
+    const builtInResults = visibleComponentDefinitions
       .filter((component) => component.type !== "start")
       .filter((component) => {
         const meta = nodeTypeMeta[component.type];

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type CSSProperties, type ComponentType as
 import { beanCatalog } from "@/config/beanCatalog";
 import { dataSourceCatalog } from "@/config/datasourceCatalog";
 import { useFlowStore } from "@/store/useFlowStore";
-import { componentDefinitions } from "@/config/componentCatalog";
+import { visibleComponentDefinitions } from "@/config/componentCatalog";
 import { nodeTypeMeta } from "./node-icons";
 
 type PendingDeleteWorkflow = {
@@ -32,7 +32,7 @@ type DataSourceEditorState = {
 };
 
 type StepListItem = {
-  type: "marshal" | "unmarshal" | "process" | "log";
+  type: "marshal" | "unmarshal" | "setBody" | "setHeader" | "validate" | "process" | "log";
   label: string;
   color: string;
   bgClass?: string;
@@ -42,7 +42,10 @@ type StepListItem = {
 
 const stepDescriptions: Record<StepListItem["type"], string> = {
   marshal: "Serialize data and choose the `clazz` value from a dropdown.",
-  unmarshal: "Deserialize data and choose the `clazz` value from a dropdown.",
+  unmarshal: "Read JSON, CSV, or XML into the message body.",
+  setBody: "Set the message body from an expression or constant data.",
+  setHeader: "Set a message header from an expression or constant value.",
+  validate: "Reject invalid JSON payloads with MVEL-style rules.",
   process: "Run a processor bean by entering its `ref` name.",
   log: "Write a log message with logger name and level.",
 };
@@ -119,7 +122,7 @@ export default function ComponentsSidebar() {
     dataSourceCatalog.find((item) => item.key === selectedDataSourceKey) ?? dataSourceCatalog[0] ?? null;
   const stepItems = useMemo(
     () =>
-      componentDefinitions
+      visibleComponentDefinitions
         .filter((item) => item.type !== "start")
         .map((item) => ({
           type: item.type as StepListItem["type"],

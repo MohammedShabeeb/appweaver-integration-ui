@@ -31,6 +31,11 @@ Out of scope:
 - A new workflow starts with a start node and no extra connectors.
 - Supported built-in components are created with sensible default configuration.
 - Log components expose `message`, `name`, and `logLevel` fields matching the backend `LogStep` contract.
+- Set body components expose `name`, `expression`, and `data` fields matching the backend `SetBodyStep` contract.
+- Set header components expose `name` and `expression` fields matching the backend `SetHeaderStep` contract.
+- Unmarshal components expose `name`, `library`, `useList`, `clazz`, `delimiter`, `skipHeader`, and `useMap` fields matching the backend `UnMarshallStep` contract.
+- Validate components expose `rules` and `validationStatusCode` fields matching the backend `ValidationStep` contract.
+- Components expose the inherited `disabled` step setting as an enabled toggle.
 - A component inserted on a connector replaces that connector with two connected edges.
 - Selecting a configurable node opens its configuration panel.
 - Deleting a node removes attached connectors.

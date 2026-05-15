@@ -37,13 +37,48 @@ export function MarshalIcon(props: IconProps) {
   );
 }
 
+export function SetBodyIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M5 6h8" />
+      <path d="M5 10h14" />
+      <path d="M5 14h10" />
+      <path d="M13 18h6" />
+      <path d="m16 15 3 3-3 3" />
+    </BaseIcon>
+  );
+}
+
+export function SetHeaderIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M5 6h14" />
+      <path d="M5 10h6" />
+      <path d="M13 10h6" />
+      <path d="M5 14h14" />
+      <path d="M8 18h8" />
+      <path d="m14 16 2 2-2 2" />
+    </BaseIcon>
+  );
+}
+
 export function UnmarshalIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>
-      <path d="M7 8h10" />
-      <path d="M7 12h10" />
-      <path d="M7 16h7" />
-      <path d="m14 7 3-3 3 3" />
+      <path d="M6 5h12" />
+      <path d="M6 9h12" />
+      <path d="M6 13h7" />
+      <path d="M15 14v5" />
+      <path d="m12 16 3 3 3-3" />
+    </BaseIcon>
+  );
+}
+
+export function ValidateIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M12 3 5 6v5c0 4.5 3 7.5 7 10 4-2.5 7-5.5 7-10V6z" />
+      <path d="m9 12 2 2 4-5" />
     </BaseIcon>
   );
 }
@@ -90,9 +125,21 @@ export const nodeTypeMeta = {
     label: "Marshal",
     Icon: MarshalIcon,
   },
+  setBody: {
+    label: "Set Body",
+    Icon: SetBodyIcon,
+  },
+  setHeader: {
+    label: "Set Header",
+    Icon: SetHeaderIcon,
+  },
   unmarshal: {
     label: "Unmarshal",
     Icon: UnmarshalIcon,
+  },
+  validate: {
+    label: "Validate",
+    Icon: ValidateIcon,
   },
   process: {
     label: "Process",

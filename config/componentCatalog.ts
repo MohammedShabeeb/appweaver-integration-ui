@@ -1,7 +1,15 @@
 import componentCatalogJson from "./component-catalog.json";
 
 export type ComponentGroupId = "processor";
-export type BuiltInComponentType = "start" | "marshal" | "unmarshal" | "process" | "log";
+export type BuiltInComponentType =
+  | "start"
+  | "marshal"
+  | "unmarshal"
+  | "setBody"
+  | "setHeader"
+  | "validate"
+  | "process"
+  | "log";
 export type ComponentType = string;
 
 type ComponentGroupDefinition = {
@@ -33,6 +41,9 @@ type ComponentCatalog = {
 export const componentCatalog = componentCatalogJson as ComponentCatalog;
 export const componentGroups = componentCatalog.groups;
 export const componentDefinitions = componentCatalog.components;
+export const visibleComponentDefinitions = componentDefinitions.filter(
+  (component) => !["marshal", "process"].includes(component.type),
+);
 export const builtInComponentKeys = componentDefinitions.map((component) => component.type);
 export const builtInComponentMap = Object.fromEntries(
   componentDefinitions.map((component) => [component.type, component]),

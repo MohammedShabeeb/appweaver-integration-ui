@@ -27,8 +27,9 @@ Out of scope:
 
 - Workflow export includes version, workflow id, name, timestamp, root canvas, current canvas, stack, and canvases.
 - Backend route export includes route metadata and ordered component steps without canvas layout, selection, dimensions, handles, or edge records.
+- Backend route export omits components whose inherited `disabled` step setting is enabled.
 - Importing a valid workflow creates a new workflow and makes it active.
-- Importing a supported route definition creates start, marshal, unmarshal, process, and log nodes in order.
+- Importing a supported route definition creates start, marshal, unmarshal, set body, set header, validate, process, and log nodes in order.
 - Unsupported route steps are rejected instead of partially imported.
 - Duplicate workflow names are deduplicated on import.
 

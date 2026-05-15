@@ -15,6 +15,16 @@ const JAVA_CLASS_OPTIONS = [
 ] as const;
 
 const LOG_LEVEL_OPTIONS = ["DEBUG", "INFO", "WARN", "ERROR"] as const;
+const UNMARSHAL_TYPE_OPTIONS = [
+  { label: "JSON", value: "json" },
+  { label: "CSV", value: "csv" },
+  { label: "XML", value: "xml" },
+] as const;
+const UNMARSHAL_LIBRARY_OPTIONS = [
+  { label: "Jackson", value: "Jackson" },
+  { label: "Custom ObjectMapper", value: "custom" },
+  { label: "Default", value: "" },
+] as const;
 
 const panelStyle: React.CSSProperties = {
   position: "absolute",
@@ -161,6 +171,42 @@ function buildCustomFieldUpdate(
   };
 }
 
+function parseSetBodyDataValue(value: string): unknown {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function getDelimiterValue(value: string) {
+  return value ? value.slice(0, 1) : undefined;
+}
+
+function parseValidationRules(value: string) {
+  const parsed = JSON.parse(value) as unknown;
+
+  if (!Array.isArray(parsed)) {
+    throw new Error("Validation rules must be a JSON array.");
+  }
+
+  return parsed
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    .map((item) => ({
+      expression: String(item.expression ?? ""),
+      ...(typeof item.errorMessage === "string" && item.errorMessage.trim()
+        ? { errorMessage: item.errorMessage }
+        : {}),
+    }))
+    .filter((item) => item.expression.trim());
+}
+
 export default function ConfigPanel() {
   const { selectedNode, selectedEdge, updateNodeData, deleteEdge, deleteNode, customComponents } = useFlowStore();
 
@@ -212,13 +258,20 @@ export default function ConfigPanel() {
   const selectedClazzValue = String(config.clazz ?? "java.util.Map");
   const selectedClazzOption =
     JAVA_CLASS_OPTIONS.find((option) => option.value === selectedClazzValue) ?? JAVA_CLASS_OPTIONS[0];
+  const selectedUnmarshalType = String(config.name ?? "json");
   const panelDescription = customComponent
     ? customComponent.description || "Configure this custom component from its template fields."
     :
     type === "marshal"
       ? "Convert the body into JSON using the selected Java class."
-      : type === "unmarshal"
-        ? "Read incoming JSON into the selected Java class."
+      : type === "setBody"
+        ? "Set the exchange body from an expression or constant data."
+      : type === "setHeader"
+        ? "Set an exchange header from an expression or constant value."
+        : type === "validate"
+          ? "Validate the JSON payload with backend validation rules."
+        : type === "unmarshal"
+          ? "Read JSON, CSV, or XML payloads into the exchange body."
         : type === "log"
           ? "Write a message through the backend LogHandler."
           : "Run a processor bean by its Spring or Camel reference name.";
@@ -243,7 +296,27 @@ export default function ConfigPanel() {
       <p style={{ ...helperTextStyle, marginTop: -4, marginBottom: 14 }}>{panelDescription}</p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {(type === "marshal" || type === "unmarshal") && (
+        <div style={sectionStyle}>
+          <label
+            style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}
+          >
+            <input
+              type="checkbox"
+              checked={config.disabled !== true}
+              onChange={(event) =>
+                updateNodeData(selectedNode.id, {
+                  config: { disabled: !event.target.checked },
+                })
+              }
+            />
+            <span style={{ fontWeight: 700 }}>Enabled in direct route</span>
+          </label>
+          <p style={helperTextStyle}>
+            Disabled components stay on the canvas but are ignored when creating or exporting the backend direct route.
+          </p>
+        </div>
+
+        {type === "marshal" && (
           <div style={sectionStyle}>
             <label>
               <span style={labelStyle}>Data format library</span>
@@ -316,6 +389,332 @@ export default function ConfigPanel() {
               </p>
               <p style={{ ...helperTextStyle, marginTop: 2 }}>
                 {selectedClazzOption.hint}
+              </p>
+            </label>
+          </div>
+        )}
+
+        {type === "unmarshal" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Payload type</span>
+              <div style={selectWrapStyle}>
+                <select
+                  value={String(config.name ?? "json")}
+                  style={selectStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { name: event.target.value },
+                    })
+                  }
+                >
+                  {UNMARSHAL_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value} style={optionStyle}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={selectIconStyle}
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+              <p style={helperTextStyle}>Saved as `name`: `json`, `csv`, or `xml`.</p>
+            </label>
+
+            {selectedUnmarshalType === "json" ? (
+              <>
+                <label>
+                  <span style={labelStyle}>JSON library</span>
+                  <div style={selectWrapStyle}>
+                    <select
+                      value={String(config.library ?? "Jackson")}
+                      style={selectStyle}
+                      onChange={(event) =>
+                        updateNodeData(selectedNode.id, {
+                          config: { library: event.target.value },
+                        })
+                      }
+                    >
+                      {UNMARSHAL_LIBRARY_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value} style={optionStyle}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      style={selectIconStyle}
+                      aria-hidden="true"
+                    >
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </div>
+                  <p style={helperTextStyle}>Used when payload type is `json`.</p>
+                </label>
+
+                <label>
+                  <span style={labelStyle}>Target class</span>
+                  <div style={selectWrapStyle}>
+                    <select
+                      value={String(config.clazz ?? "java.util.Map")}
+                      style={selectStyle}
+                      onChange={(event) =>
+                        updateNodeData(selectedNode.id, {
+                          config: { clazz: event.target.value },
+                        })
+                      }
+                    >
+                      {JAVA_CLASS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value} style={optionStyle}>
+                          {option.label} - {option.value}
+                        </option>
+                      ))}
+                    </select>
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      style={selectIconStyle}
+                      aria-hidden="true"
+                    >
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </div>
+                  <p style={helperTextStyle}>Saved as `clazz` for JSON unmarshalling.</p>
+                </label>
+
+                <label
+                  style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={Boolean(config.useList)}
+                    onChange={(event) =>
+                      updateNodeData(selectedNode.id, {
+                        config: { useList: event.target.checked },
+                      })
+                    }
+                  />
+                  <span style={{ fontWeight: 700 }}>Use list for JSON payloads</span>
+                </label>
+              </>
+            ) : null}
+
+            {selectedUnmarshalType === "csv" ? (
+              <>
+                <label>
+                  <span style={labelStyle}>CSV delimiter</span>
+                  <input
+                    value={String(config.delimiter ?? ",")}
+                    placeholder=","
+                    maxLength={1}
+                    style={inputStyle}
+                    onChange={(event) =>
+                      updateNodeData(selectedNode.id, {
+                        config: { delimiter: getDelimiterValue(event.target.value) },
+                      })
+                    }
+                  />
+                  <p style={helperTextStyle}>Saved as a single-character `delimiter` for CSV payloads.</p>
+                </label>
+
+                <label
+                  style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={Boolean(config.skipHeader)}
+                    onChange={(event) =>
+                      updateNodeData(selectedNode.id, {
+                        config: { skipHeader: event.target.checked },
+                      })
+                    }
+                  />
+                  <span style={{ fontWeight: 700 }}>Skip CSV header row</span>
+                </label>
+
+                <label
+                  style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={Boolean(config.useMap)}
+                    onChange={(event) =>
+                      updateNodeData(selectedNode.id, {
+                        config: { useMap: event.target.checked },
+                      })
+                    }
+                  />
+                  <span style={{ fontWeight: 700 }}>Use CSV maps</span>
+                </label>
+              </>
+            ) : null}
+          </div>
+        )}
+
+        {type === "setBody" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Name</span>
+              <input
+                value={String(config.name ?? "")}
+                placeholder="setBody"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { name: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Saved as `name` for the backend SetBody step.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Expression</span>
+              <textarea
+                value={String(config.expression ?? "")}
+                placeholder="${body}"
+                style={{ ...inputStyle, minHeight: 92, resize: "vertical" }}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { expression: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>
+                Saved as `expression`. Values containing <code>{"${...}"}</code> or <code>#</code> are evaluated as
+                Camel simple expressions.
+              </p>
+            </label>
+            <label>
+              <span style={labelStyle}>Data</span>
+              <textarea
+                value={
+                  config.data === undefined
+                    ? ""
+                    : typeof config.data === "string"
+                      ? config.data
+                      : JSON.stringify(config.data, null, 2)
+                }
+                placeholder='{"status":"ok"}'
+                style={{ ...inputStyle, minHeight: 92, resize: "vertical" }}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { data: parseSetBodyDataValue(event.target.value) },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>
+                Optional constant body. When provided, the backend uses `data` before `expression`.
+              </p>
+            </label>
+          </div>
+        )}
+
+        {type === "setHeader" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Header name</span>
+              <input
+                value={String(config.name ?? "")}
+                placeholder="Content-Type"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { name: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Saved as `name`, for example `Content-Type`.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Expression</span>
+              <textarea
+                value={String(config.expression ?? "")}
+                placeholder="application/json"
+                style={{ ...inputStyle, minHeight: 92, resize: "vertical" }}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { expression: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>
+                Saved as `expression`. Values containing <code>{"${...}"}</code> or <code>#</code> are evaluated as
+                Camel simple expressions; other values are constants.
+              </p>
+            </label>
+          </div>
+        )}
+
+        {type === "validate" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Validation status code</span>
+              <input
+                type="number"
+                value={String(config.validationStatusCode ?? 400)}
+                min={100}
+                max={599}
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: {
+                      validationStatusCode: Number.isFinite(Number(event.target.value))
+                        ? Number(event.target.value)
+                        : 400,
+                    },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Saved as `validationStatusCode` and used when validation fails.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Rules</span>
+              <textarea
+                key={`${selectedNode.id}-validation-rules`}
+                defaultValue={JSON.stringify(
+                  Array.isArray(config.rules)
+                    ? config.rules
+                    : [
+                        {
+                          expression: "body != null",
+                          errorMessage: "Request body is required",
+                        },
+                      ],
+                  null,
+                  2,
+                )}
+                placeholder='[{"expression":"body != null","errorMessage":"Request body is required"}]'
+                style={{ ...inputStyle, minHeight: 150, resize: "vertical", fontFamily: "monospace" }}
+                onBlur={(event) => {
+                  try {
+                    updateNodeData(selectedNode.id, {
+                      config: { rules: parseValidationRules(event.target.value) },
+                    });
+                  } catch (issue) {
+                    window.alert(issue instanceof Error ? issue.message : "Validation rules must be valid JSON.");
+                  }
+                }}
+              />
+              <p style={helperTextStyle}>
+                Saved as `rules`. Each rule needs an MVEL `expression`; `errorMessage` is optional.
               </p>
             </label>
           </div>

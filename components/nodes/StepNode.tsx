@@ -36,6 +36,7 @@ export default function StepNode({ id, type, data, selected }: StepNodeProps) {
         accentColor={data?.accentColor || customComponent.color}
         Icon={nodeTypeMeta.process.Icon}
         selected={selected}
+        disabled={data?.config?.disabled === true}
         onDelete={deleteNode}
       />
     );
@@ -61,6 +62,7 @@ export default function StepNode({ id, type, data, selected }: StepNodeProps) {
       accentColor={meta.accentColor}
       Icon={Icon}
       selected={selected}
+      disabled={data?.config?.disabled === true}
       onDelete={deleteNode}
     />
   );

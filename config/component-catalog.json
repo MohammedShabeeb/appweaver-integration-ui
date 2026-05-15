@@ -30,18 +30,36 @@
       ]
     },
     {
-      "type": "unmarshal",
+      "type": "setBody",
       "defaultGroup": "processor",
       "singleEndpointOnly": false,
       "color": "#f59e0b",
-      "bgClass": "sidebar-item-delay",
-      "dependencies": [
-        {
-          "groupId": "org.apache.camel",
-          "artifactId": "camel-jackson",
-          "version": "4.8.0"
-        }
-      ]
+      "bgClass": "sidebar-item-setbody",
+      "dependencies": []
+    },
+    {
+      "type": "setHeader",
+      "defaultGroup": "processor",
+      "singleEndpointOnly": false,
+      "color": "#06b6d4",
+      "bgClass": "sidebar-item-setheader",
+      "dependencies": []
+    },
+    {
+      "type": "unmarshal",
+      "defaultGroup": "processor",
+      "singleEndpointOnly": false,
+      "color": "#8b5cf6",
+      "bgClass": "sidebar-item-unmarshal",
+      "dependencies": []
+    },
+    {
+      "type": "validate",
+      "defaultGroup": "processor",
+      "singleEndpointOnly": false,
+      "color": "#ef4444",
+      "bgClass": "sidebar-item-validate",
+      "dependencies": []
     },
     {
       "type": "process",
