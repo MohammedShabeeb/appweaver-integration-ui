@@ -32,7 +32,17 @@ type DataSourceEditorState = {
 };
 
 type StepListItem = {
-  type: "marshal" | "unmarshal" | "setBody" | "setHeader" | "validate" | "process" | "log";
+  type:
+    | "marshal"
+    | "unmarshal"
+    | "setBody"
+    | "setHeader"
+    | "setProperty"
+    | "convertBodyTo"
+    | "transform"
+    | "validate"
+    | "process"
+    | "log";
   label: string;
   color: string;
   bgClass?: string;
@@ -40,15 +50,99 @@ type StepListItem = {
   description: string;
 };
 
+type PaletteItem = {
+  type: string;
+  label: string;
+  color: string;
+  bgClass?: string;
+  Icon: ReactComponentType<{ className?: string; style?: CSSProperties }>;
+  description: string;
+};
+
+type ComponentGroupId =
+  | "transform"
+  | "metadata"
+  | "logic"
+  | "connectors"
+  | "processing"
+  | "batchParallel"
+  | "reliability"
+  | "timingObservability";
+
+type ComponentGroupDefinition = {
+  id: ComponentGroupId;
+  label: string;
+  description: string;
+  componentTypes: StepListItem["type"][];
+};
+
 const stepDescriptions: Record<StepListItem["type"], string> = {
-  marshal: "Serialize data and choose the `clazz` value from a dropdown.",
+  marshal: "Serialize the message body using the backend marshal step.",
   unmarshal: "Read JSON, CSV, or XML into the message body.",
   setBody: "Set the message body from an expression or constant data.",
   setHeader: "Set a message header from an expression or constant value.",
+  setProperty: "Set an exchange property from an expression or constant value.",
+  convertBodyTo: "Convert the message body to a target Java class.",
+  transform: "Transform the message body with a simple expression or mapper.",
   validate: "Reject invalid JSON payloads with MVEL-style rules.",
   process: "Run a processor bean by entering its `ref` name.",
   log: "Write a log message with logger name and level.",
 };
+
+const componentGroups: ComponentGroupDefinition[] = [
+  {
+    id: "transform",
+    label: "Transform",
+    description: "Change the message body, format, or type.",
+    componentTypes: ["setBody", "transform", "convertBodyTo", "marshal", "unmarshal"],
+  },
+  {
+    id: "metadata",
+    label: "Metadata",
+    description: "Work with headers, exchange properties, context, and global options.",
+    componentTypes: ["setHeader", "setProperty"],
+  },
+  {
+    id: "logic",
+    label: "Logic",
+    description: "Branch, filter, loop, and order execution.",
+    componentTypes: [],
+  },
+  {
+    id: "connectors",
+    label: "Connectors",
+    description: "Send messages to endpoints, services, or other routes.",
+    componentTypes: [],
+  },
+  {
+    id: "processing",
+    label: "Processing",
+    description: "Run custom Java or backend execution.",
+    componentTypes: ["process"],
+  },
+  {
+    id: "batchParallel",
+    label: "Batch & Parallel",
+    description: "Fan out, fan in, split, aggregate, and run concurrent work.",
+    componentTypes: [],
+  },
+  {
+    id: "reliability",
+    label: "Reliability",
+    description: "Validate, handle exceptions, prevent duplicates, and add resilience.",
+    componentTypes: ["validate"],
+  },
+  {
+    id: "timingObservability",
+    label: "Timing & Observability",
+    description: "Wait, debug, and log route activity.",
+    componentTypes: ["log"],
+  },
+];
+
+const componentGroupByType = Object.fromEntries(
+  componentGroups.flatMap((group) => group.componentTypes.map((type) => [type, group.id])),
+) as Partial<Record<StepListItem["type"], ComponentGroupId>>;
 
 function createBeanEditorState(beanName: string): BeanEditorState {
   const template = beanCatalog.find((item) => item.name === beanName) ?? beanCatalog[0];
@@ -113,6 +207,17 @@ export default function ComponentsSidebar() {
   );
   const [dataSourceError, setDataSourceError] = useState<string | null>(null);
   const [isDataSourceConfigOpen, setIsDataSourceConfigOpen] = useState(true);
+  const [openComponentGroups, setOpenComponentGroups] = useState<Record<ComponentGroupId | "custom", boolean>>({
+    transform: true,
+    metadata: true,
+    logic: false,
+    connectors: false,
+    processing: false,
+    batchParallel: false,
+    reliability: true,
+    timingObservability: true,
+    custom: true,
+  });
 
   const isWorkflowView = sidebarView === "workflows";
   const isConfigsView = sidebarView === "configs";
@@ -120,7 +225,7 @@ export default function ComponentsSidebar() {
     beanCatalog.find((item) => item.name === selectedBeanName) ?? beanCatalog[0] ?? null;
   const selectedDataSourceTemplate =
     dataSourceCatalog.find((item) => item.key === selectedDataSourceKey) ?? dataSourceCatalog[0] ?? null;
-  const stepItems = useMemo(
+  const stepItems = useMemo<StepListItem[]>(
     () =>
       visibleComponentDefinitions
         .filter((item) => item.type !== "start")
@@ -145,6 +250,18 @@ export default function ComponentsSidebar() {
       })),
     [customComponents],
   );
+  const groupedStepItems = useMemo(
+    () =>
+      componentGroups
+        .map((group) => ({
+          ...group,
+          items: group.componentTypes
+            .map((type) => stepItems.find((item) => item.type === type))
+            .filter((item): item is StepListItem => Boolean(item)),
+        }))
+        .filter((group) => group.items.length > 0),
+    [stepItems],
+  );
 
   const handleCreateWorkflow = () => {
     createWorkflow(workflowName.trim() || "Workflow");
@@ -164,6 +281,13 @@ export default function ComponentsSidebar() {
       }
 
       const targetId = `sidebar-component-${detail.componentKey}`;
+      const componentGroupId = componentGroupByType[detail.componentKey as StepListItem["type"]];
+
+      if (componentGroupId) {
+        setOpenComponentGroups((current) => ({ ...current, [componentGroupId]: true }));
+      } else if (customComponents.some((component) => component.type === detail.componentKey)) {
+        setOpenComponentGroups((current) => ({ ...current, custom: true }));
+      }
 
       window.setTimeout(() => {
         const target = document.getElementById(targetId);
@@ -184,7 +308,7 @@ export default function ComponentsSidebar() {
         "focus-sidebar-search-target",
         handleFocusSearchTarget as EventListener,
       );
-  }, []);
+  }, [customComponents]);
 
   if (!isSidebarOpen) {
     return null;
@@ -266,6 +390,77 @@ export default function ComponentsSidebar() {
     }
   };
 
+  const toggleComponentGroup = (groupId: ComponentGroupId | "custom") => {
+    setOpenComponentGroups((current) => ({
+      ...current,
+      [groupId]: !current[groupId],
+    }));
+  };
+
+  const renderPaletteItem = (item: PaletteItem) => {
+    const Icon = item.Icon;
+
+    return (
+      <div
+        key={item.type}
+        id={`sidebar-component-${item.type}`}
+        className={`sidebar-item ${item.bgClass ?? ""} ${
+          highlightedTarget === `sidebar-component-${item.type}` ? "sidebar-search-match" : ""
+        }`.trim()}
+        draggable
+        style={{ padding: "14px 14px", borderRadius: 14, gap: 12 }}
+        onDragStart={(event) => {
+          event.dataTransfer.setData(
+            "application/reactflow-component",
+            JSON.stringify({
+              componentKey: item.type,
+            }),
+          );
+          event.dataTransfer.setData("application/reactflow", item.type);
+          event.dataTransfer.effectAllowed = "move";
+        }}
+      >
+        <div
+          className="sidebar-item-icon"
+          style={{
+            color: item.color,
+            width: 42,
+            height: 42,
+            borderRadius: 12,
+            ...(item.bgClass ? {} : { background: `${item.color}1f` }),
+          }}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="sidebar-item-info" style={{ gap: 4 }}>
+          <span className="sidebar-item-label" style={{ fontSize: 15, fontWeight: 700 }}>
+            {item.label}
+          </span>
+          <span
+            className="sidebar-item-type"
+            style={{ fontSize: 12, lineHeight: 1.45, color: "#64748b" }}
+          >
+            {item.description}
+          </span>
+        </div>
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          className="sidebar-item-grip"
+        >
+          <circle cx="9" cy="6" r="1" fill="currentColor" />
+          <circle cx="15" cy="6" r="1" fill="currentColor" />
+          <circle cx="9" cy="12" r="1" fill="currentColor" />
+          <circle cx="15" cy="12" r="1" fill="currentColor" />
+          <circle cx="9" cy="18" r="1" fill="currentColor" />
+          <circle cx="15" cy="18" r="1" fill="currentColor" />
+        </svg>
+      </div>
+    );
+  };
+
   return (
     <>
       <aside className="components-sidebar">
@@ -301,84 +496,93 @@ export default function ComponentsSidebar() {
 
         {!isWorkflowView && !isConfigsView ? (
           <div className="sidebar-items">
-            <section className="sidebar-group" aria-labelledby="sidebar-group-processor">
-              <div className="sidebar-group-toolbar">
-                <div className="sidebar-group-trigger">
-                  <span id="sidebar-group-processor" className="sidebar-group-title">
-                    Route Steps
-                  </span>
-                </div>
-              </div>
-              <div className="sidebar-group-panel">
-                <div className="sidebar-group-items sidebar-group-items-compact">
-                  {[...stepItems, ...customStepItems].map((item) => {
-                    const Icon = item.Icon;
+            {groupedStepItems.map((group) => {
+              const isOpen = openComponentGroups[group.id];
 
-                    return (
-                      <div
-                        key={item.type}
-                        id={`sidebar-component-${item.type}`}
-                        className={`sidebar-item ${"bgClass" in item ? item.bgClass ?? "" : ""} ${
-                          highlightedTarget === `sidebar-component-${item.type}`
-                            ? "sidebar-search-match"
-                            : ""
-                        }`.trim()}
-                        draggable
-                        style={{ padding: "14px 14px", borderRadius: 14, gap: 12 }}
-                        onDragStart={(event) => {
-                          event.dataTransfer.setData(
-                            "application/reactflow-component",
-                            JSON.stringify({
-                              componentKey: item.type,
-                            }),
-                          );
-                          event.dataTransfer.setData("application/reactflow", item.type);
-                          event.dataTransfer.effectAllowed = "move";
-                        }}
+              return (
+                <section key={group.id} className="sidebar-group" aria-labelledby={`sidebar-group-${group.id}`}>
+                  <div className="sidebar-group-toolbar">
+                    <button
+                      type="button"
+                      className="sidebar-group-trigger"
+                      onClick={() => toggleComponentGroup(group.id)}
+                      aria-expanded={isOpen}
+                      aria-controls={`sidebar-group-panel-${group.id}`}
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={`sidebar-group-chevron ${isOpen ? "sidebar-group-chevron-open" : ""}`}
                       >
-                        <div
-                          className="sidebar-item-icon"
-                          style={{
-                            color: item.color,
-                            width: 42,
-                            height: 42,
-                            borderRadius: 12,
-                            ...("bgClass" in item && item.bgClass ? {} : { background: `${item.color}1f` }),
-                          }}
-                        >
-                          <Icon className="h-5 w-5" />
-                        </div>
-                        <div className="sidebar-item-info" style={{ gap: 4 }}>
-                          <span className="sidebar-item-label" style={{ fontSize: 15, fontWeight: 700 }}>
-                            {item.label}
-                          </span>
-                          <span
-                            className="sidebar-item-type"
-                            style={{ fontSize: 12, lineHeight: 1.45, color: "#64748b" }}
-                          >
-                            {item.description}
-                          </span>
-                        </div>
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          className="sidebar-item-grip"
-                        >
-                          <circle cx="9" cy="6" r="1" fill="currentColor" />
-                          <circle cx="15" cy="6" r="1" fill="currentColor" />
-                          <circle cx="9" cy="12" r="1" fill="currentColor" />
-                          <circle cx="15" cy="12" r="1" fill="currentColor" />
-                          <circle cx="9" cy="18" r="1" fill="currentColor" />
-                          <circle cx="15" cy="18" r="1" fill="currentColor" />
-                        </svg>
+                        <path d="m9 18 6-6-6-6" />
+                      </svg>
+                      <span id={`sidebar-group-${group.id}`} className="sidebar-group-title">
+                        {group.label}
+                      </span>
+                      <span style={{ marginLeft: "auto", color: "#94a3b8", fontSize: 11, fontWeight: 700 }}>
+                        {group.items.length}
+                      </span>
+                    </button>
+                  </div>
+                  {isOpen ? (
+                    <div id={`sidebar-group-panel-${group.id}`} className="sidebar-group-panel">
+                      <p className="sidebar-group-description" style={{ paddingInline: 2 }}>
+                        {group.description}
+                      </p>
+                      <div className="sidebar-group-items sidebar-group-items-compact">
+                        {group.items.map((item) => renderPaletteItem(item))}
                       </div>
-                    );
-                  })}
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })}
+
+            {customStepItems.length > 0 ? (
+              <section className="sidebar-group" aria-labelledby="sidebar-group-custom">
+                <div className="sidebar-group-toolbar">
+                  <button
+                    type="button"
+                    className="sidebar-group-trigger"
+                    onClick={() => toggleComponentGroup("custom")}
+                    aria-expanded={openComponentGroups.custom}
+                    aria-controls="sidebar-group-panel-custom"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={`sidebar-group-chevron ${openComponentGroups.custom ? "sidebar-group-chevron-open" : ""}`}
+                    >
+                      <path d="m9 18 6-6-6-6" />
+                    </svg>
+                    <span id="sidebar-group-custom" className="sidebar-group-title">
+                      Custom
+                    </span>
+                    <span style={{ marginLeft: "auto", color: "#94a3b8", fontSize: 11, fontWeight: 700 }}>
+                      {customStepItems.length}
+                    </span>
+                  </button>
                 </div>
-              </div>
-            </section>
+                {openComponentGroups.custom ? (
+                  <div id="sidebar-group-panel-custom" className="sidebar-group-panel">
+                    <p className="sidebar-group-description" style={{ paddingInline: 2 }}>
+                      Components created from local templates.
+                    </p>
+                    <div className="sidebar-group-items sidebar-group-items-compact">
+                      {customStepItems.map((item) => renderPaletteItem(item))}
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
           </div>
         ) : isConfigsView ? (
           <div className="sidebar-items">

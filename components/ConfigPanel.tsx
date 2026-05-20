@@ -15,6 +15,11 @@ const JAVA_CLASS_OPTIONS = [
 ] as const;
 
 const LOG_LEVEL_OPTIONS = ["DEBUG", "INFO", "WARN", "ERROR"] as const;
+const MARSHAL_TYPE_OPTIONS = [{ label: "JSON", value: "json" }] as const;
+const TRANSFORM_TYPE_OPTIONS = [
+  { label: "Simple expression", value: "simple" },
+  { label: "JSON mapper", value: "mapper" },
+] as const;
 const UNMARSHAL_TYPE_OPTIONS = [
   { label: "JSON", value: "json" },
   { label: "CSV", value: "csv" },
@@ -57,21 +62,6 @@ const helperTextStyle: React.CSSProperties = {
   fontSize: 11,
   lineHeight: 1.45,
   color: "#64748b",
-};
-
-const fieldHintStyle: React.CSSProperties = {
-  marginBottom: 8,
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  borderRadius: 999,
-  border: "1px solid rgba(var(--workflow-accent-rgb), 0.18)",
-  background: "var(--workflow-accent-soft)",
-  padding: "4px 8px",
-  fontSize: 10,
-  fontWeight: 700,
-  letterSpacing: "0.02em",
-  color: "var(--workflow-accent)",
 };
 
 const sectionStyle: React.CSSProperties = {
@@ -207,6 +197,22 @@ function parseValidationRules(value: string) {
     .filter((item) => item.expression.trim());
 }
 
+function parseTransformMapper(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return {};
+  }
+
+  const parsed = JSON.parse(trimmed) as unknown;
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Transform mapper must be a JSON object.");
+  }
+
+  return parsed as Record<string, unknown>;
+}
+
 export default function ConfigPanel() {
   const { selectedNode, selectedEdge, updateNodeData, deleteEdge, deleteNode, customComponents } = useFlowStore();
 
@@ -255,19 +261,23 @@ export default function ConfigPanel() {
 
   const nodeMeta = nodeTypeMeta[type as keyof typeof nodeTypeMeta] ?? nodeTypeMeta.process;
   const config = (selectedNode.data.config as Record<string, unknown> | undefined) ?? {};
-  const selectedClazzValue = String(config.clazz ?? "java.util.Map");
-  const selectedClazzOption =
-    JAVA_CLASS_OPTIONS.find((option) => option.value === selectedClazzValue) ?? JAVA_CLASS_OPTIONS[0];
   const selectedUnmarshalType = String(config.name ?? "json");
+  const selectedTransformType = String(config.name ?? "simple");
   const panelDescription = customComponent
     ? customComponent.description || "Configure this custom component from its template fields."
     :
     type === "marshal"
-      ? "Convert the body into JSON using the selected Java class."
+      ? "Write the exchange body into the selected data format."
       : type === "setBody"
         ? "Set the exchange body from an expression or constant data."
       : type === "setHeader"
         ? "Set an exchange header from an expression or constant value."
+        : type === "setProperty"
+          ? "Set an exchange property from an expression or constant value."
+        : type === "convertBodyTo"
+          ? "Convert the exchange body to a target Java class."
+        : type === "transform"
+          ? "Transform the exchange body with a simple expression or JSON mapper."
         : type === "validate"
           ? "Validate the JSON payload with backend validation rules."
         : type === "unmarshal"
@@ -319,54 +329,20 @@ export default function ConfigPanel() {
         {type === "marshal" && (
           <div style={sectionStyle}>
             <label>
-              <span style={labelStyle}>Data format library</span>
-              <input
-                value={String(config.library ?? "Jackson")}
-                placeholder="Jackson"
-                style={inputStyle}
-                onChange={(event) =>
-                  updateNodeData(selectedNode.id, {
-                    config: { library: event.target.value },
-                  })
-                }
-              />
-              <p style={helperTextStyle}>Example: `Jackson`.</p>
-            </label>
-            <label>
-              <span style={labelStyle}>Target class</span>
-              <div style={fieldHintStyle}>
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ width: 12, height: 12 }}
-                  aria-hidden="true"
-                >
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
-                Select from dropdown
-              </div>
-              <p style={{ ...helperTextStyle, marginTop: 0, marginBottom: 8 }}>
-                Current selection: <strong>{selectedClazzOption.label}</strong>
-                {" · "}
-                <span style={{ color: "#475569" }}>{selectedClazzOption.value}</span>
-              </p>
+              <span style={labelStyle}>Data format</span>
               <div style={selectWrapStyle}>
                 <select
-                  value={selectedClazzValue}
+                  value={String(config.name ?? "json")}
                   style={selectStyle}
                   onChange={(event) =>
                     updateNodeData(selectedNode.id, {
-                      config: { clazz: event.target.value },
+                      config: { name: event.target.value },
                     })
                   }
                 >
-                  {JAVA_CLASS_OPTIONS.map((option) => (
+                  {MARSHAL_TYPE_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value} style={optionStyle}>
-                      {option.label} - {option.value}
+                      {option.label}
                     </option>
                   ))}
                 </select>
@@ -383,14 +359,23 @@ export default function ConfigPanel() {
                   <path d="m6 9 6 6 6-6" />
                 </svg>
               </div>
-              <p style={helperTextStyle}>
-                Pick the Java class for the `clazz` attribute. The shorter label is shown first,
-                followed by the full class name.
-              </p>
-              <p style={{ ...helperTextStyle, marginTop: 2 }}>
-                {selectedClazzOption.hint}
-              </p>
+              <p style={helperTextStyle}>Saved as `name`. The backend currently handles `json` with `camelJackson`.</p>
             </label>
+            <label
+              style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}
+            >
+              <input
+                type="checkbox"
+                checked={Boolean(config.useList)}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { useList: event.target.checked },
+                  })
+                }
+              />
+              <span style={{ fontWeight: 700 }}>Marshal list payloads</span>
+            </label>
+            <p style={helperTextStyle}>Saved as `useList` for the backend `MarshallStep`.</p>
           </div>
         )}
 
@@ -660,6 +645,165 @@ export default function ConfigPanel() {
                 Camel simple expressions; other values are constants.
               </p>
             </label>
+          </div>
+        )}
+
+        {type === "setProperty" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Property name</span>
+              <input
+                value={String(config.name ?? "")}
+                placeholder="propertyName"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { name: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Saved as `name`, for example `originalBody`.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Expression</span>
+              <textarea
+                value={String(config.expression ?? "")}
+                placeholder="${body}"
+                style={{ ...inputStyle, minHeight: 92, resize: "vertical" }}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { expression: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>
+                Saved as `expression`. Values containing <code>{"${...}"}</code> or <code>#</code> are evaluated as
+                Camel simple expressions; other values are constants.
+              </p>
+            </label>
+          </div>
+        )}
+
+        {type === "convertBodyTo" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Target class</span>
+              <div style={selectWrapStyle}>
+                <select
+                  value={String(config.clazz ?? "java.lang.String")}
+                  style={selectStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { clazz: event.target.value },
+                    })
+                  }
+                >
+                  {JAVA_CLASS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value} style={optionStyle}>
+                      {option.label} - {option.value}
+                    </option>
+                  ))}
+                </select>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={selectIconStyle}
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+              <p style={helperTextStyle}>
+                Saved as `clazz`; the backend resolves it with `Class.forName` before calling `convertBodyTo`.
+              </p>
+            </label>
+          </div>
+        )}
+
+        {type === "transform" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Transform type</span>
+              <div style={selectWrapStyle}>
+                <select
+                  value={selectedTransformType}
+                  style={selectStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { name: event.target.value },
+                    })
+                  }
+                >
+                  {TRANSFORM_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value} style={optionStyle}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={selectIconStyle}
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+              <p style={helperTextStyle}>Saved as `name`: `simple` or `mapper`.</p>
+            </label>
+
+            {selectedTransformType === "simple" ? (
+              <label>
+                <span style={labelStyle}>Expression</span>
+                <textarea
+                  value={String(config.expression ?? "")}
+                  placeholder="${body}"
+                  style={{ ...inputStyle, minHeight: 92, resize: "vertical" }}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { expression: event.target.value },
+                    })
+                  }
+                />
+                <p style={helperTextStyle}>Saved as `expression` and passed to Camel `transform().simple(...)`.</p>
+              </label>
+            ) : null}
+
+            {selectedTransformType === "mapper" ? (
+              <label>
+                <span style={labelStyle}>Mapper JSON</span>
+                <textarea
+                  key={`${selectedNode.id}-transform-mapper`}
+                  defaultValue={JSON.stringify(
+                    config.mapper && typeof config.mapper === "object" && !Array.isArray(config.mapper)
+                      ? config.mapper
+                      : {},
+                    null,
+                    2,
+                  )}
+                  placeholder='{"targetField":"$.sourceField"}'
+                  style={{ ...inputStyle, minHeight: 150, resize: "vertical", fontFamily: "monospace" }}
+                  onBlur={(event) => {
+                    try {
+                      updateNodeData(selectedNode.id, {
+                        config: { mapper: parseTransformMapper(event.target.value) },
+                      });
+                    } catch (issue) {
+                      window.alert(issue instanceof Error ? issue.message : "Transform mapper must be valid JSON.");
+                    }
+                  }}
+                />
+                <p style={helperTextStyle}>Saved as `mapper` and passed into `JsonExpressionTransformer`.</p>
+              </label>
+            ) : null}
           </div>
         )}
 

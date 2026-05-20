@@ -184,6 +184,7 @@ type RouteImportStep = {
   useMap?: boolean;
   ref?: string;
   expression?: string;
+  mapper?: unknown;
   data?: unknown;
   message?: string;
   logLevel?: string;
@@ -285,6 +286,9 @@ function createFlowNode(
     unmarshal: "Unmarshal",
     setBody: "Set Body",
     setHeader: "Set Header",
+    setProperty: "Set Property",
+    convertBodyTo: "Convert Body",
+    transform: "Transform",
     validate: "Validate",
     process: "Process",
     log: "Log",
@@ -293,8 +297,7 @@ function createFlowNode(
     marshal: {
       disabled: false,
       name: "json",
-      library: "Jackson",
-      clazz: "java.util.Map",
+      useList: false,
     },
     unmarshal: {
       disabled: false,
@@ -315,6 +318,21 @@ function createFlowNode(
       disabled: false,
       name: "Content-Type",
       expression: "application/json",
+    },
+    setProperty: {
+      disabled: false,
+      name: "propertyName",
+      expression: "${body}",
+    },
+    convertBodyTo: {
+      disabled: false,
+      clazz: "java.lang.String",
+    },
+    transform: {
+      disabled: false,
+      name: "simple",
+      expression: "${body}",
+      mapper: {},
     },
     validate: {
       disabled: false,
@@ -661,6 +679,35 @@ function stripBackendConfig(config: Record<string, unknown> | undefined): Record
   return backendConfig;
 }
 
+function stripBackendStepConfig(
+  componentType: string,
+  config: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const backendConfig = stripBackendConfig(config);
+
+  if (componentType !== "marshal") {
+    return backendConfig;
+  }
+
+  const marshalConfig: Record<string, unknown> = {
+    name: typeof backendConfig.name === "string" && backendConfig.name.trim() ? backendConfig.name : "json",
+  };
+
+  if (typeof backendConfig.useList === "boolean") {
+    marshalConfig.useList = backendConfig.useList;
+  }
+
+  if (backendConfig.disabled === true) {
+    marshalConfig.disabled = true;
+  }
+
+  if (backendConfig.parameters !== undefined) {
+    marshalConfig.parameters = backendConfig.parameters;
+  }
+
+  return marshalConfig;
+}
+
 function stringValueOrDefault(value: unknown, fallback: string) {
   return typeof value === "string" && value.trim() ? value : fallback;
 }
@@ -720,10 +767,14 @@ function createBackendRouteJson(workflow: WorkflowRecord): BackendRouteExport {
     rootCanvas
       ? getRouteOrderedNodes(rootCanvas)
           .filter((node) => node.data?.config?.disabled !== true)
-          .map((node) => ({
-            type: String(node.data?.componentKey ?? node.type ?? ""),
-            ...stripBackendConfig(node.data?.config),
-          }))
+          .map((node) => {
+            const componentType = String(node.data?.componentKey ?? node.type ?? "");
+
+            return {
+              type: componentType,
+              ...stripBackendStepConfig(componentType, node.data?.config),
+            };
+          })
       : [];
   const routeId = stringValueOrDefault(startConfig.routeId, workflow.name);
   const routeName = stringValueOrDefault(
@@ -772,6 +823,9 @@ function buildWorkflowFromRouteDefinition(
       step?.type === "unmarshal" ||
       step?.type === "setBody" ||
       step?.type === "setHeader" ||
+      step?.type === "setProperty" ||
+      step?.type === "convertBodyTo" ||
+      step?.type === "transform" ||
       step?.type === "validate" ||
       step?.type === "process" ||
       step?.type === "log",
@@ -824,8 +878,14 @@ function buildWorkflowFromRouteDefinition(
             ? step.name?.trim() || "Log"
             : componentKey === "setBody"
               ? step.name?.trim() || "Set Body"
-              : componentKey === "setHeader"
+            : componentKey === "setHeader"
               ? step.name?.trim() || "Set Header"
+              : componentKey === "setProperty"
+                ? step.name?.trim() || "Set Property"
+                : componentKey === "convertBodyTo"
+                  ? "Convert Body"
+                  : componentKey === "transform"
+                    ? "Transform"
               : componentKey === "validate"
                 ? "Validate"
               : componentKey === "marshal"
@@ -879,6 +939,33 @@ function buildWorkflowFromRouteDefinition(
                 parameters: step.parameters ?? {},
                 dependencies: normalizeDependencyList(step.dependencies),
               }
+          : componentKey === "setProperty"
+            ? {
+                name: step.name ?? "propertyName",
+                expression: step.expression ?? "${body}",
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
+          : componentKey === "convertBodyTo"
+            ? {
+                clazz: step.clazz ?? "java.lang.String",
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
+          : componentKey === "transform"
+            ? {
+                name: step.name ?? "simple",
+                expression: step.expression ?? "${body}",
+                mapper:
+                  step.mapper && typeof step.mapper === "object" && !Array.isArray(step.mapper)
+                    ? step.mapper
+                    : {},
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
           : componentKey === "log"
             ? {
                 message: typeof step.message === "string" ? step.message : "Processing exchange",
@@ -890,8 +977,7 @@ function buildWorkflowFromRouteDefinition(
               }
           : {
               name: step.name ?? "json",
-              library: step.library ?? "Jackson",
-              clazz: step.clazz ?? "java.util.Map",
+              useList: Boolean(step.useList),
               disabled: Boolean(step.disabled),
               parameters: step.parameters ?? {},
               dependencies: normalizeDependencyList(step.dependencies),
@@ -944,7 +1030,19 @@ function normalizePersistedState(
   const selectedLlmSubsection = persistedState?.selectedLlmSubsection ?? "providers";
 
   const shouldPruneLegacyNode = (node: AppNode) =>
-    !["start", "marshal", "unmarshal", "setBody", "setHeader", "validate", "process", "log"].includes(node.type ?? "");
+    ![
+      "start",
+      "marshal",
+      "unmarshal",
+      "setBody",
+      "setHeader",
+      "setProperty",
+      "convertBodyTo",
+      "transform",
+      "validate",
+      "process",
+      "log",
+    ].includes(node.type ?? "");
 
   if (persistedState?.workflows && Object.keys(persistedState.workflows).length > 0) {
     const workflowOrder =

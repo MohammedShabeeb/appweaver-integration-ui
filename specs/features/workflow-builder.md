@@ -30,9 +30,13 @@ Out of scope:
 
 - A new workflow starts with a start node and no extra connectors.
 - Supported built-in components are created with sensible default configuration.
+- Marshal components expose `name` and `useList` fields matching the backend `MarshallStep` contract.
 - Log components expose `message`, `name`, and `logLevel` fields matching the backend `LogStep` contract.
 - Set body components expose `name`, `expression`, and `data` fields matching the backend `SetBodyStep` contract.
 - Set header components expose `name` and `expression` fields matching the backend `SetHeaderStep` contract.
+- Set property components expose `name` and `expression` fields matching the backend `SetPropertyStep` contract.
+- Convert body components expose `clazz` matching the backend `Conversion` step contract.
+- Transform components expose `name`, `expression`, and `mapper` fields matching the backend `Transform` step contract.
 - Unmarshal components expose `name`, `library`, `useList`, `clazz`, `delimiter`, `skipHeader`, and `useMap` fields matching the backend `UnMarshallStep` contract.
 - Validate components expose `rules` and `validationStatusCode` fields matching the backend `ValidationStep` contract.
 - Components expose the inherited `disabled` step setting as an enabled toggle.

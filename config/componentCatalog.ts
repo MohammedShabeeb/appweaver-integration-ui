@@ -7,6 +7,9 @@ export type BuiltInComponentType =
   | "unmarshal"
   | "setBody"
   | "setHeader"
+  | "setProperty"
+  | "convertBodyTo"
+  | "transform"
   | "validate"
   | "process"
   | "log";
@@ -41,9 +44,7 @@ type ComponentCatalog = {
 export const componentCatalog = componentCatalogJson as ComponentCatalog;
 export const componentGroups = componentCatalog.groups;
 export const componentDefinitions = componentCatalog.components;
-export const visibleComponentDefinitions = componentDefinitions.filter(
-  (component) => !["marshal", "process"].includes(component.type),
-);
+export const visibleComponentDefinitions = componentDefinitions;
 export const builtInComponentKeys = componentDefinitions.map((component) => component.type);
 export const builtInComponentMap = Object.fromEntries(
   componentDefinitions.map((component) => [component.type, component]),

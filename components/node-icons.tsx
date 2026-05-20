@@ -62,6 +62,49 @@ export function SetHeaderIcon(props: IconProps) {
   );
 }
 
+export function SetPropertyIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M5 7h8" />
+      <path d="M5 12h6" />
+      <path d="M5 17h8" />
+      <path d="M16 7h3" />
+      <path d="M16 12h3" />
+      <path d="M16 17h3" />
+      <path d="M13 7h.01" />
+      <path d="M13 12h.01" />
+      <path d="M13 17h.01" />
+    </BaseIcon>
+  );
+}
+
+export function ConvertBodyToIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M5 6h8" />
+      <path d="M5 11h6" />
+      <path d="M5 16h8" />
+      <path d="M15 8h4" />
+      <path d="m17 6 2 2-2 2" />
+      <path d="M15 16h4" />
+      <path d="m17 14 2 2-2 2" />
+    </BaseIcon>
+  );
+}
+
+export function TransformIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M5 7h6" />
+      <path d="M5 17h6" />
+      <path d="M13 7h6" />
+      <path d="M13 17h6" />
+      <path d="m9 10 3 2-3 2" />
+      <path d="m15 10-3 2 3 2" />
+    </BaseIcon>
+  );
+}
+
 export function UnmarshalIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>
@@ -132,6 +175,18 @@ export const nodeTypeMeta = {
   setHeader: {
     label: "Set Header",
     Icon: SetHeaderIcon,
+  },
+  setProperty: {
+    label: "Set Property",
+    Icon: SetPropertyIcon,
+  },
+  convertBodyTo: {
+    label: "Convert Body",
+    Icon: ConvertBodyToIcon,
+  },
+  transform: {
+    label: "Transform",
+    Icon: TransformIcon,
   },
   unmarshal: {
     label: "Unmarshal",

@@ -46,6 +46,30 @@
       "dependencies": []
     },
     {
+      "type": "setProperty",
+      "defaultGroup": "processor",
+      "singleEndpointOnly": false,
+      "color": "#14b8a6",
+      "bgClass": "sidebar-item-setheader",
+      "dependencies": []
+    },
+    {
+      "type": "convertBodyTo",
+      "defaultGroup": "processor",
+      "singleEndpointOnly": false,
+      "color": "#6366f1",
+      "bgClass": "sidebar-item-unmarshal",
+      "dependencies": []
+    },
+    {
+      "type": "transform",
+      "defaultGroup": "processor",
+      "singleEndpointOnly": false,
+      "color": "#ec4899",
+      "bgClass": "sidebar-item-switch",
+      "dependencies": []
+    },
+    {
       "type": "unmarshal",
       "defaultGroup": "processor",
       "singleEndpointOnly": false,
