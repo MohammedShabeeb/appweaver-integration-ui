@@ -38,10 +38,12 @@ type StepListItem = {
     | "setBody"
     | "setHeader"
     | "setProperty"
+    | "setContext"
     | "convertBodyTo"
     | "transform"
     | "validate"
     | "process"
+    | "delay"
     | "log";
   label: string;
   color: string;
@@ -82,10 +84,12 @@ const stepDescriptions: Record<StepListItem["type"], string> = {
   setBody: "Set the message body from an expression or constant data.",
   setHeader: "Set a message header from an expression or constant value.",
   setProperty: "Set an exchange property from an expression or constant value.",
+  setContext: "Set a shared context value from an expression or constant.",
   convertBodyTo: "Convert the message body to a target Java class.",
   transform: "Transform the message body with a simple expression or mapper.",
   validate: "Reject invalid JSON payloads with MVEL-style rules.",
   process: "Run a processor bean by entering its `ref` name.",
+  delay: "Pause processing with a constant or simple expression.",
   log: "Write a log message with logger name and level.",
 };
 
@@ -100,7 +104,7 @@ const componentGroups: ComponentGroupDefinition[] = [
     id: "metadata",
     label: "Metadata",
     description: "Work with headers, exchange properties, context, and global options.",
-    componentTypes: ["setHeader", "setProperty"],
+    componentTypes: ["setHeader", "setProperty", "setContext"],
   },
   {
     id: "logic",
@@ -136,7 +140,7 @@ const componentGroups: ComponentGroupDefinition[] = [
     id: "timingObservability",
     label: "Timing & Observability",
     description: "Wait, debug, and log route activity.",
-    componentTypes: ["log"],
+    componentTypes: ["delay", "log"],
   },
 ];
 

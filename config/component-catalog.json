@@ -54,6 +54,14 @@
       "dependencies": []
     },
     {
+      "type": "setContext",
+      "defaultGroup": "processor",
+      "singleEndpointOnly": false,
+      "color": "#0ea5e9",
+      "bgClass": "sidebar-item-setheader",
+      "dependencies": []
+    },
+    {
       "type": "convertBodyTo",
       "defaultGroup": "processor",
       "singleEndpointOnly": false,
@@ -99,6 +107,14 @@
       "singleEndpointOnly": false,
       "color": "#22c55e",
       "bgClass": "sidebar-item-log",
+      "dependencies": []
+    },
+    {
+      "type": "delay",
+      "defaultGroup": "processor",
+      "singleEndpointOnly": false,
+      "color": "#f97316",
+      "bgClass": "sidebar-item-delay",
       "dependencies": []
     }
   ]

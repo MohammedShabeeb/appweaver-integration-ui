@@ -35,10 +35,13 @@ Out of scope:
 - Set body components expose `name`, `expression`, and `data` fields matching the backend `SetBodyStep` contract.
 - Set header components expose `name` and `expression` fields matching the backend `SetHeaderStep` contract.
 - Set property components expose `name` and `expression` fields matching the backend `SetPropertyStep` contract.
+- Set context components expose `name`, `expression`, and `value` fields matching the backend `SetContextStep` contract.
 - Convert body components expose `clazz` matching the backend `Conversion` step contract.
 - Transform components expose `name`, `expression`, and `mapper` fields matching the backend `Transform` step contract.
 - Unmarshal components expose `name`, `library`, `useList`, `clazz`, `delimiter`, `skipHeader`, and `useMap` fields matching the backend `UnMarshallStep` contract.
+- Delay components expose `expression` matching the backend `DelayStep` contract.
 - Validate components expose `rules` and `validationStatusCode` fields matching the backend `ValidationStep` contract.
+- Process components expose `ref`, `clazz`, and inherited `parameters` fields matching the backend `ProcessStep` contract.
 - Components expose the inherited `disabled` step setting as an enabled toggle.
 - A component inserted on a connector replaces that connector with two connected edges.
 - Selecting a configurable node opens its configuration panel.

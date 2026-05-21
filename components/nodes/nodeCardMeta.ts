@@ -11,10 +11,12 @@ const defaultDescriptions: Record<string, string> = {
   setBody: "Replace the message body with an expression or constant value.",
   setHeader: "Set a message header from an expression or constant value.",
   setProperty: "Set an exchange property from an expression or constant value.",
+  setContext: "Set a shared context value from an expression or constant.",
   convertBodyTo: "Convert the message body to a target Java class.",
   transform: "Transform the message body with a simple expression or mapper.",
   validate: "Reject invalid payloads with configured validation rules.",
   process: "Invoke a processor bean using its ref value.",
+  delay: "Pause route processing with a constant or simple expression.",
   log: "Write route details to the configured logger.",
 };
 

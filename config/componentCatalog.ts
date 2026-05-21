@@ -8,10 +8,12 @@ export type BuiltInComponentType =
   | "setBody"
   | "setHeader"
   | "setProperty"
+  | "setContext"
   | "convertBodyTo"
   | "transform"
   | "validate"
   | "process"
+  | "delay"
   | "log";
 export type ComponentType = string;
 

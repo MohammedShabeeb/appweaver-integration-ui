@@ -186,6 +186,7 @@ type RouteImportStep = {
   expression?: string;
   mapper?: unknown;
   data?: unknown;
+  value?: unknown;
   message?: string;
   logLevel?: string;
   rules?: unknown;
@@ -287,10 +288,12 @@ function createFlowNode(
     setBody: "Set Body",
     setHeader: "Set Header",
     setProperty: "Set Property",
+    setContext: "Set Context",
     convertBodyTo: "Convert Body",
     transform: "Transform",
     validate: "Validate",
     process: "Process",
+    delay: "Delay",
     log: "Log",
   };
   const defaultConfigMap: Partial<Record<BuiltInComponentType, Record<string, unknown>>> = {
@@ -324,6 +327,12 @@ function createFlowNode(
       name: "propertyName",
       expression: "${body}",
     },
+    setContext: {
+      disabled: false,
+      name: "contextKey",
+      expression: "",
+      value: "",
+    },
     convertBodyTo: {
       disabled: false,
       clazz: "java.lang.String",
@@ -347,6 +356,12 @@ function createFlowNode(
     process: {
       disabled: false,
       ref: "processorRef",
+      clazz: "",
+      parameters: {},
+    },
+    delay: {
+      disabled: false,
+      expression: "1000",
     },
     log: {
       disabled: false,
@@ -824,10 +839,12 @@ function buildWorkflowFromRouteDefinition(
       step?.type === "setBody" ||
       step?.type === "setHeader" ||
       step?.type === "setProperty" ||
+      step?.type === "setContext" ||
       step?.type === "convertBodyTo" ||
       step?.type === "transform" ||
       step?.type === "validate" ||
       step?.type === "process" ||
+      step?.type === "delay" ||
       step?.type === "log",
   );
 
@@ -882,12 +899,16 @@ function buildWorkflowFromRouteDefinition(
               ? step.name?.trim() || "Set Header"
               : componentKey === "setProperty"
                 ? step.name?.trim() || "Set Property"
+                : componentKey === "setContext"
+                  ? step.name?.trim() || "Set Context"
                 : componentKey === "convertBodyTo"
                   ? "Convert Body"
                   : componentKey === "transform"
                     ? "Transform"
               : componentKey === "validate"
                 ? "Validate"
+              : componentKey === "delay"
+                ? "Delay"
               : componentKey === "marshal"
                 ? "Marshal"
                 : componentKey === "unmarshal"
@@ -897,6 +918,7 @@ function buildWorkflowFromRouteDefinition(
         componentKey === "process"
           ? {
               ref: step.ref ?? "",
+              clazz: step.clazz ?? "",
               disabled: Boolean(step.disabled),
               parameters: step.parameters ?? {},
               dependencies: normalizeDependencyList(step.dependencies),
@@ -947,6 +969,15 @@ function buildWorkflowFromRouteDefinition(
                 parameters: step.parameters ?? {},
                 dependencies: normalizeDependencyList(step.dependencies),
               }
+          : componentKey === "setContext"
+            ? {
+                name: step.name ?? "contextKey",
+                expression: step.expression ?? "",
+                value: step.value ?? "",
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
           : componentKey === "convertBodyTo"
             ? {
                 clazz: step.clazz ?? "java.lang.String",
@@ -971,6 +1002,13 @@ function buildWorkflowFromRouteDefinition(
                 message: typeof step.message === "string" ? step.message : "Processing exchange",
                 name: step.name ?? "DEFAULT",
                 logLevel: typeof step.logLevel === "string" ? step.logLevel : "INFO",
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
+          : componentKey === "delay"
+            ? {
+                expression: step.expression ?? "1000",
                 disabled: Boolean(step.disabled),
                 parameters: step.parameters ?? {},
                 dependencies: normalizeDependencyList(step.dependencies),
@@ -1037,10 +1075,12 @@ function normalizePersistedState(
       "setBody",
       "setHeader",
       "setProperty",
+      "setContext",
       "convertBodyTo",
       "transform",
       "validate",
       "process",
+      "delay",
       "log",
     ].includes(node.type ?? "");
 

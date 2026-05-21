@@ -31,10 +31,12 @@ const nodeTypes = {
   setBody: StepNode,
   setHeader: StepNode,
   setProperty: StepNode,
+  setContext: StepNode,
   convertBodyTo: StepNode,
   transform: StepNode,
   validate: StepNode,
   process: StepNode,
+  delay: StepNode,
   log: StepNode,
   customStep: StepNode,
 };

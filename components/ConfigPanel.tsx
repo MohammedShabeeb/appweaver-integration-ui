@@ -20,6 +20,10 @@ const TRANSFORM_TYPE_OPTIONS = [
   { label: "Simple expression", value: "simple" },
   { label: "JSON mapper", value: "mapper" },
 ] as const;
+const PROCESS_MODE_OPTIONS = [
+  { label: "Bean reference", value: "ref" },
+  { label: "Processor class", value: "clazz" },
+] as const;
 const UNMARSHAL_TYPE_OPTIONS = [
   { label: "JSON", value: "json" },
   { label: "CSV", value: "csv" },
@@ -37,6 +41,8 @@ const panelStyle: React.CSSProperties = {
   top: 16,
   zIndex: 20,
   width: 288,
+  maxHeight: "calc(100vh - 32px)",
+  overflowY: "auto",
   borderRadius: 16,
   border: "1px solid rgba(226, 232, 240, 0.95)",
   background: "rgba(255, 255, 255, 0.96)",
@@ -72,6 +78,12 @@ const sectionStyle: React.CSSProperties = {
   border: "1px solid rgba(226, 232, 240, 0.95)",
   background: "rgba(248, 250, 252, 0.96)",
   padding: 12,
+};
+
+const compactSectionStyle: React.CSSProperties = {
+  ...sectionStyle,
+  gap: 10,
+  padding: 10,
 };
 
 const deleteBtnStyle: React.CSSProperties = {
@@ -175,6 +187,20 @@ function parseSetBodyDataValue(value: string): unknown {
   }
 }
 
+function parseOptionalJsonValue(value: string): unknown {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
 function getDelimiterValue(value: string) {
   return value ? value.slice(0, 1) : undefined;
 }
@@ -208,6 +234,22 @@ function parseTransformMapper(value: string) {
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("Transform mapper must be a JSON object.");
+  }
+
+  return parsed as Record<string, unknown>;
+}
+
+function parseParameters(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return {};
+  }
+
+  const parsed = JSON.parse(trimmed) as unknown;
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Parameters must be a JSON object.");
   }
 
   return parsed as Record<string, unknown>;
@@ -263,6 +305,7 @@ export default function ConfigPanel() {
   const config = (selectedNode.data.config as Record<string, unknown> | undefined) ?? {};
   const selectedUnmarshalType = String(config.name ?? "json");
   const selectedTransformType = String(config.name ?? "simple");
+  const selectedProcessMode = typeof config.clazz === "string" && config.clazz.trim() ? "clazz" : "ref";
   const panelDescription = customComponent
     ? customComponent.description || "Configure this custom component from its template fields."
     :
@@ -274,6 +317,8 @@ export default function ConfigPanel() {
         ? "Set an exchange header from an expression or constant value."
         : type === "setProperty"
           ? "Set an exchange property from an expression or constant value."
+        : type === "setContext"
+          ? "Set a shared context value from an expression or constant."
         : type === "convertBodyTo"
           ? "Convert the exchange body to a target Java class."
         : type === "transform"
@@ -284,6 +329,8 @@ export default function ConfigPanel() {
           ? "Read JSON, CSV, or XML payloads into the exchange body."
         : type === "log"
           ? "Write a message through the backend LogHandler."
+        : type === "delay"
+          ? "Pause route processing with a constant or simple expression."
           : "Run a processor bean by its Spring or Camel reference name.";
 
   return (
@@ -684,6 +731,58 @@ export default function ConfigPanel() {
           </div>
         )}
 
+        {type === "setContext" && (
+          <div style={compactSectionStyle}>
+            <label>
+              <span style={labelStyle}>Context name</span>
+              <input
+                value={String(config.name ?? "")}
+                placeholder="contextKey"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { name: event.target.value },
+                  })
+                }
+              />
+            </label>
+            <label>
+              <span style={labelStyle}>Expression</span>
+              <textarea
+                value={String(config.expression ?? "")}
+                placeholder="${body.customerId}"
+                style={{ ...inputStyle, minHeight: 64, resize: "vertical" }}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { expression: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Use <code>{"${...}"}</code> or <code>#</code> for Camel simple expressions.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Constant value</span>
+              <textarea
+                value={
+                  config.value === undefined
+                    ? ""
+                    : typeof config.value === "string"
+                      ? config.value
+                      : JSON.stringify(config.value, null, 2)
+                }
+                placeholder='{"tenant":"default"}'
+                style={{ ...inputStyle, minHeight: 64, resize: "vertical" }}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { value: parseOptionalJsonValue(event.target.value) },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Used when expression is blank or constant text.</p>
+            </label>
+          </div>
+        )}
+
         {type === "convertBodyTo" && (
           <div style={sectionStyle}>
             <label>
@@ -867,20 +966,98 @@ export default function ConfigPanel() {
         {type === "process" && (
           <div style={sectionStyle}>
             <label>
-              <span style={labelStyle}>Processor reference</span>
-              <input
-                value={String(config.ref ?? "")}
-                placeholder="llmContextProcessor"
-                style={inputStyle}
-                onChange={(event) =>
-                  updateNodeData(selectedNode.id, {
-                    config: { ref: event.target.value },
-                  })
-                }
+              <span style={labelStyle}>Processor mode</span>
+              <div style={selectWrapStyle}>
+                <select
+                  value={selectedProcessMode}
+                  style={selectStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config:
+                        event.target.value === "clazz"
+                          ? { clazz: String(config.clazz ?? ""), ref: "" }
+                          : { ref: String(config.ref ?? "processorRef"), clazz: "" },
+                    })
+                  }
+                >
+                  {PROCESS_MODE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value} style={optionStyle}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={selectIconStyle}
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+            </label>
+
+            {selectedProcessMode === "ref" ? (
+              <label>
+                <span style={labelStyle}>Processor reference</span>
+                <input
+                  value={String(config.ref ?? "")}
+                  placeholder="llmContextProcessor"
+                  style={inputStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { ref: event.target.value },
+                    })
+                  }
+                />
+                <p style={helperTextStyle}>Saved as `ref` and executed through `route.bean(ref)`.</p>
+              </label>
+            ) : (
+              <label>
+                <span style={labelStyle}>Processor class</span>
+                <input
+                  value={String(config.clazz ?? "")}
+                  placeholder="com.example.MyProcessor"
+                  style={inputStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { clazz: event.target.value },
+                    })
+                  }
+                />
+                <p style={helperTextStyle}>Saved as `clazz` and instantiated by the backend.</p>
+              </label>
+            )}
+
+            <label>
+              <span style={labelStyle}>Parameters JSON</span>
+              <textarea
+                key={`${selectedNode.id}-process-parameters`}
+                defaultValue={JSON.stringify(
+                  config.parameters && typeof config.parameters === "object" && !Array.isArray(config.parameters)
+                    ? config.parameters
+                    : {},
+                  null,
+                  2,
+                )}
+                placeholder='{"tenant":"default"}'
+                style={{ ...inputStyle, minHeight: 110, resize: "vertical", fontFamily: "monospace" }}
+                onBlur={(event) => {
+                  try {
+                    updateNodeData(selectedNode.id, {
+                      config: { parameters: parseParameters(event.target.value) },
+                    });
+                  } catch (issue) {
+                    window.alert(issue instanceof Error ? issue.message : "Parameters must be valid JSON.");
+                  }
+                }}
               />
               <p style={helperTextStyle}>
-                This value is saved as the `ref` attribute, for example
-                `multiChatProcessor`.
+                For `ref`, these become exchange properties. For `clazz`, they are constructor/config parameters.
               </p>
             </label>
           </div>
@@ -952,6 +1129,28 @@ export default function ConfigPanel() {
                 </svg>
               </div>
               <p style={helperTextStyle}>Saved as `logLevel`. The backend defaults to `INFO` when omitted.</p>
+            </label>
+          </div>
+        )}
+
+        {type === "delay" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Delay expression</span>
+              <textarea
+                value={String(config.expression ?? "")}
+                placeholder="1000"
+                style={{ ...inputStyle, minHeight: 92, resize: "vertical" }}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { expression: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>
+                Saved as `expression`. Values containing <code>{"${...}"}</code> or <code>#</code> are evaluated as
+                Camel simple expressions; other values are constants.
+              </p>
             </label>
           </div>
         )}

@@ -78,6 +78,18 @@ export function SetPropertyIcon(props: IconProps) {
   );
 }
 
+export function SetContextIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <rect x="4" y="5" width="16" height="14" rx="3" />
+      <path d="M8 9h8" />
+      <path d="M8 13h5" />
+      <path d="M15 13h1.5" />
+      <path d="M8 17h8" />
+    </BaseIcon>
+  );
+}
+
 export function ConvertBodyToIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>
@@ -149,6 +161,17 @@ export function LogIcon(props: IconProps) {
   );
 }
 
+export function DelayIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 7v5l3 2" />
+      <path d="M5 4 3 6" />
+      <path d="M19 4l2 2" />
+    </BaseIcon>
+  );
+}
+
 export function ConnectorIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>
@@ -180,6 +203,10 @@ export const nodeTypeMeta = {
     label: "Set Property",
     Icon: SetPropertyIcon,
   },
+  setContext: {
+    label: "Set Context",
+    Icon: SetContextIcon,
+  },
   convertBodyTo: {
     label: "Convert Body",
     Icon: ConvertBodyToIcon,
@@ -203,5 +230,9 @@ export const nodeTypeMeta = {
   log: {
     label: "Log",
     Icon: LogIcon,
+  },
+  delay: {
+    label: "Delay",
+    Icon: DelayIcon,
   },
 } as const;
