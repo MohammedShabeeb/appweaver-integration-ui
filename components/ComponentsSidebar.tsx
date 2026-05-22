@@ -4,7 +4,11 @@ import { useEffect, useMemo, useState, type CSSProperties, type ComponentType as
 import { beanCatalog } from "@/config/beanCatalog";
 import { dataSourceCatalog } from "@/config/datasourceCatalog";
 import { useFlowStore } from "@/store/useFlowStore";
-import { visibleComponentDefinitions } from "@/config/componentCatalog";
+import {
+  componentGroups,
+  visibleComponentDefinitions,
+  type ComponentGroupId,
+} from "@/config/componentCatalog";
 import { nodeTypeMeta } from "./node-icons";
 
 type PendingDeleteWorkflow = {
@@ -43,6 +47,8 @@ type StepListItem = {
     | "transform"
     | "validate"
     | "process"
+    | "upload"
+    | "download"
     | "delay"
     | "log";
   label: string;
@@ -61,23 +67,6 @@ type PaletteItem = {
   description: string;
 };
 
-type ComponentGroupId =
-  | "transform"
-  | "metadata"
-  | "logic"
-  | "connectors"
-  | "processing"
-  | "batchParallel"
-  | "reliability"
-  | "timingObservability";
-
-type ComponentGroupDefinition = {
-  id: ComponentGroupId;
-  label: string;
-  description: string;
-  componentTypes: StepListItem["type"][];
-};
-
 const stepDescriptions: Record<StepListItem["type"], string> = {
   marshal: "Serialize the message body using the backend marshal step.",
   unmarshal: "Read JSON, CSV, or XML into the message body.",
@@ -89,64 +78,22 @@ const stepDescriptions: Record<StepListItem["type"], string> = {
   transform: "Transform the message body with a simple expression or mapper.",
   validate: "Reject invalid JSON payloads with MVEL-style rules.",
   process: "Run a processor bean by entering its `ref` name.",
+  upload: "Upload multipart documents to a configured endpoint.",
+  download: "Download content from a configured endpoint.",
   delay: "Pause processing with a constant or simple expression.",
   log: "Write a log message with logger name and level.",
 };
 
-const componentGroups: ComponentGroupDefinition[] = [
-  {
-    id: "transform",
-    label: "Transform",
-    description: "Change the message body, format, or type.",
-    componentTypes: ["setBody", "transform", "convertBodyTo", "marshal", "unmarshal"],
-  },
-  {
-    id: "metadata",
-    label: "Metadata",
-    description: "Work with headers, exchange properties, context, and global options.",
-    componentTypes: ["setHeader", "setProperty", "setContext"],
-  },
-  {
-    id: "logic",
-    label: "Logic",
-    description: "Branch, filter, loop, and order execution.",
-    componentTypes: [],
-  },
-  {
-    id: "connectors",
-    label: "Connectors",
-    description: "Send messages to endpoints, services, or other routes.",
-    componentTypes: [],
-  },
-  {
-    id: "processing",
-    label: "Processing",
-    description: "Run custom Java or backend execution.",
-    componentTypes: ["process"],
-  },
-  {
-    id: "batchParallel",
-    label: "Batch & Parallel",
-    description: "Fan out, fan in, split, aggregate, and run concurrent work.",
-    componentTypes: [],
-  },
-  {
-    id: "reliability",
-    label: "Reliability",
-    description: "Validate, handle exceptions, prevent duplicates, and add resilience.",
-    componentTypes: ["validate"],
-  },
-  {
-    id: "timingObservability",
-    label: "Timing & Observability",
-    description: "Wait, debug, and log route activity.",
-    componentTypes: ["delay", "log"],
-  },
-];
-
 const componentGroupByType = Object.fromEntries(
-  componentGroups.flatMap((group) => group.componentTypes.map((type) => [type, group.id])),
+  visibleComponentDefinitions.map((component) => [component.type, component.defaultGroup]),
 ) as Partial<Record<StepListItem["type"], ComponentGroupId>>;
+
+const initialOpenComponentGroups = Object.fromEntries(
+  componentGroups.map((group) => [
+    group.id,
+    ["transform", "metadata", "reliability", "timingObservability"].includes(group.id),
+  ]),
+) as Record<ComponentGroupId, boolean>;
 
 function createBeanEditorState(beanName: string): BeanEditorState {
   const template = beanCatalog.find((item) => item.name === beanName) ?? beanCatalog[0];
@@ -212,14 +159,7 @@ export default function ComponentsSidebar() {
   const [dataSourceError, setDataSourceError] = useState<string | null>(null);
   const [isDataSourceConfigOpen, setIsDataSourceConfigOpen] = useState(true);
   const [openComponentGroups, setOpenComponentGroups] = useState<Record<ComponentGroupId | "custom", boolean>>({
-    transform: true,
-    metadata: true,
-    logic: false,
-    connectors: false,
-    processing: false,
-    batchParallel: false,
-    reliability: true,
-    timingObservability: true,
+    ...initialOpenComponentGroups,
     custom: true,
   });
 
@@ -259,9 +199,7 @@ export default function ComponentsSidebar() {
       componentGroups
         .map((group) => ({
           ...group,
-          items: group.componentTypes
-            .map((type) => stepItems.find((item) => item.type === type))
-            .filter((item): item is StepListItem => Boolean(item)),
+          items: stepItems.filter((item) => componentGroupByType[item.type] === group.id),
         }))
         .filter((group) => group.items.length > 0),
     [stepItems],

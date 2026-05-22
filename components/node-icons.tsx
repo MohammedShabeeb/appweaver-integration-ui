@@ -182,6 +182,30 @@ export function ConnectorIcon(props: IconProps) {
   );
 }
 
+export function UploadIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M12 16V5" />
+      <path d="m8 9 4-4 4 4" />
+      <path d="M5 17v2h14v-2" />
+      <path d="M7 13h2" />
+      <path d="M15 13h2" />
+    </BaseIcon>
+  );
+}
+
+export function DownloadIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M12 5v11" />
+      <path d="m8 12 4 4 4-4" />
+      <path d="M5 19h14" />
+      <path d="M7 8h2" />
+      <path d="M15 8h2" />
+    </BaseIcon>
+  );
+}
+
 export const nodeTypeMeta = {
   start: {
     label: "From",
@@ -226,6 +250,14 @@ export const nodeTypeMeta = {
   process: {
     label: "Process",
     Icon: ProcessIcon,
+  },
+  upload: {
+    label: "Upload",
+    Icon: UploadIcon,
+  },
+  download: {
+    label: "Download",
+    Icon: DownloadIcon,
   },
   log: {
     label: "Log",

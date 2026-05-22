@@ -1,6 +1,14 @@
 import componentCatalogJson from "./component-catalog.json";
 
-export type ComponentGroupId = "processor";
+export type ComponentGroupId =
+  | "transform"
+  | "metadata"
+  | "logic"
+  | "connectors"
+  | "processing"
+  | "batchParallel"
+  | "reliability"
+  | "timingObservability";
 export type BuiltInComponentType =
   | "start"
   | "marshal"
@@ -13,11 +21,13 @@ export type BuiltInComponentType =
   | "transform"
   | "validate"
   | "process"
+  | "upload"
+  | "download"
   | "delay"
   | "log";
 export type ComponentType = string;
 
-type ComponentGroupDefinition = {
+export type ComponentGroupDefinition = {
   id: ComponentGroupId;
   label: string;
   description: string;
@@ -29,7 +39,7 @@ export type MavenDependencyDefinition = {
   version: string;
 };
 
-type ComponentDefinition = {
+export type ComponentDefinition = {
   type: BuiltInComponentType;
   defaultGroup: ComponentGroupId;
   singleEndpointOnly: boolean;

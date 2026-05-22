@@ -1,12 +1,36 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 
 import { appWeaverApiClient } from "@/lib/appweaverApiClient";
 import { useFlowStore } from "@/store/useFlowStore";
 
 const workflowAccent = "#2DB780";
 const workflowAccentDark = "#1f8f63";
+
+function getRouteSignature(route: unknown) {
+  return JSON.stringify(route);
+}
+
+async function saveBackendDirectRoute(
+  route: ReturnType<typeof useFlowStore.getState>["exportBackendRouteJson"] extends () => infer Route
+    ? Route
+    : never,
+  publishedRouteName?: string,
+) {
+  if (publishedRouteName) {
+    await appWeaverApiClient.system.directRoutes.update(publishedRouteName, route);
+    return { action: "updated" as const, routeName: publishedRouteName };
+  }
+
+  try {
+    await appWeaverApiClient.system.directRoutes.create(route);
+    return { action: "created" as const, routeName: route.name };
+  } catch (createIssue) {
+    await appWeaverApiClient.system.directRoutes.update(route.name, route);
+    return { action: "updated" as const, routeName: route.name, recoveredFromCreateIssue: createIssue };
+  }
+}
 
 function buildTopNavButtonStyle(isHighlighted: boolean): CSSProperties {
   return {
@@ -24,19 +48,33 @@ function buildTopNavButtonStyle(isHighlighted: boolean): CSSProperties {
 export default function TopNav() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const {
+    activeWorkflowId,
     exportBackendRouteJson,
     exportWorkflow,
     importWorkflow,
     isSidebarOpen,
+    markBackendRoutePublished,
     openConfigSection,
     openSidebar,
     sidebarView,
     toggleSidebar,
+    workflows,
   } = useFlowStore();
   const [isConfigMenuOpen, setIsConfigMenuOpen] = useState(false);
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
   const [isPublishingRoute, setIsPublishingRoute] = useState(false);
+  const [routeSyncState, setRouteSyncState] = useState<"idle" | "syncing" | "error">("idle");
   const configMenuRef = useRef<HTMLDivElement | null>(null);
+  const activeWorkflow = workflows[activeWorkflowId] ?? null;
+  const backendRoutePublication = activeWorkflow?.backendRoutePublication ?? null;
+  const backendRoute = useMemo(
+    () => (activeWorkflow ? exportBackendRouteJson() : null),
+    [activeWorkflow, exportBackendRouteJson],
+  );
+  const backendRouteSignature = useMemo(
+    () => (backendRoute ? getRouteSignature(backendRoute) : ""),
+    [backendRoute],
+  );
 
   const handleSidebarToggle = (view: "workflows" | "components" | "configs") => {
     if (isSidebarOpen && sidebarView === view) {
@@ -61,6 +99,36 @@ export default function TopNav() {
     window.addEventListener("pointerdown", handlePointerDown);
     return () => window.removeEventListener("pointerdown", handlePointerDown);
   }, [isConfigMenuOpen]);
+
+  useEffect(() => {
+    if (
+      !backendRoute ||
+      !backendRoutePublication ||
+      !backendRouteSignature ||
+      backendRoutePublication.lastSyncedSignature === backendRouteSignature
+    ) {
+      setRouteSyncState("idle");
+      return;
+    }
+
+    const timeout = window.setTimeout(async () => {
+      setRouteSyncState("syncing");
+
+      try {
+        const savedRoute = await saveBackendDirectRoute(
+          backendRoute,
+          backendRoutePublication.routeName,
+        );
+        markBackendRoutePublished(savedRoute.routeName, backendRouteSignature);
+        setRouteSyncState("idle");
+      } catch (issue) {
+        console.error("Could not update the published backend direct route.", issue);
+        setRouteSyncState("error");
+      }
+    }, 900);
+
+    return () => window.clearTimeout(timeout);
+  }, [backendRoute, backendRoutePublication, backendRouteSignature, markBackendRoutePublished]);
 
   const handleSaveWorkflow = () => {
     const workflow = exportWorkflow();
@@ -106,14 +174,24 @@ export default function TopNav() {
 
   const handlePublishBackendRoute = async () => {
     const route = exportBackendRouteJson();
+    const routeSignature = getRouteSignature(route);
+    const publishedRouteName = backendRoutePublication?.routeName;
 
     setIsPublishingRoute(true);
+    setRouteSyncState("syncing");
 
     try {
-      await appWeaverApiClient.system.directRoutes.create(route);
-      window.alert(`Created direct route "${route.name}" in AppWeaver.`);
+      const savedRoute = await saveBackendDirectRoute(route, publishedRouteName);
+      markBackendRoutePublished(savedRoute.routeName, routeSignature);
+      window.alert(
+        savedRoute.action === "created"
+          ? `Created direct route "${savedRoute.routeName}" in AppWeaver.`
+          : `Updated direct route "${savedRoute.routeName}" in AppWeaver.`,
+      );
+      setRouteSyncState("idle");
     } catch (issue) {
-      window.alert(issue instanceof Error ? issue.message : "Could not create the direct route.");
+      setRouteSyncState("error");
+      window.alert(issue instanceof Error ? issue.message : "Could not save the direct route.");
     } finally {
       setIsPublishingRoute(false);
     }
@@ -399,7 +477,17 @@ export default function TopNav() {
             </svg>
           </button>
           <span className="topnav-tooltip">
-            {isPublishingRoute ? "Creating direct route" : "Create backend direct route"}
+            {isPublishingRoute
+              ? backendRoutePublication
+                ? "Updating direct route"
+                : "Creating direct route"
+              : routeSyncState === "syncing"
+                ? "Syncing backend route"
+                : routeSyncState === "error"
+                  ? "Backend route sync failed"
+                  : backendRoutePublication
+                    ? "Update backend direct route"
+                    : "Create backend direct route"}
           </span>
         </div>
         <div className="topnav-action">

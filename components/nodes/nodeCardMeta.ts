@@ -16,6 +16,8 @@ const defaultDescriptions: Record<string, string> = {
   transform: "Transform the message body with a simple expression or mapper.",
   validate: "Reject invalid payloads with configured validation rules.",
   process: "Invoke a processor bean using its ref value.",
+  upload: "Upload multipart documents to a configured endpoint.",
+  download: "Download content from a configured endpoint.",
   delay: "Pause route processing with a constant or simple expression.",
   log: "Write route details to the configured logger.",
 };

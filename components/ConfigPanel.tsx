@@ -325,6 +325,10 @@ export default function ConfigPanel() {
           ? "Transform the exchange body with a simple expression or JSON mapper."
         : type === "validate"
           ? "Validate the JSON payload with backend validation rules."
+        : type === "upload"
+          ? "Upload multipart documents to the configured backend endpoint."
+        : type === "download"
+          ? "Download content from the configured backend endpoint."
         : type === "unmarshal"
           ? "Read JSON, CSV, or XML payloads into the exchange body."
         : type === "log"
@@ -1059,6 +1063,149 @@ export default function ConfigPanel() {
               <p style={helperTextStyle}>
                 For `ref`, these become exchange properties. For `clazz`, they are constructor/config parameters.
               </p>
+            </label>
+          </div>
+        )}
+
+        {type === "upload" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Endpoint</span>
+              <input
+                value={String(config.endpoint ?? "")}
+                placeholder="file:uploads"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { endpoint: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Saved as `endpoint` and converted with backend component URI parameters.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Parameters JSON</span>
+              <textarea
+                key={`${selectedNode.id}-upload-parameters`}
+                defaultValue={JSON.stringify(
+                  config.parameters && typeof config.parameters === "object" && !Array.isArray(config.parameters)
+                    ? config.parameters
+                    : {},
+                  null,
+                  2,
+                )}
+                placeholder='{"fileName":"${header.fileName}"}'
+                style={{ ...inputStyle, minHeight: 110, resize: "vertical", fontFamily: "monospace" }}
+                onBlur={(event) => {
+                  try {
+                    updateNodeData(selectedNode.id, {
+                      config: { parameters: parseParameters(event.target.value) },
+                    });
+                  } catch (issue) {
+                    window.alert(issue instanceof Error ? issue.message : "Parameters must be valid JSON.");
+                  }
+                }}
+              />
+              <p style={helperTextStyle}>Saved as `parameters` and appended to the upload endpoint URI.</p>
+            </label>
+          </div>
+        )}
+
+        {type === "download" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Endpoint</span>
+              <input
+                value={String(config.endpoint ?? "")}
+                placeholder="file:downloads"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { endpoint: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Saved as `endpoint` and used by backend poll enrich.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Timeout ms</span>
+              <input
+                type="number"
+                value={String(config.timeout ?? 5000)}
+                min={0}
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: {
+                      timeout: Number.isFinite(Number(event.target.value)) ? Number(event.target.value) : 0,
+                    },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Saved as `timeout` for the backend `pollEnrich` call.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Content type</span>
+              <input
+                value={String(config.contentType ?? "")}
+                placeholder="application/octet-stream"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { contentType: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Optional `contentType` response header.</p>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={Boolean(config.isInline)}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { isInline: event.target.checked },
+                  })
+                }
+              />
+              <span style={{ fontWeight: 700 }}>Render inline</span>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={Boolean(config.converToByte)}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { converToByte: event.target.checked },
+                  })
+                }
+              />
+              <span style={{ fontWeight: 700 }}>Convert body to bytes</span>
+            </label>
+            <label>
+              <span style={labelStyle}>Parameters JSON</span>
+              <textarea
+                key={`${selectedNode.id}-download-parameters`}
+                defaultValue={JSON.stringify(
+                  config.parameters && typeof config.parameters === "object" && !Array.isArray(config.parameters)
+                    ? config.parameters
+                    : {},
+                  null,
+                  2,
+                )}
+                placeholder='{"fileName":"report.pdf"}'
+                style={{ ...inputStyle, minHeight: 110, resize: "vertical", fontFamily: "monospace" }}
+                onBlur={(event) => {
+                  try {
+                    updateNodeData(selectedNode.id, {
+                      config: { parameters: parseParameters(event.target.value) },
+                    });
+                  } catch (issue) {
+                    window.alert(issue instanceof Error ? issue.message : "Parameters must be valid JSON.");
+                  }
+                }}
+              />
+              <p style={helperTextStyle}>Saved as `parameters` and appended to the download endpoint URI.</p>
             </label>
           </div>
         )}

@@ -1,15 +1,50 @@
 {
   "groups": [
     {
-      "id": "processor",
-      "label": "Route Steps",
-      "description": "Camel steps available in the flow builder."
+      "id": "transform",
+      "label": "Transform",
+      "description": "Change the message body, format, or type."
+    },
+    {
+      "id": "metadata",
+      "label": "Metadata",
+      "description": "Work with headers, exchange properties, context, and global options."
+    },
+    {
+      "id": "logic",
+      "label": "Logic",
+      "description": "Branch, filter, loop, and order execution."
+    },
+    {
+      "id": "connectors",
+      "label": "Connectors",
+      "description": "Send messages to endpoints, services, or other routes."
+    },
+    {
+      "id": "processing",
+      "label": "Processing",
+      "description": "Run custom Java or backend execution."
+    },
+    {
+      "id": "batchParallel",
+      "label": "Batch & Parallel",
+      "description": "Fan out, fan in, split, aggregate, and run concurrent work."
+    },
+    {
+      "id": "reliability",
+      "label": "Reliability",
+      "description": "Validate, handle exceptions, prevent duplicates, and add resilience."
+    },
+    {
+      "id": "timingObservability",
+      "label": "Timing & Observability",
+      "description": "Wait, debug, and log route activity."
     }
   ],
   "components": [
     {
       "type": "start",
-      "defaultGroup": "processor",
+      "defaultGroup": "connectors",
       "singleEndpointOnly": false,
       "color": "#34d399",
       "bgClass": "sidebar-item-from",
@@ -17,7 +52,7 @@
     },
     {
       "type": "marshal",
-      "defaultGroup": "processor",
+      "defaultGroup": "transform",
       "singleEndpointOnly": false,
       "color": "#60a5fa",
       "bgClass": "sidebar-item-http",
@@ -31,7 +66,7 @@
     },
     {
       "type": "setBody",
-      "defaultGroup": "processor",
+      "defaultGroup": "transform",
       "singleEndpointOnly": false,
       "color": "#f59e0b",
       "bgClass": "sidebar-item-setbody",
@@ -39,7 +74,7 @@
     },
     {
       "type": "setHeader",
-      "defaultGroup": "processor",
+      "defaultGroup": "metadata",
       "singleEndpointOnly": false,
       "color": "#06b6d4",
       "bgClass": "sidebar-item-setheader",
@@ -47,7 +82,7 @@
     },
     {
       "type": "setProperty",
-      "defaultGroup": "processor",
+      "defaultGroup": "metadata",
       "singleEndpointOnly": false,
       "color": "#14b8a6",
       "bgClass": "sidebar-item-setheader",
@@ -55,7 +90,7 @@
     },
     {
       "type": "setContext",
-      "defaultGroup": "processor",
+      "defaultGroup": "metadata",
       "singleEndpointOnly": false,
       "color": "#0ea5e9",
       "bgClass": "sidebar-item-setheader",
@@ -63,7 +98,7 @@
     },
     {
       "type": "convertBodyTo",
-      "defaultGroup": "processor",
+      "defaultGroup": "transform",
       "singleEndpointOnly": false,
       "color": "#6366f1",
       "bgClass": "sidebar-item-unmarshal",
@@ -71,7 +106,7 @@
     },
     {
       "type": "transform",
-      "defaultGroup": "processor",
+      "defaultGroup": "transform",
       "singleEndpointOnly": false,
       "color": "#ec4899",
       "bgClass": "sidebar-item-switch",
@@ -79,7 +114,7 @@
     },
     {
       "type": "unmarshal",
-      "defaultGroup": "processor",
+      "defaultGroup": "transform",
       "singleEndpointOnly": false,
       "color": "#8b5cf6",
       "bgClass": "sidebar-item-unmarshal",
@@ -87,7 +122,7 @@
     },
     {
       "type": "validate",
-      "defaultGroup": "processor",
+      "defaultGroup": "reliability",
       "singleEndpointOnly": false,
       "color": "#ef4444",
       "bgClass": "sidebar-item-validate",
@@ -95,15 +130,31 @@
     },
     {
       "type": "process",
-      "defaultGroup": "processor",
+      "defaultGroup": "processing",
       "singleEndpointOnly": false,
       "color": "#f472b6",
       "bgClass": "sidebar-item-switch",
       "dependencies": []
     },
     {
+      "type": "upload",
+      "defaultGroup": "connectors",
+      "singleEndpointOnly": false,
+      "color": "#0ea5e9",
+      "bgClass": "sidebar-item-http",
+      "dependencies": []
+    },
+    {
+      "type": "download",
+      "defaultGroup": "connectors",
+      "singleEndpointOnly": false,
+      "color": "#10b981",
+      "bgClass": "sidebar-item-from",
+      "dependencies": []
+    },
+    {
       "type": "log",
-      "defaultGroup": "processor",
+      "defaultGroup": "timingObservability",
       "singleEndpointOnly": false,
       "color": "#22c55e",
       "bgClass": "sidebar-item-log",
@@ -111,7 +162,7 @@
     },
     {
       "type": "delay",
-      "defaultGroup": "processor",
+      "defaultGroup": "timingObservability",
       "singleEndpointOnly": false,
       "color": "#f97316",
       "bgClass": "sidebar-item-delay",

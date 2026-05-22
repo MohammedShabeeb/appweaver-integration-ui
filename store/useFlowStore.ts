@@ -137,6 +137,13 @@ type WorkflowRecord = {
   currentCanvasId: string;
   canvasStack: string[];
   canvases: Record<string, CanvasState>;
+  backendRoutePublication?: BackendRoutePublication;
+};
+
+type BackendRoutePublication = {
+  routeName: string;
+  lastSyncedSignature: string;
+  syncedAt: string;
 };
 
 type WorkflowExport = {
@@ -148,6 +155,7 @@ type WorkflowExport = {
   currentCanvasId: string;
   canvasStack: string[];
   canvases: Record<string, CanvasState>;
+  backendRoutePublication?: BackendRoutePublication;
 };
 
 type BackendRouteStep = {
@@ -189,6 +197,11 @@ type RouteImportStep = {
   value?: unknown;
   message?: string;
   logLevel?: string;
+  endpoint?: string;
+  timeout?: number;
+  contentType?: string;
+  isInline?: boolean;
+  converToByte?: boolean;
   rules?: unknown;
   validationStatusCode?: number;
   dependencies?: unknown;
@@ -293,6 +306,8 @@ function createFlowNode(
     transform: "Transform",
     validate: "Validate",
     process: "Process",
+    upload: "Upload",
+    download: "Download",
     delay: "Delay",
     log: "Log",
   };
@@ -357,6 +372,20 @@ function createFlowNode(
       disabled: false,
       ref: "processorRef",
       clazz: "",
+      parameters: {},
+    },
+    upload: {
+      disabled: false,
+      endpoint: "file:uploads",
+      parameters: {},
+    },
+    download: {
+      disabled: false,
+      endpoint: "file:downloads",
+      timeout: 5000,
+      contentType: "application/octet-stream",
+      isInline: false,
+      converToByte: false,
       parameters: {},
     },
     delay: {
@@ -545,6 +574,9 @@ function normalizeImportedWorkflow(
         ? canvasStack
         : [rootCanvasId],
     canvases,
+    ...(candidate.backendRoutePublication
+      ? { backendRoutePublication: candidate.backendRoutePublication }
+      : {}),
   };
 }
 
@@ -844,6 +876,8 @@ function buildWorkflowFromRouteDefinition(
       step?.type === "transform" ||
       step?.type === "validate" ||
       step?.type === "process" ||
+      step?.type === "upload" ||
+      step?.type === "download" ||
       step?.type === "delay" ||
       step?.type === "log",
   );
@@ -1285,6 +1319,7 @@ interface FlowState {
   removeCustomComponent: (componentId: string) => void;
   exportWorkflow: () => WorkflowExport;
   exportBackendRouteJson: () => BackendRouteExport;
+  markBackendRoutePublished: (routeName: string, routeSignature: string) => void;
   importWorkflow: (raw: unknown, fallbackName?: string) => boolean;
   createWorkflow: (name?: string) => { id: string; name: string };
   selectWorkflow: (workflowId: string) => void;
@@ -1980,6 +2015,9 @@ export const useFlowStore = create<FlowState>()(
           currentCanvasId: activeWorkflow.currentCanvasId,
           canvasStack: activeWorkflow.canvasStack,
           canvases: activeWorkflow.canvases,
+          ...(activeWorkflow.backendRoutePublication
+            ? { backendRoutePublication: activeWorkflow.backendRoutePublication }
+            : {}),
         };
       },
       exportBackendRouteJson: () => {
@@ -1988,6 +2026,24 @@ export const useFlowStore = create<FlowState>()(
 
         return createBackendRouteJson(activeWorkflow);
       },
+
+      markBackendRoutePublished: (routeName, routeSignature) =>
+        set((state) => {
+          const activeWorkflow = state.workflows[state.activeWorkflowId];
+
+          if (!activeWorkflow) {
+            return state;
+          }
+
+          return syncActiveWorkflow(state, {
+            ...activeWorkflow,
+            backendRoutePublication: {
+              routeName,
+              lastSyncedSignature: routeSignature,
+              syncedAt: new Date().toISOString(),
+            },
+          });
+        }),
 
       importWorkflow: (raw, fallbackName = "Imported Workflow") => {
         const currentWorkflows = get().workflows;

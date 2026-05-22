@@ -36,6 +36,8 @@ const nodeTypes = {
   transform: StepNode,
   validate: StepNode,
   process: StepNode,
+  upload: StepNode,
+  download: StepNode,
   delay: StepNode,
   log: StepNode,
   customStep: StepNode,
@@ -118,7 +120,7 @@ export default function FlowCanvas() {
         subtitle: component.type,
         target: {
           kind: "component" as const,
-          groupId: "processor",
+          groupId: "processing",
           componentKey: component.type,
         },
       }));
