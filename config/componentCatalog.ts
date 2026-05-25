@@ -23,6 +23,7 @@ export type BuiltInComponentType =
   | "process"
   | "upload"
   | "download"
+  | "dbCrud"
   | "delay"
   | "log";
 export type ComponentType = string;

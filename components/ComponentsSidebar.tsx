@@ -49,6 +49,7 @@ type StepListItem = {
     | "process"
     | "upload"
     | "download"
+    | "dbCrud"
     | "delay"
     | "log";
   label: string;
@@ -80,6 +81,7 @@ const stepDescriptions: Record<StepListItem["type"], string> = {
   process: "Run a processor bean by entering its `ref` name.",
   upload: "Upload multipart documents to a configured endpoint.",
   download: "Download content from a configured endpoint.",
+  dbCrud: "Run create, read, update, delete, or custom SQL operations against the configured database.",
   delay: "Pause processing with a constant or simple expression.",
   log: "Write a log message with logger name and level.",
 };

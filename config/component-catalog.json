@@ -153,6 +153,20 @@
       "dependencies": []
     },
     {
+      "type": "dbCrud",
+      "defaultGroup": "connectors",
+      "singleEndpointOnly": false,
+      "color": "#2563eb",
+      "bgClass": "sidebar-item-http",
+      "dependencies": [
+        {
+          "groupId": "org.apache.camel",
+          "artifactId": "camel-sql",
+          "version": "4.8.0"
+        }
+      ]
+    },
+    {
       "type": "log",
       "defaultGroup": "timingObservability",
       "singleEndpointOnly": false,

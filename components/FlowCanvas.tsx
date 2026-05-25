@@ -38,6 +38,7 @@ const nodeTypes = {
   process: StepNode,
   upload: StepNode,
   download: StepNode,
+  dbCrud: StepNode,
   delay: StepNode,
   log: StepNode,
   customStep: StepNode,

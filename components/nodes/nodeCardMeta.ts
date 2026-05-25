@@ -18,6 +18,7 @@ const defaultDescriptions: Record<string, string> = {
   process: "Invoke a processor bean using its ref value.",
   upload: "Upload multipart documents to a configured endpoint.",
   download: "Download content from a configured endpoint.",
+  dbCrud: "Run database CRUD or custom SQL operations.",
   delay: "Pause route processing with a constant or simple expression.",
   log: "Write route details to the configured logger.",
 };

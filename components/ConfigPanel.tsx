@@ -24,6 +24,19 @@ const PROCESS_MODE_OPTIONS = [
   { label: "Bean reference", value: "ref" },
   { label: "Processor class", value: "clazz" },
 ] as const;
+const DB_CRUD_OPERATION_OPTIONS = [
+  { label: "Create", value: "create" },
+  { label: "Read one", value: "readOne" },
+  { label: "Read many", value: "readMany" },
+  { label: "Update", value: "update" },
+  { label: "Delete", value: "delete" },
+  { label: "Custom SQL", value: "customSql" },
+] as const;
+const DB_CRUD_OUTPUT_OPTIONS = [
+  { label: "JSON", value: "json" },
+  { label: "Raw", value: "raw" },
+  { label: "No response body", value: "none" },
+] as const;
 const UNMARSHAL_TYPE_OPTIONS = [
   { label: "JSON", value: "json" },
   { label: "CSV", value: "csv" },
@@ -39,32 +52,52 @@ const panelStyle: React.CSSProperties = {
   position: "absolute",
   right: 16,
   top: 16,
+  bottom: 16,
   zIndex: 20,
-  width: 288,
-  maxHeight: "calc(100vh - 32px)",
+  width: "min(520px, calc(100vw - 32px))",
+  maxWidth: "calc(100vw - 32px)",
   overflowY: "auto",
-  borderRadius: 16,
+  overscrollBehavior: "contain",
+  scrollbarWidth: "thin",
+  borderRadius: 18,
   border: "1px solid rgba(226, 232, 240, 0.95)",
   background: "rgba(255, 255, 255, 0.96)",
   backdropFilter: "blur(16px)",
-  padding: 16,
+  padding: "18px 18px 20px",
   boxShadow: "0 12px 28px rgba(15, 23, 42, 0.10)",
 };
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
+  boxSizing: "border-box",
   borderRadius: 10,
   border: "1px solid rgba(203, 213, 225, 0.95)",
   background: "#ffffff",
-  padding: "8px 12px",
+  padding: "10px 12px",
   fontSize: 13,
+  lineHeight: 1.45,
   color: "#0f172a",
   fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
   outline: "none",
 };
 
+const textAreaStyle: React.CSSProperties = {
+  ...inputStyle,
+  minHeight: 112,
+  resize: "vertical",
+};
+
+const codeTextAreaStyle: React.CSSProperties = {
+  ...textAreaStyle,
+  minHeight: 180,
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+  lineHeight: 1.65,
+  whiteSpace: "pre",
+  overflowX: "auto",
+};
+
 const helperTextStyle: React.CSSProperties = {
-  marginTop: 6,
+  marginTop: 5,
   fontSize: 11,
   lineHeight: 1.45,
   color: "#64748b",
@@ -73,17 +106,18 @@ const helperTextStyle: React.CSSProperties = {
 const sectionStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: 12,
-  borderRadius: 10,
-  border: "1px solid rgba(226, 232, 240, 0.95)",
-  background: "rgba(248, 250, 252, 0.96)",
-  padding: 12,
+  gap: 14,
+  borderRadius: 0,
+  border: "none",
+  borderTop: "1px solid rgba(226, 232, 240, 0.95)",
+  background: "transparent",
+  padding: "16px 0 0",
 };
 
 const compactSectionStyle: React.CSSProperties = {
   ...sectionStyle,
-  gap: 10,
-  padding: 10,
+  gap: 12,
+  padding: "14px 0 0",
 };
 
 const deleteBtnStyle: React.CSSProperties = {
@@ -255,6 +289,22 @@ function parseParameters(value: string) {
   return parsed as Record<string, unknown>;
 }
 
+function parseJsonArray(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return [];
+  }
+
+  const parsed = JSON.parse(trimmed) as unknown;
+
+  if (!Array.isArray(parsed)) {
+    throw new Error("Value must be a JSON array.");
+  }
+
+  return parsed;
+}
+
 export default function ConfigPanel() {
   const { selectedNode, selectedEdge, updateNodeData, deleteEdge, deleteNode, customComponents } = useFlowStore();
 
@@ -306,6 +356,7 @@ export default function ConfigPanel() {
   const selectedUnmarshalType = String(config.name ?? "json");
   const selectedTransformType = String(config.name ?? "simple");
   const selectedProcessMode = typeof config.clazz === "string" && config.clazz.trim() ? "clazz" : "ref";
+  const selectedDbCrudOperation = String(config.operation ?? "customSql");
   const panelDescription = customComponent
     ? customComponent.description || "Configure this custom component from its template fields."
     :
@@ -329,6 +380,8 @@ export default function ConfigPanel() {
           ? "Upload multipart documents to the configured backend endpoint."
         : type === "download"
           ? "Download content from the configured backend endpoint."
+        : type === "dbCrud"
+          ? "Configure a database operation that exports as standard backend route steps."
         : type === "unmarshal"
           ? "Read JSON, CSV, or XML payloads into the exchange body."
         : type === "log"
@@ -1206,6 +1259,214 @@ export default function ConfigPanel() {
                 }}
               />
               <p style={helperTextStyle}>Saved as `parameters` and appended to the download endpoint URI.</p>
+            </label>
+          </div>
+        )}
+
+        {type === "dbCrud" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Operation</span>
+              <div style={selectWrapStyle}>
+                <select
+                  value={selectedDbCrudOperation}
+                  style={selectStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { operation: event.target.value },
+                    })
+                  }
+                >
+                  {DB_CRUD_OPERATION_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value} style={optionStyle}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={selectIconStyle} aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+            </label>
+            <label>
+              <span style={labelStyle}>Data source</span>
+              <input
+                value={String(config.dataSource ?? "#dataSource")}
+                placeholder="#dataSource"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { dataSource: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Used in the generated Camel SQL endpoint as `dataSource`.</p>
+            </label>
+            {selectedDbCrudOperation !== "customSql" ? (
+              <>
+                <label>
+                  <span style={labelStyle}>Table</span>
+                  <input
+                    value={String(config.table ?? "")}
+                    placeholder="users"
+                    style={inputStyle}
+                    onChange={(event) =>
+                      updateNodeData(selectedNode.id, {
+                        config: { table: event.target.value },
+                      })
+                    }
+                  />
+                  <p style={helperTextStyle}>Only simple SQL identifiers are exported.</p>
+                </label>
+                {["readOne", "readMany"].includes(selectedDbCrudOperation) ? (
+                  <label>
+                    <span style={labelStyle}>Selected columns JSON</span>
+                    <textarea
+                      key={`${selectedNode.id}-dbcrud-columns`}
+                      defaultValue={JSON.stringify(Array.isArray(config.columns) ? config.columns : [], null, 2)}
+                      placeholder='["id", "name", "email"]'
+                      style={{ ...codeTextAreaStyle, minHeight: 150 }}
+                      onBlur={(event) => {
+                        try {
+                          updateNodeData(selectedNode.id, {
+                            config: { columns: parseJsonArray(event.target.value) },
+                          });
+                        } catch (issue) {
+                          window.alert(issue instanceof Error ? issue.message : "Columns must be a JSON array.");
+                        }
+                      }}
+                    />
+                  </label>
+                ) : null}
+                {["create", "update"].includes(selectedDbCrudOperation) ? (
+                  <label>
+                    <span style={labelStyle}>Column/value mappings JSON</span>
+                    <textarea
+                      key={`${selectedNode.id}-dbcrud-values`}
+                      defaultValue={JSON.stringify(Array.isArray(config.values) ? config.values : [], null, 2)}
+                      placeholder='[{"column":"name","valueExpression":"${body[name]}","parameterName":"name"}]'
+                      style={{ ...codeTextAreaStyle, minHeight: 220 }}
+                      onBlur={(event) => {
+                        try {
+                          updateNodeData(selectedNode.id, {
+                            config: { values: parseJsonArray(event.target.value) },
+                          });
+                        } catch (issue) {
+                          window.alert(issue instanceof Error ? issue.message : "Mappings must be a JSON array.");
+                        }
+                      }}
+                    />
+                  </label>
+                ) : null}
+                {selectedDbCrudOperation === "readMany" ? (
+                  <label>
+                    <span style={labelStyle}>Limit</span>
+                    <input
+                      type="number"
+                      value={String(config.limit ?? "")}
+                      min={1}
+                      placeholder="100"
+                      style={inputStyle}
+                      onChange={(event) =>
+                        updateNodeData(selectedNode.id, {
+                          config: {
+                            limit: event.target.value ? Number(event.target.value) : undefined,
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                ) : null}
+                {selectedDbCrudOperation !== "create" ? (
+                  <label>
+                    <span style={labelStyle}>Where conditions JSON</span>
+                    <textarea
+                      key={`${selectedNode.id}-dbcrud-where`}
+                      defaultValue={JSON.stringify(Array.isArray(config.where) ? config.where : [], null, 2)}
+                      placeholder='[{"column":"id","operator":"=","valueExpression":"${header.id}","parameterName":"id"}]'
+                      style={{ ...codeTextAreaStyle, minHeight: 220 }}
+                      onBlur={(event) => {
+                        try {
+                          updateNodeData(selectedNode.id, {
+                            config: { where: parseJsonArray(event.target.value) },
+                          });
+                        } catch (issue) {
+                          window.alert(issue instanceof Error ? issue.message : "Where conditions must be a JSON array.");
+                        }
+                      }}
+                    />
+                  </label>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <label>
+                  <span style={labelStyle}>SQL</span>
+                  <textarea
+                    value={String(config.customSql ?? "")}
+                    placeholder="select * from users where id = :#id"
+                    style={{ ...codeTextAreaStyle, minHeight: 180 }}
+                    onChange={(event) =>
+                      updateNodeData(selectedNode.id, {
+                        config: { customSql: event.target.value },
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  <span style={labelStyle}>Parameter mappings JSON</span>
+                  <textarea
+                    key={`${selectedNode.id}-dbcrud-parameters`}
+                    defaultValue={JSON.stringify(Array.isArray(config.parameters) ? config.parameters : [], null, 2)}
+                    placeholder='[{"name":"id","expression":"${header.id}"}]'
+                    style={{ ...codeTextAreaStyle, minHeight: 220 }}
+                    onBlur={(event) => {
+                      try {
+                        updateNodeData(selectedNode.id, {
+                          config: { parameters: parseJsonArray(event.target.value) },
+                        });
+                      } catch (issue) {
+                        window.alert(issue instanceof Error ? issue.message : "Parameters must be a JSON array.");
+                      }
+                    }}
+                  />
+                </label>
+              </>
+            )}
+            <label>
+              <span style={labelStyle}>Output format</span>
+              <div style={selectWrapStyle}>
+                <select
+                  value={String(config.output ?? "json")}
+                  style={selectStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { output: event.target.value },
+                    })
+                  }
+                >
+                  {DB_CRUD_OUTPUT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value} style={optionStyle}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={selectIconStyle} aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={Boolean(config.logSql)}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { logSql: event.target.checked },
+                  })
+                }
+              />
+              <span style={{ fontWeight: 700 }}>Log generated operation</span>
             </label>
           </div>
         )}

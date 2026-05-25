@@ -12,10 +12,16 @@ function getRouteSignature(route: unknown) {
   return JSON.stringify(route);
 }
 
+type BackendDirectRoute = ReturnType<typeof useFlowStore.getState>["exportBackendRouteJson"] extends () => infer Route
+  ? Route
+  : never;
+
+function hasBackendRouteSteps(route: BackendDirectRoute | null) {
+  return Boolean(route?.config?.steps && route.config.steps.length > 0);
+}
+
 async function saveBackendDirectRoute(
-  route: ReturnType<typeof useFlowStore.getState>["exportBackendRouteJson"] extends () => infer Route
-    ? Route
-    : never,
+  route: BackendDirectRoute,
   publishedRouteName?: string,
 ) {
   if (publishedRouteName) {
@@ -105,6 +111,7 @@ export default function TopNav() {
       !backendRoute ||
       !backendRoutePublication ||
       !backendRouteSignature ||
+      !hasBackendRouteSteps(backendRoute) ||
       backendRoutePublication.lastSyncedSignature === backendRouteSignature
     ) {
       setRouteSyncState("idle");
@@ -176,6 +183,11 @@ export default function TopNav() {
     const route = exportBackendRouteJson();
     const routeSignature = getRouteSignature(route);
     const publishedRouteName = backendRoutePublication?.routeName;
+
+    if (!hasBackendRouteSteps(route)) {
+      window.alert("Add at least one enabled workflow step before saving the backend direct route.");
+      return;
+    }
 
     setIsPublishingRoute(true);
     setRouteSyncState("syncing");

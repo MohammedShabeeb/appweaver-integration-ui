@@ -17,6 +17,27 @@ export type EndpointProtocol = "api" | "grpc" | "sse" | "ws";
 
 export type SecuritySubsection = "auth" | "authorize";
 
+type DbCrudOperation = "create" | "readOne" | "readMany" | "update" | "delete" | "customSql";
+type DbCrudOutput = "json" | "raw" | "none";
+
+type DbCrudWhereCondition = {
+  column: string;
+  operator?: string;
+  valueExpression: string;
+  parameterName: string;
+};
+
+type DbCrudValueMapping = {
+  column: string;
+  valueExpression: string;
+  parameterName: string;
+};
+
+type DbCrudParameterMapping = {
+  name: string;
+  expression: string;
+};
+
 export type CreatedBean = {
   id: string;
   name: string;
@@ -308,6 +329,7 @@ function createFlowNode(
     process: "Process",
     upload: "Upload",
     download: "Download",
+    dbCrud: "DB CRUD",
     delay: "Delay",
     log: "Log",
   };
@@ -387,6 +409,42 @@ function createFlowNode(
       isInline: false,
       converToByte: false,
       parameters: {},
+    },
+    dbCrud: {
+      disabled: false,
+      operation: "customSql",
+      dataSource: "#dataSource",
+      table: "users",
+      columns: ["id", "name", "email"],
+      where: [
+        {
+          column: "id",
+          operator: "=",
+          valueExpression: "${header.id}",
+          parameterName: "id",
+        },
+      ],
+      values: [
+        {
+          column: "name",
+          valueExpression: "${body[name]}",
+          parameterName: "name",
+        },
+        {
+          column: "email",
+          valueExpression: "${body[email]}",
+          parameterName: "email",
+        },
+      ],
+      customSql: "select * from users where id = :#id",
+      parameters: [
+        {
+          name: "id",
+          expression: "${header.id}",
+        },
+      ],
+      output: "json",
+      logSql: false,
     },
     delay: {
       disabled: false,
@@ -755,6 +813,163 @@ function stripBackendStepConfig(
   return marshalConfig;
 }
 
+function parseStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return value.split(",").map((item) => item.trim()).filter(Boolean);
+  }
+
+  return [];
+}
+
+function parseObjectList<T extends Record<string, unknown>>(value: unknown): T[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is T => Boolean(item) && typeof item === "object" && !Array.isArray(item))
+    : [];
+}
+
+function getDbCrudIdentifier(value: unknown, fallback = "") {
+  const raw = String(value ?? fallback).trim();
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(raw) ? raw : "";
+}
+
+function getDbCrudParameterName(value: unknown, fallback: string) {
+  const raw = String(value ?? fallback).trim();
+  const sanitized = raw.replace(/[^A-Za-z0-9_]/g, "");
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(sanitized) ? sanitized : fallback;
+}
+
+function normalizeDbCrudDataSource(value: unknown) {
+  const dataSource = String(value ?? "#dataSource").trim();
+  return dataSource || "#dataSource";
+}
+
+function buildDbCrudWhereSql(where: DbCrudWhereCondition[]) {
+  const conditions = where
+    .map((item) => {
+      const column = getDbCrudIdentifier(item.column);
+      const parameterName = getDbCrudParameterName(item.parameterName, column);
+      const operator = ["=", "!=", "<>", ">", ">=", "<", "<=", "like"].includes(
+        String(item.operator ?? "=").trim().toLowerCase(),
+      )
+        ? String(item.operator ?? "=").trim()
+        : "=";
+
+      return column && parameterName ? `${column} ${operator} :#${parameterName}` : "";
+    })
+    .filter(Boolean);
+
+  return conditions.length > 0 ? ` where ${conditions.join(" and ")}` : "";
+}
+
+function buildDbCrudHeaderSteps(
+  mappings: Array<{ parameterName?: string; name?: string; valueExpression?: string; expression?: string; column?: string }>,
+): BackendRouteStep[] {
+  const seen = new Set<string>();
+
+  return mappings.flatMap((item) => {
+    const fallback = item.column ? String(item.column) : "param";
+    const name = getDbCrudParameterName(item.parameterName ?? item.name, fallback);
+    const expression = String(item.valueExpression ?? item.expression ?? "").trim();
+
+    if (!name || !expression || seen.has(name)) {
+      return [];
+    }
+
+    seen.add(name);
+    return [{ type: "setHeader", name, expression }];
+  });
+}
+
+function appendDbCrudOutputSteps(output: DbCrudOutput, successStatus: string | null): BackendRouteStep[] {
+  if (output === "json") {
+    return [{ type: "marshal", name: "json" }];
+  }
+
+  if (output === "none") {
+    return [];
+  }
+
+  return successStatus ? [{ type: "setBody", expression: `{"status":"${successStatus}"}` }] : [];
+}
+
+function buildDbCrudBackendSteps(config: Record<string, unknown> | undefined): BackendRouteStep[] {
+  const dbConfig = config ?? {};
+  const operation = String(dbConfig.operation ?? "customSql") as DbCrudOperation;
+  const dataSource = normalizeDbCrudDataSource(dbConfig.dataSource);
+  const output = String(dbConfig.output ?? "json") as DbCrudOutput;
+  const table = getDbCrudIdentifier(dbConfig.table);
+  const columns = parseStringList(dbConfig.columns);
+  const where = parseObjectList<DbCrudWhereCondition>(dbConfig.where);
+  const values = parseObjectList<DbCrudValueMapping>(dbConfig.values);
+  const parameters = parseObjectList<DbCrudParameterMapping>(dbConfig.parameters);
+  const selectedColumns = columns.map((column) => getDbCrudIdentifier(column)).filter(Boolean);
+  const columnSql = selectedColumns.length > 0 ? selectedColumns.join(", ") : "*";
+  const headers = buildDbCrudHeaderSteps([...where, ...values, ...parameters]);
+  const logSql = dbConfig.logSql === true;
+  let sql = "";
+  let successStatus: string | null = null;
+
+  if (operation === "customSql") {
+    sql = String(dbConfig.customSql ?? "").trim();
+  } else if (operation === "create" && table) {
+    const validValues = values
+      .map((item) => ({
+        column: getDbCrudIdentifier(item.column),
+        parameterName: getDbCrudParameterName(item.parameterName, item.column),
+      }))
+      .filter((item) => item.column && item.parameterName);
+
+    sql = `insert into ${table}(${validValues.map((item) => item.column).join(", ")}) values (${validValues
+      .map((item) => `:#${item.parameterName}`)
+      .join(", ")})`;
+    successStatus = "created";
+  } else if ((operation === "readOne" || operation === "readMany") && table) {
+    const limit =
+      operation === "readMany" && typeof dbConfig.limit === "number" && Number.isFinite(dbConfig.limit)
+        ? ` limit ${Math.max(1, Math.floor(dbConfig.limit))}`
+        : "";
+    sql = `select ${columnSql} from ${table}${buildDbCrudWhereSql(where)}${limit}`;
+  } else if (operation === "update" && table) {
+    const validValues = values
+      .map((item) => ({
+        column: getDbCrudIdentifier(item.column),
+        parameterName: getDbCrudParameterName(item.parameterName, item.column),
+      }))
+      .filter((item) => item.column && item.parameterName);
+
+    sql = `update ${table} set ${validValues
+      .map((item) => `${item.column} = :#${item.parameterName}`)
+      .join(", ")}${buildDbCrudWhereSql(where)}`;
+    successStatus = "updated";
+  } else if (operation === "delete" && table) {
+    sql = `delete from ${table}${buildDbCrudWhereSql(where)}`;
+    successStatus = "deleted";
+  }
+
+  if (!sql) {
+    return [
+      {
+        type: "log",
+        message: "DB CRUD step is incomplete; configure SQL/table and mappings before publishing.",
+        logLevel: "WARN",
+      },
+    ];
+  }
+
+  const endpoint = `sql:${sql}?dataSource=${dataSource}`;
+  const querySteps: BackendRouteStep[] = [
+    ...headers,
+    ...(logSql ? [{ type: "log", message: `DB ${operation} ${table || "customSql"}` }] : []),
+    { type: "to", endpoint },
+  ];
+
+  return [...querySteps, ...appendDbCrudOutputSteps(output, successStatus)];
+}
+
 function stringValueOrDefault(value: unknown, fallback: string) {
   return typeof value === "string" && value.trim() ? value : fallback;
 }
@@ -817,11 +1032,16 @@ function createBackendRouteJson(workflow: WorkflowRecord): BackendRouteExport {
           .map((node) => {
             const componentType = String(node.data?.componentKey ?? node.type ?? "");
 
+            if (componentType === "dbCrud") {
+              return buildDbCrudBackendSteps(node.data?.config);
+            }
+
             return {
               type: componentType,
               ...stripBackendStepConfig(componentType, node.data?.config),
             };
           })
+          .flat()
       : [];
   const routeId = stringValueOrDefault(startConfig.routeId, workflow.name);
   const routeName = stringValueOrDefault(
@@ -878,6 +1098,7 @@ function buildWorkflowFromRouteDefinition(
       step?.type === "process" ||
       step?.type === "upload" ||
       step?.type === "download" ||
+      step?.type === "dbCrud" ||
       step?.type === "delay" ||
       step?.type === "log",
   );
@@ -1114,6 +1335,9 @@ function normalizePersistedState(
       "transform",
       "validate",
       "process",
+      "upload",
+      "download",
+      "dbCrud",
       "delay",
       "log",
     ].includes(node.type ?? "");
