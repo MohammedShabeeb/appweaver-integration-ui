@@ -17,7 +17,14 @@ export type EndpointProtocol = "api" | "grpc" | "sse" | "ws";
 
 export type SecuritySubsection = "auth" | "authorize";
 
-type DbCrudOperation = "create" | "readOne" | "readMany" | "update" | "delete" | "customSql";
+type DbCrudOperation =
+  | "create"
+  | "batchInsert"
+  | "readOne"
+  | "readMany"
+  | "update"
+  | "delete"
+  | "customSql";
 type DbCrudOutput = "json" | "raw" | "none";
 
 type DbCrudWhereCondition = {
@@ -415,7 +422,7 @@ function createFlowNode(
       operation: "customSql",
       dataSource: "#dataSource",
       table: "users",
-      columns: ["id", "name", "email"],
+      columns: ["id", "name", "email", "tenant_id"],
       where: [
         {
           column: "id",
@@ -434,6 +441,11 @@ function createFlowNode(
           column: "email",
           valueExpression: "${body[email]}",
           parameterName: "email",
+        },
+        {
+          column: "tenant_id",
+          valueExpression: "${header.tenantId}",
+          parameterName: "tenant_id",
         },
       ],
       customSql: "select * from users where id = :#id",
@@ -831,9 +843,33 @@ function parseObjectList<T extends Record<string, unknown>>(value: unknown): T[]
     : [];
 }
 
+function appendDefaultTenantValueMapping(values: DbCrudValueMapping[]) {
+  const hasTenantId = values.some(
+    (item) => item.column === "tenant_id" || item.parameterName === "tenant_id",
+  );
+
+  if (hasTenantId) {
+    return values;
+  }
+
+  return [
+    ...values,
+    {
+      column: "tenant_id",
+      valueExpression: "${header.tenantId}",
+      parameterName: "tenant_id",
+    },
+  ];
+}
+
 function getDbCrudIdentifier(value: unknown, fallback = "") {
   const raw = String(value ?? fallback).trim();
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(raw) ? raw : "";
+}
+
+function getDbCrudTableIdentifier(value: unknown, fallback = "") {
+  const raw = String(value ?? fallback).trim();
+  return /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/.test(raw) ? raw : "";
 }
 
 function getDbCrudParameterName(value: unknown, fallback: string) {
@@ -901,10 +937,14 @@ function buildDbCrudBackendSteps(config: Record<string, unknown> | undefined): B
   const operation = String(dbConfig.operation ?? "customSql") as DbCrudOperation;
   const dataSource = normalizeDbCrudDataSource(dbConfig.dataSource);
   const output = String(dbConfig.output ?? "json") as DbCrudOutput;
-  const table = getDbCrudIdentifier(dbConfig.table);
+  const table = getDbCrudTableIdentifier(dbConfig.table);
   const columns = parseStringList(dbConfig.columns);
   const where = parseObjectList<DbCrudWhereCondition>(dbConfig.where);
-  const values = parseObjectList<DbCrudValueMapping>(dbConfig.values);
+  const configuredValues = parseObjectList<DbCrudValueMapping>(dbConfig.values);
+  const values =
+    operation === "create" || operation === "batchInsert"
+      ? appendDefaultTenantValueMapping(configuredValues)
+      : configuredValues;
   const parameters = parseObjectList<DbCrudParameterMapping>(dbConfig.parameters);
   const selectedColumns = columns.map((column) => getDbCrudIdentifier(column)).filter(Boolean);
   const columnSql = selectedColumns.length > 0 ? selectedColumns.join(", ") : "*";
@@ -915,7 +955,7 @@ function buildDbCrudBackendSteps(config: Record<string, unknown> | undefined): B
 
   if (operation === "customSql") {
     sql = String(dbConfig.customSql ?? "").trim();
-  } else if (operation === "create" && table) {
+  } else if ((operation === "create" || operation === "batchInsert") && table) {
     const validValues = values
       .map((item) => ({
         column: getDbCrudIdentifier(item.column),
@@ -923,10 +963,12 @@ function buildDbCrudBackendSteps(config: Record<string, unknown> | undefined): B
       }))
       .filter((item) => item.column && item.parameterName);
 
-    sql = `insert into ${table}(${validValues.map((item) => item.column).join(", ")}) values (${validValues
-      .map((item) => `:#${item.parameterName}`)
-      .join(", ")})`;
-    successStatus = "created";
+    if (validValues.length > 0) {
+      sql = `insert into ${table}(${validValues.map((item) => item.column).join(", ")}) values (${validValues
+        .map((item) => `:#${item.parameterName}`)
+        .join(", ")})`;
+      successStatus = operation === "batchInsert" ? "batch inserted" : "created";
+    }
   } else if ((operation === "readOne" || operation === "readMany") && table) {
     const limit =
       operation === "readMany" && typeof dbConfig.limit === "number" && Number.isFinite(dbConfig.limit)
@@ -960,11 +1002,18 @@ function buildDbCrudBackendSteps(config: Record<string, unknown> | undefined): B
     ];
   }
 
-  const endpoint = `sql:${sql}?dataSource=${dataSource}`;
+  const endpoint = `sql:${sql}`;
   const querySteps: BackendRouteStep[] = [
     ...headers,
-    ...(logSql ? [{ type: "log", message: `DB ${operation} ${table || "customSql"}` }] : []),
-    { type: "to", endpoint },
+    {
+      type: "to",
+      endpoint,
+      parameters: {
+        dataSource,
+        batch: operation === "batchInsert",
+      },
+    },
+    ...(logSql ? [{ type: "log", message: "Executed SQL operation result: ${body}" }] : []),
   ];
 
   return [...querySteps, ...appendDbCrudOutputSteps(output, successStatus)];

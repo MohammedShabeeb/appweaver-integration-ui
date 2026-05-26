@@ -26,8 +26,9 @@ const PROCESS_MODE_OPTIONS = [
 ] as const;
 const DB_CRUD_OPERATION_OPTIONS = [
   { label: "Create", value: "create" },
-  { label: "Read one", value: "readOne" },
-  { label: "Read many", value: "readMany" },
+  { label: "Batch Insert", value: "batchInsert" },
+  { label: "Select one", value: "readOne" },
+  { label: "Select many", value: "readMany" },
   { label: "Update", value: "update" },
   { label: "Delete", value: "delete" },
   { label: "Custom SQL", value: "customSql" },
@@ -305,6 +306,30 @@ function parseJsonArray(value: string) {
   return parsed;
 }
 
+function appendDefaultTenantValueMapping(values: unknown[]) {
+  const hasTenantId = values.some((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return false;
+    }
+
+    const mapping = item as Record<string, unknown>;
+    return mapping.column === "tenant_id" || mapping.parameterName === "tenant_id";
+  });
+
+  if (hasTenantId) {
+    return values;
+  }
+
+  return [
+    ...values,
+    {
+      column: "tenant_id",
+      valueExpression: "${header.tenantId}",
+      parameterName: "tenant_id",
+    },
+  ];
+}
+
 export default function ConfigPanel() {
   const { selectedNode, selectedEdge, updateNodeData, deleteEdge, deleteNode, customComponents } = useFlowStore();
 
@@ -357,6 +382,12 @@ export default function ConfigPanel() {
   const selectedTransformType = String(config.name ?? "simple");
   const selectedProcessMode = typeof config.clazz === "string" && config.clazz.trim() ? "clazz" : "ref";
   const selectedDbCrudOperation = String(config.operation ?? "customSql");
+  const dbCrudValuesForEditor =
+    ["create", "batchInsert"].includes(selectedDbCrudOperation)
+      ? appendDefaultTenantValueMapping(Array.isArray(config.values) ? config.values : [])
+      : Array.isArray(config.values)
+        ? config.values
+        : [];
   const panelDescription = customComponent
     ? customComponent.description || "Configure this custom component from its template fields."
     :
@@ -1316,7 +1347,7 @@ export default function ConfigPanel() {
                       })
                     }
                   />
-                  <p style={helperTextStyle}>Only simple SQL identifiers are exported.</p>
+                  <p style={helperTextStyle}>Use a table name such as `users` or a schema-qualified table such as `TEST.users`.</p>
                 </label>
                 {["readOne", "readMany"].includes(selectedDbCrudOperation) ? (
                   <label>
@@ -1338,12 +1369,12 @@ export default function ConfigPanel() {
                     />
                   </label>
                 ) : null}
-                {["create", "update"].includes(selectedDbCrudOperation) ? (
+                {["create", "batchInsert", "update"].includes(selectedDbCrudOperation) ? (
                   <label>
                     <span style={labelStyle}>Column/value mappings JSON</span>
                     <textarea
                       key={`${selectedNode.id}-dbcrud-values`}
-                      defaultValue={JSON.stringify(Array.isArray(config.values) ? config.values : [], null, 2)}
+                      defaultValue={JSON.stringify(dbCrudValuesForEditor, null, 2)}
                       placeholder='[{"column":"name","valueExpression":"${body[name]}","parameterName":"name"}]'
                       style={{ ...codeTextAreaStyle, minHeight: 220 }}
                       onBlur={(event) => {
@@ -1377,7 +1408,7 @@ export default function ConfigPanel() {
                     />
                   </label>
                 ) : null}
-                {selectedDbCrudOperation !== "create" ? (
+                {!["create", "batchInsert"].includes(selectedDbCrudOperation) ? (
                   <label>
                     <span style={labelStyle}>Where conditions JSON</span>
                     <textarea
@@ -1466,7 +1497,7 @@ export default function ConfigPanel() {
                   })
                 }
               />
-              <span style={{ fontWeight: 700 }}>Log generated operation</span>
+              <span style={{ fontWeight: 700 }}>Log operation result</span>
             </label>
           </div>
         )}
