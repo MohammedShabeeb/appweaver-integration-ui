@@ -324,7 +324,7 @@ function appendDefaultTenantValueMapping(values: unknown[]) {
     ...values,
     {
       column: "tenant_id",
-      valueExpression: "${header.tenantId}",
+      valueExpression: "${body['tenant_id']}",
       parameterName: "tenant_id",
     },
   ];
@@ -1375,7 +1375,7 @@ export default function ConfigPanel() {
                     <textarea
                       key={`${selectedNode.id}-dbcrud-values`}
                       defaultValue={JSON.stringify(dbCrudValuesForEditor, null, 2)}
-                      placeholder='[{"column":"name","valueExpression":"${body[name]}","parameterName":"name"}]'
+                      placeholder={`[{"column":"name","valueExpression":"\${body['name']}","parameterName":"name"}]`}
                       style={{ ...codeTextAreaStyle, minHeight: 220 }}
                       onBlur={(event) => {
                         try {

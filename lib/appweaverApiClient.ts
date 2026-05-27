@@ -99,6 +99,16 @@ type RequestOptions = Omit<RequestInit, "body"> & {
   timeoutMs?: number;
 };
 
+export class AppWeaverApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "AppWeaverApiError";
+    this.status = status;
+  }
+}
+
 const appWeaverEndpoints = {
   system: {
     beans: "/system/beans",
@@ -201,7 +211,7 @@ function createApiError(response: Response, payload: unknown) {
         )
       : `AppWeaver API request failed with status ${response.status}`;
 
-  return new Error(message);
+  return new AppWeaverApiError(message, response.status);
 }
 
 function normalizeBeanPayload(bean: AppWeaverBeanConfig): AppWeaverBeanConfig {
@@ -402,6 +412,8 @@ export const appWeaverApiClient = {
         }),
     },
     directRoutes: {
+      get: (name: string) =>
+        request<AppWeaverDirectRouteConfig>(appWeaverEndpoints.system.directRoute(name)),
       create: (route: AppWeaverDirectRouteConfig) =>
         request<AppWeaverDirectRouteConfig>(appWeaverEndpoints.system.directRoutes, {
           method: "POST",

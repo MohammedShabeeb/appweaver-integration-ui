@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 
-import { appWeaverApiClient } from "@/lib/appweaverApiClient";
+import { AppWeaverApiError, appWeaverApiClient } from "@/lib/appweaverApiClient";
 import { useFlowStore } from "@/store/useFlowStore";
 
 const workflowAccent = "#2DB780";
@@ -16,8 +16,45 @@ type BackendDirectRoute = ReturnType<typeof useFlowStore.getState>["exportBacken
   ? Route
   : never;
 
+type BackendRoutePublishMode = "create" | "update";
+
 function hasBackendRouteSteps(route: BackendDirectRoute | null) {
   return Boolean(route?.config?.steps && route.config.steps.length > 0);
+}
+
+function buildNamedBackendDirectRoute(route: BackendDirectRoute, routeName: string): BackendDirectRoute {
+  return {
+    ...route,
+    name: routeName,
+    config: {
+      ...route.config,
+      routeId: routeName,
+    },
+  };
+}
+
+function isRouteConflict(issue: unknown) {
+  if (issue instanceof AppWeaverApiError && issue.status === 409) {
+    return true;
+  }
+
+  if (!(issue instanceof Error)) {
+    return false;
+  }
+
+  return /already exists|duplicate|conflict/i.test(issue.message);
+}
+
+function isRouteNotFound(issue: unknown) {
+  if (issue instanceof AppWeaverApiError && issue.status === 404) {
+    return true;
+  }
+
+  if (!(issue instanceof Error)) {
+    return false;
+  }
+
+  return /does not exist|not found|missing/i.test(issue.message);
 }
 
 async function saveBackendDirectRoute(
@@ -25,17 +62,45 @@ async function saveBackendDirectRoute(
   publishedRouteName?: string,
 ) {
   if (publishedRouteName) {
-    await appWeaverApiClient.system.directRoutes.update(publishedRouteName, route);
-    return { action: "updated" as const, routeName: publishedRouteName };
+    const namedRoute = buildNamedBackendDirectRoute(route, publishedRouteName);
+
+    try {
+      await appWeaverApiClient.system.directRoutes.update(publishedRouteName, namedRoute);
+      return { action: "updated" as const, routeName: publishedRouteName };
+    } catch (updateIssue) {
+      if (!isRouteNotFound(updateIssue)) {
+        throw updateIssue;
+      }
+
+      await appWeaverApiClient.system.directRoutes.create(namedRoute);
+      return { action: "created" as const, routeName: publishedRouteName, recoveredFromUpdateIssue: updateIssue };
+    }
   }
 
   try {
     await appWeaverApiClient.system.directRoutes.create(route);
     return { action: "created" as const, routeName: route.name };
   } catch (createIssue) {
+    if (!isRouteConflict(createIssue)) {
+      throw createIssue;
+    }
+
     await appWeaverApiClient.system.directRoutes.update(route.name, route);
     return { action: "updated" as const, routeName: route.name, recoveredFromCreateIssue: createIssue };
   }
+}
+
+async function publishBackendDirectRoute(
+  route: BackendDirectRoute,
+  publishMode: BackendRoutePublishMode,
+) {
+  if (publishMode === "create") {
+    await appWeaverApiClient.system.directRoutes.create(route);
+    return { action: "created" as const, routeName: route.name };
+  }
+
+  await appWeaverApiClient.system.directRoutes.update(route.name, route);
+  return { action: "updated" as const, routeName: route.name };
 }
 
 function buildTopNavButtonStyle(isHighlighted: boolean): CSSProperties {
@@ -50,6 +115,78 @@ function buildTopNavButtonStyle(isHighlighted: boolean): CSSProperties {
       : "inset 0 1px 0 rgba(255, 255, 255, 0.75), 0 8px 18px rgba(45, 183, 128, 0.08)",
   };
 }
+
+const routePanelStyle: CSSProperties = {
+  position: "absolute",
+  top: "calc(100% + 10px)",
+  right: 0,
+  zIndex: 75,
+  display: "grid",
+  width: "min(320px, calc(100vw - 32px))",
+  gap: 12,
+  padding: 14,
+  border: "1px solid rgba(226, 232, 240, 0.95)",
+  borderRadius: 16,
+  background: "linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 250, 252, 0.99))",
+  boxShadow: "0 18px 44px rgba(15, 23, 42, 0.16)",
+};
+
+const routeFieldStyle: CSSProperties = {
+  display: "grid",
+  gap: 6,
+};
+
+const routeLabelStyle: CSSProperties = {
+  color: "#334155",
+  fontSize: 12,
+  lineHeight: "16px",
+  fontWeight: 700,
+};
+
+const routeInputStyle: CSSProperties = {
+  width: "100%",
+  minHeight: 42,
+  border: "1px solid rgba(203, 213, 225, 0.95)",
+  borderRadius: 10,
+  background: "#ffffff",
+  padding: "9px 12px",
+  color: "#0f172a",
+  fontSize: 13,
+  lineHeight: "18px",
+  fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
+  outline: "none",
+};
+
+const routeErrorStyle: CSSProperties = {
+  border: "1px solid rgba(248, 113, 113, 0.28)",
+  borderRadius: 10,
+  background: "rgba(254, 242, 242, 0.98)",
+  padding: "9px 10px",
+  color: "#b91c1c",
+  fontSize: 12,
+  lineHeight: "16px",
+};
+
+const routeActionsStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 10,
+};
+
+const routeActionButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minHeight: 40,
+  minWidth: 0,
+  borderRadius: 10,
+  padding: "0 12px",
+  fontSize: 13,
+  lineHeight: "18px",
+  fontWeight: 700,
+  fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
+  cursor: "pointer",
+};
 
 export default function TopNav() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -69,8 +206,12 @@ export default function TopNav() {
   const [isConfigMenuOpen, setIsConfigMenuOpen] = useState(false);
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
   const [isPublishingRoute, setIsPublishingRoute] = useState(false);
+  const [isRoutePublishPanelOpen, setIsRoutePublishPanelOpen] = useState(false);
+  const [routePublishName, setRoutePublishName] = useState("");
+  const [routePublishError, setRoutePublishError] = useState<string | null>(null);
   const [routeSyncState, setRouteSyncState] = useState<"idle" | "syncing" | "error">("idle");
   const configMenuRef = useRef<HTMLDivElement | null>(null);
+  const routePublishPanelRef = useRef<HTMLDivElement | null>(null);
   const activeWorkflow = workflows[activeWorkflowId] ?? null;
   const backendRoutePublication = activeWorkflow?.backendRoutePublication ?? null;
   const backendRoute = useMemo(
@@ -81,6 +222,7 @@ export default function TopNav() {
     () => (backendRoute ? getRouteSignature(backendRoute) : ""),
     [backendRoute],
   );
+  const routePublishDefaultName = backendRoutePublication?.routeName || backendRoute?.name || "";
 
   const handleSidebarToggle = (view: "workflows" | "components" | "configs") => {
     if (isSidebarOpen && sidebarView === view) {
@@ -105,6 +247,31 @@ export default function TopNav() {
     window.addEventListener("pointerdown", handlePointerDown);
     return () => window.removeEventListener("pointerdown", handlePointerDown);
   }, [isConfigMenuOpen]);
+
+  useEffect(() => {
+    if (!isRoutePublishPanelOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!routePublishPanelRef.current?.contains(event.target as Node)) {
+        setIsRoutePublishPanelOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsRoutePublishPanelOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isRoutePublishPanelOpen]);
 
   useEffect(() => {
     if (
@@ -179,22 +346,37 @@ export default function TopNav() {
     URL.revokeObjectURL(url);
   };
 
-  const handlePublishBackendRoute = async () => {
-    const route = exportBackendRouteJson();
-    const routeSignature = getRouteSignature(route);
-    const publishedRouteName = backendRoutePublication?.routeName;
+  const handleOpenRoutePublishPanel = () => {
+    setRoutePublishName(routePublishDefaultName);
+    setRoutePublishError(null);
+    setIsRoutePublishPanelOpen((current) => !current);
+  };
+
+  const handlePublishBackendRoute = async (publishMode: BackendRoutePublishMode) => {
+    const routeName = routePublishName.trim();
+    const route = routeName
+      ? buildNamedBackendDirectRoute(exportBackendRouteJson(), routeName)
+      : exportBackendRouteJson();
+    const routeSignature = getRouteSignature(exportBackendRouteJson());
 
     if (!hasBackendRouteSteps(route)) {
-      window.alert("Add at least one enabled workflow step before saving the backend direct route.");
+      setRoutePublishError("Add at least one enabled workflow step before saving the backend direct route.");
+      return;
+    }
+
+    if (!routeName) {
+      setRoutePublishError("Route name is required.");
       return;
     }
 
     setIsPublishingRoute(true);
     setRouteSyncState("syncing");
+    setRoutePublishError(null);
 
     try {
-      const savedRoute = await saveBackendDirectRoute(route, publishedRouteName);
+      const savedRoute = await publishBackendDirectRoute(route, publishMode);
       markBackendRoutePublished(savedRoute.routeName, routeSignature);
+      setIsRoutePublishPanelOpen(false);
       window.alert(
         savedRoute.action === "created"
           ? `Created direct route "${savedRoute.routeName}" in AppWeaver.`
@@ -203,7 +385,7 @@ export default function TopNav() {
       setRouteSyncState("idle");
     } catch (issue) {
       setRouteSyncState("error");
-      window.alert(issue instanceof Error ? issue.message : "Could not save the direct route.");
+      setRoutePublishError(issue instanceof Error ? issue.message : "Could not save the direct route.");
     } finally {
       setIsPublishingRoute(false);
     }
@@ -462,14 +644,14 @@ export default function TopNav() {
           </button>
           <span className="topnav-tooltip">Export backend route JSON</span>
         </div>
-        <div className="topnav-action">
+        <div className="topnav-action" ref={routePublishPanelRef}>
           <button
             type="button"
-            aria-label="Create backend direct route"
+            aria-label="Create or update backend direct route"
             className="topnav-btn"
             disabled={isPublishingRoute}
-            style={buildTopNavButtonStyle(hoveredButton === "publish-backend-route")}
-            onClick={handlePublishBackendRoute}
+            style={buildTopNavButtonStyle(hoveredButton === "publish-backend-route" || isRoutePublishPanelOpen)}
+            onClick={handleOpenRoutePublishPanel}
             onMouseEnter={() => setHoveredButton("publish-backend-route")}
             onMouseLeave={() => setHoveredButton((current) => (current === "publish-backend-route" ? null : current))}
           >
@@ -488,7 +670,7 @@ export default function TopNav() {
               <path d="M5 17h14" />
             </svg>
           </button>
-          <span className="topnav-tooltip">
+          <span className={`topnav-tooltip ${isRoutePublishPanelOpen ? "topnav-tooltip-hidden" : ""}`}>
             {isPublishingRoute
               ? backendRoutePublication
                 ? "Updating direct route"
@@ -501,6 +683,67 @@ export default function TopNav() {
                     ? "Update backend direct route"
                     : "Create backend direct route"}
           </span>
+          {isRoutePublishPanelOpen ? (
+            <div
+              className="topnav-route-panel"
+              role="dialog"
+              aria-label="Create or update direct route"
+              style={routePanelStyle}
+            >
+              <label className="topnav-route-field" style={routeFieldStyle}>
+                <span className="topnav-route-label" style={routeLabelStyle}>
+                  Route name
+                </span>
+                <input
+                  value={routePublishName}
+                  onChange={(event) => {
+                    setRoutePublishName(event.target.value);
+                    setRoutePublishError(null);
+                  }}
+                  className="topnav-route-input"
+                  style={routeInputStyle}
+                  placeholder="myDirectRoute"
+                  disabled={isPublishingRoute}
+                />
+              </label>
+              {routePublishError ? (
+                <div className="topnav-route-error" style={routeErrorStyle}>
+                  {routePublishError}
+                </div>
+              ) : null}
+              <div className="topnav-route-actions" style={routeActionsStyle}>
+                <button
+                  type="button"
+                  className="topnav-route-action topnav-route-action-secondary"
+                  style={{
+                    ...routeActionButtonStyle,
+                    border: "1px solid rgba(203, 213, 225, 0.95)",
+                    background: "#ffffff",
+                    color: "#0f172a",
+                  }}
+                  disabled={isPublishingRoute}
+                  onClick={() => void handlePublishBackendRoute("update")}
+                >
+                  Update
+                </button>
+                <button
+                  type="button"
+                  className="topnav-route-action topnav-route-action-primary"
+                  style={{
+                    ...routeActionButtonStyle,
+                    border: "1px solid rgba(45, 183, 128, 0.34)",
+                    background: "linear-gradient(180deg, var(--workflow-accent), #1f8f63)",
+                    color: "#ffffff",
+                    boxShadow: "0 12px 22px rgba(31, 143, 99, 0.22)",
+                  }}
+                  disabled={isPublishingRoute}
+                  onClick={() => void handlePublishBackendRoute("create")}
+                >
+                  Create
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
         <div className="topnav-action">
           <button

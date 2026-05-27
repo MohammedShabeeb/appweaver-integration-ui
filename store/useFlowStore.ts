@@ -434,17 +434,17 @@ function createFlowNode(
       values: [
         {
           column: "name",
-          valueExpression: "${body[name]}",
+          valueExpression: "${body['name']}",
           parameterName: "name",
         },
         {
           column: "email",
-          valueExpression: "${body[email]}",
+          valueExpression: "${body['email']}",
           parameterName: "email",
         },
         {
           column: "tenant_id",
-          valueExpression: "${header.tenantId}",
+          valueExpression: "${body['tenant_id']}",
           parameterName: "tenant_id",
         },
       ],
@@ -856,10 +856,30 @@ function appendDefaultTenantValueMapping(values: DbCrudValueMapping[]) {
     ...values,
     {
       column: "tenant_id",
-      valueExpression: "${header.tenantId}",
+      valueExpression: "${body['tenant_id']}",
       parameterName: "tenant_id",
     },
   ];
+}
+
+function normalizeDbCrudValueExpression(
+  expression: string,
+  mapping: { parameterName?: string; name?: string; column?: string },
+) {
+  const trimmedExpression = expression.trim();
+  const mappingName = String(mapping.parameterName ?? mapping.name ?? mapping.column ?? "").trim();
+
+  if (
+    mappingName === "tenant_id" &&
+    (trimmedExpression === "${header.tenantId}" || trimmedExpression === "${body[tenantId]}")
+  ) {
+    return "${body['tenant_id']}";
+  }
+
+  return trimmedExpression.replace(
+    /\$\{body\[([A-Za-z_][A-Za-z0-9_]*)\]\}/g,
+    "${body['$1']}",
+  );
 }
 
 function getDbCrudIdentifier(value: unknown, fallback = "") {
@@ -909,7 +929,10 @@ function buildDbCrudHeaderSteps(
   return mappings.flatMap((item) => {
     const fallback = item.column ? String(item.column) : "param";
     const name = getDbCrudParameterName(item.parameterName ?? item.name, fallback);
-    const expression = String(item.valueExpression ?? item.expression ?? "").trim();
+    const expression = normalizeDbCrudValueExpression(
+      String(item.valueExpression ?? item.expression ?? ""),
+      item,
+    );
 
     if (!name || !expression || seen.has(name)) {
       return [];
