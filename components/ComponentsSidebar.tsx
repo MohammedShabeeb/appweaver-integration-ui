@@ -7,6 +7,7 @@ import { useFlowStore } from "@/store/useFlowStore";
 import {
   componentGroups,
   visibleComponentDefinitions,
+  type BuiltInComponentType,
   type ComponentGroupId,
 } from "@/config/componentCatalog";
 import { nodeTypeMeta } from "./node-icons";
@@ -36,22 +37,7 @@ type DataSourceEditorState = {
 };
 
 type StepListItem = {
-  type:
-    | "marshal"
-    | "unmarshal"
-    | "setBody"
-    | "setHeader"
-    | "setProperty"
-    | "setContext"
-    | "convertBodyTo"
-    | "transform"
-    | "validate"
-    | "process"
-    | "upload"
-    | "download"
-    | "dbCrud"
-    | "delay"
-    | "log";
+  type: Exclude<BuiltInComponentType, "start">;
   label: string;
   color: string;
   bgClass?: string;
@@ -75,13 +61,19 @@ const stepDescriptions: Record<StepListItem["type"], string> = {
   setHeader: "Set a message header from an expression or constant value.",
   setProperty: "Set an exchange property from an expression or constant value.",
   setContext: "Set a shared context value from an expression or constant.",
+  globalOption: "Set a reusable Camel global option.",
   convertBodyTo: "Convert the message body to a target Java class.",
   transform: "Transform the message body with a simple expression or mapper.",
+  filter: "Pass messages that match a rule.",
+  dynamicroute: "Choose the next endpoint at runtime.",
   validate: "Reject invalid JSON payloads with MVEL-style rules.",
   process: "Run a processor bean by entering its `ref` name.",
+  bean: "Call a registry bean or Java class.",
   upload: "Upload multipart documents to a configured endpoint.",
   download: "Download content from a configured endpoint.",
+  enrich: "Call an endpoint and merge its response.",
   dbCrud: "Run create, read, update, delete, or custom SQL operations against the configured database.",
+  aggregation: "Group messages with a strategy.",
   delay: "Pause processing with a constant or simple expression.",
   log: "Write a log message with logger name and level.",
 };

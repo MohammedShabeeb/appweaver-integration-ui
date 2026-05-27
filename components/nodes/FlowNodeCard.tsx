@@ -41,7 +41,7 @@ function buildCardStyle(accentColor: string, selected?: boolean, disabled?: bool
   return {
     position: "relative",
     width: 168,
-    minHeight: 96,
+    minHeight: 104,
     padding: "12px",
     borderRadius: 14,
     border: `1px solid ${selected ? `${accentColor}8a` : "rgba(255, 255, 255, 0.12)"}`,
@@ -117,7 +117,7 @@ export default function FlowNodeCard({
             fontSize: 13,
             fontWeight: 700,
             lineHeight: 1.28,
-            letterSpacing: "-0.02em",
+            letterSpacing: 0,
             color: "#f8fafc",
             overflow: "hidden",
             display: "-webkit-box",
@@ -144,8 +144,8 @@ export default function FlowNodeCard({
             overflow: "hidden",
             display: "-webkit-box",
             WebkitBoxOrient: "vertical",
-            WebkitLineClamp: 2,
-            letterSpacing: "-0.01em",
+            WebkitLineClamp: 3,
+            letterSpacing: 0,
             fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
           }}
         >

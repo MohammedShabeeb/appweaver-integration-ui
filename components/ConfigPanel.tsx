@@ -24,6 +24,10 @@ const PROCESS_MODE_OPTIONS = [
   { label: "Bean reference", value: "ref" },
   { label: "Processor class", value: "clazz" },
 ] as const;
+const BEAN_MODE_OPTIONS = [
+  { label: "Bean reference", value: "ref" },
+  { label: "Bean class", value: "clazz" },
+] as const;
 const DB_CRUD_OPERATION_OPTIONS = [
   { label: "Create", value: "create" },
   { label: "Batch Insert", value: "batchInsert" },
@@ -48,6 +52,11 @@ const UNMARSHAL_LIBRARY_OPTIONS = [
   { label: "Custom ObjectMapper", value: "custom" },
   { label: "Default", value: "" },
 ] as const;
+const ENRICH_ENDPOINT_TYPE_OPTIONS = ["NONE", "REST", "DB"] as const;
+const DEFAULT_ENRICH_STRATEGY_CLASS =
+  "com.bytestrone.appweaver.integration.core.aggregator.imp.EnrichAggregationStrategy";
+const DEFAULT_SPLIT_AGGREGATION_STRATEGY_CLASS =
+  "com.bytestrone.appweaver.integration.core.aggregator.imp.SourceTrackingAggregationStrategy";
 
 const panelStyle: React.CSSProperties = {
   position: "absolute",
@@ -381,7 +390,12 @@ export default function ConfigPanel() {
   const selectedUnmarshalType = String(config.name ?? "json");
   const selectedTransformType = String(config.name ?? "simple");
   const selectedProcessMode = typeof config.clazz === "string" && config.clazz.trim() ? "clazz" : "ref";
+  const selectedBeanMode = typeof config.clazz === "string" && config.clazz.trim() ? "clazz" : "ref";
   const selectedDbCrudOperation = String(config.operation ?? "customSql");
+  const aggregationClazz =
+    config.aggregationClazz && typeof config.aggregationClazz === "object" && !Array.isArray(config.aggregationClazz)
+      ? (config.aggregationClazz as Record<string, unknown>)
+      : {};
   const dbCrudValuesForEditor =
     ["create", "batchInsert"].includes(selectedDbCrudOperation)
       ? appendDefaultTenantValueMapping(Array.isArray(config.values) ? config.values : [])
@@ -401,18 +415,30 @@ export default function ConfigPanel() {
           ? "Set an exchange property from an expression or constant value."
         : type === "setContext"
           ? "Set a shared context value from an expression or constant."
+        : type === "globalOption"
+          ? "Set a Camel global option from a constant or expression."
         : type === "convertBodyTo"
           ? "Convert the exchange body to a target Java class."
         : type === "transform"
           ? "Transform the exchange body with a simple expression or JSON mapper."
+        : type === "filter"
+          ? "Continue only when an expression or processor allows the exchange."
+        : type === "dynamicroute"
+          ? "Route exchanges dynamically through a backend router class."
         : type === "validate"
           ? "Validate the JSON payload with backend validation rules."
         : type === "upload"
           ? "Upload multipart documents to the configured backend endpoint."
         : type === "download"
           ? "Download content from the configured backend endpoint."
+        : type === "enrich"
+          ? "Enrich the exchange from another endpoint using request and response mapping."
         : type === "dbCrud"
           ? "Configure a database operation that exports as standard backend route steps."
+        : type === "bean"
+          ? "Invoke a backend bean by registry reference or Java class."
+        : type === "aggregation"
+          ? "Aggregate exchanges with a configured AggregationStrategy."
         : type === "unmarshal"
           ? "Read JSON, CSV, or XML payloads into the exchange body."
         : type === "log"
@@ -871,6 +897,41 @@ export default function ConfigPanel() {
           </div>
         )}
 
+        {type === "globalOption" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Option name</span>
+              <input
+                value={String(config.name ?? "")}
+                placeholder="optionName"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { name: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Saved as `name` and used as the Camel global option key.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Expression or value</span>
+              <input
+                value={String(config.expression ?? "")}
+                placeholder="${body}"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { expression: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>
+                Values containing <code>{"${...}"}</code> or <code>#</code> are evaluated as expressions.
+              </p>
+            </label>
+          </div>
+        )}
+
         {type === "convertBodyTo" && (
           <div style={sectionStyle}>
             <label>
@@ -991,6 +1052,106 @@ export default function ConfigPanel() {
                 <p style={helperTextStyle}>Saved as `mapper` and passed into `JsonExpressionTransformer`.</p>
               </label>
             ) : null}
+          </div>
+        )}
+
+        {type === "filter" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Expression</span>
+              <textarea
+                value={String(config.expression ?? "")}
+                placeholder="${body} != null"
+                style={{ ...inputStyle, minHeight: 92, resize: "vertical" }}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { expression: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Saved as `expression`; the backend evaluates it as a Boolean.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Filter processor class</span>
+              <input
+                value={String(config.clazz ?? "")}
+                placeholder="com.example.MyFilterProcessor"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { clazz: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Optional. Used only when nested steps are empty.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Nested steps JSON</span>
+              <textarea
+                key={`${selectedNode.id}-filter-steps`}
+                defaultValue={JSON.stringify(Array.isArray(config.steps) ? config.steps : [], null, 2)}
+                placeholder='[{"type":"log","message":"Matched"}]'
+                style={{ ...codeTextAreaStyle, minHeight: 160 }}
+                onBlur={(event) => {
+                  try {
+                    updateNodeData(selectedNode.id, {
+                      config: { steps: parseJsonArray(event.target.value) },
+                    });
+                  } catch (issue) {
+                    window.alert(issue instanceof Error ? issue.message : "Nested steps must be a JSON array.");
+                  }
+                }}
+              />
+            </label>
+          </div>
+        )}
+
+        {type === "dynamicroute" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Router class</span>
+              <input
+                value={String(config.clazz ?? "")}
+                placeholder="com.example.DynamicRouter"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { clazz: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Saved as `clazz`; backend constructs it with the step and route builder.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Routes JSON</span>
+              <textarea
+                key={`${selectedNode.id}-dynamicroute-routes`}
+                defaultValue={JSON.stringify(Array.isArray(config.routes) ? config.routes : [], null, 2)}
+                placeholder={`[{"condition":"\${header.type} == 'a'","endpoint":"direct:a"}]`}
+                style={{ ...codeTextAreaStyle, minHeight: 160 }}
+                onBlur={(event) => {
+                  try {
+                    updateNodeData(selectedNode.id, {
+                      config: { routes: parseJsonArray(event.target.value) },
+                    });
+                  } catch (issue) {
+                    window.alert(issue instanceof Error ? issue.message : "Routes must be a JSON array.");
+                  }
+                }}
+              />
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={config.isMap !== false}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { isMap: event.target.checked },
+                  })
+                }
+              />
+              <span style={{ fontWeight: 700 }}>Use mapped routing</span>
+            </label>
           </div>
         )}
 
@@ -1151,6 +1312,125 @@ export default function ConfigPanel() {
           </div>
         )}
 
+        {type === "bean" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Bean mode</span>
+              <div style={selectWrapStyle}>
+                <select
+                  value={selectedBeanMode}
+                  style={selectStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config:
+                        event.target.value === "clazz"
+                          ? { clazz: String(config.clazz ?? ""), ref: "" }
+                          : { ref: String(config.ref ?? "beanRef"), clazz: "" },
+                    })
+                  }
+                >
+                  {BEAN_MODE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value} style={optionStyle}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={selectIconStyle}
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+            </label>
+
+            {selectedBeanMode === "ref" ? (
+              <label>
+                <span style={labelStyle}>Bean reference</span>
+                <input
+                  value={String(config.ref ?? "")}
+                  placeholder="myBean"
+                  style={inputStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { ref: event.target.value },
+                    })
+                  }
+                />
+                <p style={helperTextStyle}>Saved as `ref` and resolved from the Camel registry.</p>
+              </label>
+            ) : (
+              <label>
+                <span style={labelStyle}>Bean class</span>
+                <input
+                  value={String(config.clazz ?? "")}
+                  placeholder="com.example.MyBean"
+                  style={inputStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { clazz: event.target.value },
+                    })
+                  }
+                />
+                <p style={helperTextStyle}>Saved as `clazz`; the backend creates the bean with `BeanCreator`.</p>
+              </label>
+            )}
+
+            <label>
+              <span style={labelStyle}>Method</span>
+              <input
+                value={String(config.method ?? "")}
+                placeholder="handle"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { method: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Saved as `method` and passed to `route.bean(ref, method)`.</p>
+            </label>
+
+            <label>
+              <span style={labelStyle}>Constructor args JSON</span>
+              <textarea
+                key={`${selectedNode.id}-bean-constructor-args`}
+                defaultValue={JSON.stringify(Array.isArray(config.constructorArgs) ? config.constructorArgs : [], null, 2)}
+                placeholder='["value", 10]'
+                style={{ ...inputStyle, minHeight: 110, resize: "vertical", fontFamily: "monospace" }}
+                onBlur={(event) => {
+                  try {
+                    updateNodeData(selectedNode.id, {
+                      config: { constructorArgs: parseJsonArray(event.target.value) },
+                    });
+                  } catch (issue) {
+                    window.alert(issue instanceof Error ? issue.message : "Constructor args must be a JSON array.");
+                  }
+                }}
+              />
+            </label>
+
+            <label style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={config.enableSecurityContext === true}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { enableSecurityContext: event.target.checked },
+                  })
+                }
+              />
+              <span style={{ fontWeight: 700 }}>Enable security context</span>
+            </label>
+          </div>
+        )}
+
         {type === "upload" && (
           <div style={sectionStyle}>
             <label>
@@ -1291,6 +1571,158 @@ export default function ConfigPanel() {
               />
               <p style={helperTextStyle}>Saved as `parameters` and appended to the download endpoint URI.</p>
             </label>
+          </div>
+        )}
+
+        {type === "enrich" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Endpoint</span>
+              <input
+                value={String(config.endpoint ?? "")}
+                placeholder="direct:lookup"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { endpoint: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Saved as `endpoint` and passed to Camel `enrich`.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Endpoint type</span>
+              <div style={selectWrapStyle}>
+                <select
+                  value={String(config.endpointType ?? "NONE")}
+                  style={selectStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { endpointType: event.target.value },
+                    })
+                  }
+                >
+                  {ENRICH_ENDPOINT_TYPE_OPTIONS.map((option) => (
+                    <option key={option} value={option} style={optionStyle}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={selectIconStyle} aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+            </label>
+            <label>
+              <span style={labelStyle}>Enrich strategy class</span>
+              <input
+                value={String(config.enrichStrategyClazz ?? "")}
+                placeholder={DEFAULT_ENRICH_STRATEGY_CLASS}
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { enrichStrategyClazz: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Must expose a constructor with `(Map responseMapper, Map requestMapper)`.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Request mapper JSON</span>
+              <textarea
+                key={`${selectedNode.id}-enrich-request-mapper`}
+                defaultValue={JSON.stringify(
+                  config.requestMapper && typeof config.requestMapper === "object" && !Array.isArray(config.requestMapper)
+                    ? config.requestMapper
+                    : {},
+                  null,
+                  2,
+                )}
+                placeholder='{"id":"${header.id}"}'
+                style={{ ...codeTextAreaStyle, minHeight: 130 }}
+                onBlur={(event) => {
+                  try {
+                    updateNodeData(selectedNode.id, {
+                      config: { requestMapper: parseParameters(event.target.value) },
+                    });
+                  } catch (issue) {
+                    window.alert(issue instanceof Error ? issue.message : "Request mapper must be valid JSON.");
+                  }
+                }}
+              />
+            </label>
+            <label>
+              <span style={labelStyle}>Response mapper JSON</span>
+              <textarea
+                key={`${selectedNode.id}-enrich-response-mapper`}
+                defaultValue={JSON.stringify(
+                  config.responseMapper && typeof config.responseMapper === "object" && !Array.isArray(config.responseMapper)
+                    ? config.responseMapper
+                    : {},
+                  null,
+                  2,
+                )}
+                placeholder='{"profile":"${body}"}'
+                style={{ ...codeTextAreaStyle, minHeight: 130 }}
+                onBlur={(event) => {
+                  try {
+                    updateNodeData(selectedNode.id, {
+                      config: { responseMapper: parseParameters(event.target.value) },
+                    });
+                  } catch (issue) {
+                    window.alert(issue instanceof Error ? issue.message : "Response mapper must be valid JSON.");
+                  }
+                }}
+              />
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={config.split === true}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: {
+                      split: event.target.checked,
+                      ...(event.target.checked &&
+                      !(typeof config.aggregationStrategyClazz === "string" && config.aggregationStrategyClazz.trim())
+                        ? { aggregationStrategyClazz: DEFAULT_SPLIT_AGGREGATION_STRATEGY_CLASS }
+                        : {}),
+                    },
+                  })
+                }
+              />
+              <span style={{ fontWeight: 700 }}>Split body before enrichment</span>
+            </label>
+            {config.split === true ? (
+              <>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}>
+                  <input
+                    type="checkbox"
+                    checked={config.parallelProcessing === true}
+                    onChange={(event) =>
+                      updateNodeData(selectedNode.id, {
+                        config: { parallelProcessing: event.target.checked },
+                      })
+                    }
+                  />
+                  <span style={{ fontWeight: 700 }}>Parallel processing</span>
+                </label>
+                <label>
+                  <span style={labelStyle}>Split aggregation strategy class</span>
+                  <input
+                    value={String(config.aggregationStrategyClazz ?? "")}
+                    placeholder={DEFAULT_SPLIT_AGGREGATION_STRATEGY_CLASS}
+                    style={inputStyle}
+                    onChange={(event) =>
+                      updateNodeData(selectedNode.id, {
+                        config: { aggregationStrategyClazz: event.target.value },
+                      })
+                    }
+                  />
+                  <p style={helperTextStyle}>Must expose a no-argument constructor for Camel split aggregation.</p>
+                </label>
+              </>
+            ) : null}
           </div>
         )}
 
@@ -1568,6 +2000,112 @@ export default function ConfigPanel() {
                 </svg>
               </div>
               <p style={helperTextStyle}>Saved as `logLevel`. The backend defaults to `INFO` when omitted.</p>
+            </label>
+          </div>
+        )}
+
+        {type === "aggregation" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Aggregation strategy class</span>
+              <input
+                value={String(aggregationClazz.clazz ?? "")}
+                placeholder="com.bytestrone.appweaver.integration.core.aggregator.imp.BatchAggregationStrategy"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: {
+                      aggregationClazz: {
+                        ...aggregationClazz,
+                        clazz: event.target.value,
+                      },
+                    },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Saved as `aggregationClazz.clazz` and instantiated by the backend.</p>
+            </label>
+
+            <label>
+              <span style={labelStyle}>Strategy parameters JSON</span>
+              <textarea
+                key={`${selectedNode.id}-aggregation-parameters`}
+                defaultValue={JSON.stringify(
+                  aggregationClazz.parameters && typeof aggregationClazz.parameters === "object" && !Array.isArray(aggregationClazz.parameters)
+                    ? aggregationClazz.parameters
+                    : {},
+                  null,
+                  2,
+                )}
+                placeholder='{"mode":"merge"}'
+                style={{ ...codeTextAreaStyle, minHeight: 130 }}
+                onBlur={(event) => {
+                  try {
+                    updateNodeData(selectedNode.id, {
+                      config: {
+                        aggregationClazz: {
+                          ...aggregationClazz,
+                          parameters: parseParameters(event.target.value),
+                        },
+                      },
+                    });
+                  } catch (issue) {
+                    window.alert(issue instanceof Error ? issue.message : "Strategy parameters must be valid JSON.");
+                  }
+                }}
+              />
+            </label>
+
+            <label>
+              <span style={labelStyle}>Correlation expression</span>
+              <input
+                value={String(config.correlationExpression ?? "")}
+                placeholder="${header.correlationId}"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { correlationExpression: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Saved as `correlationExpression`; blank uses a constant `true` correlation.</p>
+            </label>
+
+            <label>
+              <span style={labelStyle}>Completion size</span>
+              <input
+                type="number"
+                value={String(config.completionSize ?? "")}
+                min={1}
+                placeholder="10"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: {
+                      completionSize: event.target.value ? Number(event.target.value) : undefined,
+                    },
+                  })
+                }
+              />
+            </label>
+
+            <label>
+              <span style={labelStyle}>Completion timeout ms</span>
+              <input
+                type="number"
+                value={String(config.completionTimeOut ?? "")}
+                min={1}
+                placeholder="5000"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: {
+                      completionTimeOut: event.target.value ? Number(event.target.value) : undefined,
+                    },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Saved as `completionTimeOut` to match the backend step field.</p>
             </label>
           </div>
         )}

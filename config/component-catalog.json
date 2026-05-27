@@ -97,6 +97,14 @@
       "dependencies": []
     },
     {
+      "type": "globalOption",
+      "defaultGroup": "metadata",
+      "singleEndpointOnly": false,
+      "color": "#0284c7",
+      "bgClass": "sidebar-item-setheader",
+      "dependencies": []
+    },
+    {
       "type": "convertBodyTo",
       "defaultGroup": "transform",
       "singleEndpointOnly": false,
@@ -109,6 +117,22 @@
       "defaultGroup": "transform",
       "singleEndpointOnly": false,
       "color": "#ec4899",
+      "bgClass": "sidebar-item-switch",
+      "dependencies": []
+    },
+    {
+      "type": "filter",
+      "defaultGroup": "logic",
+      "singleEndpointOnly": false,
+      "color": "#84cc16",
+      "bgClass": "sidebar-item-validate",
+      "dependencies": []
+    },
+    {
+      "type": "dynamicroute",
+      "defaultGroup": "logic",
+      "singleEndpointOnly": false,
+      "color": "#f43f5e",
       "bgClass": "sidebar-item-switch",
       "dependencies": []
     },
@@ -137,6 +161,14 @@
       "dependencies": []
     },
     {
+      "type": "bean",
+      "defaultGroup": "processing",
+      "singleEndpointOnly": false,
+      "color": "#a855f7",
+      "bgClass": "sidebar-item-switch",
+      "dependencies": []
+    },
+    {
       "type": "upload",
       "defaultGroup": "connectors",
       "singleEndpointOnly": false,
@@ -153,6 +185,14 @@
       "dependencies": []
     },
     {
+      "type": "enrich",
+      "defaultGroup": "connectors",
+      "singleEndpointOnly": false,
+      "color": "#0891b2",
+      "bgClass": "sidebar-item-http",
+      "dependencies": []
+    },
+    {
       "type": "dbCrud",
       "defaultGroup": "connectors",
       "singleEndpointOnly": false,
@@ -165,6 +205,14 @@
           "version": "4.8.0"
         }
       ]
+    },
+    {
+      "type": "aggregation",
+      "defaultGroup": "batchParallel",
+      "singleEndpointOnly": false,
+      "color": "#0f766e",
+      "bgClass": "sidebar-item-setheader",
+      "dependencies": []
     },
     {
       "type": "log",

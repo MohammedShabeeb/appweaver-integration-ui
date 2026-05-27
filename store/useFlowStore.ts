@@ -220,11 +220,28 @@ type RouteImportStep = {
   useMap?: boolean;
   ref?: string;
   expression?: string;
+  steps?: unknown;
   mapper?: unknown;
   data?: unknown;
   value?: unknown;
   message?: string;
   logLevel?: string;
+  method?: string;
+  constructorArgs?: unknown[];
+  enableSecurityContext?: boolean;
+  aggregationClazz?: unknown;
+  aggregationStrategyClazz?: string;
+  correlationExpression?: string;
+  completionSize?: number;
+  completionTimeOut?: number;
+  routes?: unknown;
+  isMap?: boolean;
+  endpointType?: string;
+  enrichStrategyClazz?: string;
+  requestMapper?: unknown;
+  responseMapper?: unknown;
+  split?: boolean;
+  parallelProcessing?: boolean;
   endpoint?: string;
   timeout?: number;
   contentType?: string;
@@ -277,6 +294,12 @@ type WorkflowDependency = MavenDependencyDefinition;
 
 const DEFAULT_WORKFLOW_ID = "workflow-root";
 const ROOT_CANVAS_ID = "root-canvas";
+const DEFAULT_ENRICH_STRATEGY_CLASS =
+  "com.bytestrone.appweaver.integration.core.aggregator.imp.EnrichAggregationStrategy";
+const DEFAULT_SPLIT_AGGREGATION_STRATEGY_CLASS =
+  "com.bytestrone.appweaver.integration.core.aggregator.imp.SourceTrackingAggregationStrategy";
+const DEFAULT_AGGREGATION_STRATEGY_CLASS =
+  "com.bytestrone.appweaver.integration.core.aggregator.imp.BatchAggregationStrategy";
 
 function createStartNode(id: string, position: XYPosition): AppNode {
   return {
@@ -330,13 +353,19 @@ function createFlowNode(
     setHeader: "Set Header",
     setProperty: "Set Property",
     setContext: "Set Context",
+    globalOption: "Global Option",
     convertBodyTo: "Convert Body",
     transform: "Transform",
+    filter: "Filter",
+    dynamicroute: "Dynamic Route",
     validate: "Validate",
     process: "Process",
+    bean: "Bean",
     upload: "Upload",
     download: "Download",
+    enrich: "Enrich",
     dbCrud: "DB CRUD",
+    aggregation: "Aggregation",
     delay: "Delay",
     log: "Log",
   };
@@ -377,6 +406,11 @@ function createFlowNode(
       expression: "",
       value: "",
     },
+    globalOption: {
+      disabled: false,
+      name: "optionName",
+      expression: "${body}",
+    },
     convertBodyTo: {
       disabled: false,
       clazz: "java.lang.String",
@@ -386,6 +420,18 @@ function createFlowNode(
       name: "simple",
       expression: "${body}",
       mapper: {},
+    },
+    filter: {
+      disabled: false,
+      expression: "${body} != null",
+      clazz: "",
+      steps: [],
+    },
+    dynamicroute: {
+      disabled: false,
+      clazz: "com.example.DynamicRouter",
+      routes: [],
+      isMap: true,
     },
     validate: {
       disabled: false,
@@ -403,6 +449,14 @@ function createFlowNode(
       clazz: "",
       parameters: {},
     },
+    bean: {
+      disabled: false,
+      ref: "beanRef",
+      clazz: "",
+      method: "",
+      constructorArgs: [],
+      enableSecurityContext: false,
+    },
     upload: {
       disabled: false,
       endpoint: "file:uploads",
@@ -416,6 +470,17 @@ function createFlowNode(
       isInline: false,
       converToByte: false,
       parameters: {},
+    },
+    enrich: {
+      disabled: false,
+      endpoint: "direct:lookup",
+      endpointType: "NONE",
+      enrichStrategyClazz: DEFAULT_ENRICH_STRATEGY_CLASS,
+      requestMapper: {},
+      responseMapper: {},
+      split: false,
+      parallelProcessing: false,
+      aggregationStrategyClazz: DEFAULT_SPLIT_AGGREGATION_STRATEGY_CLASS,
     },
     dbCrud: {
       disabled: false,
@@ -457,6 +522,16 @@ function createFlowNode(
       ],
       output: "json",
       logSql: false,
+    },
+    aggregation: {
+      disabled: false,
+      aggregationClazz: {
+        clazz: DEFAULT_AGGREGATION_STRATEGY_CLASS,
+        parameters: {},
+      },
+      correlationExpression: "${header.correlationId}",
+      completionSize: 10,
+      completionTimeOut: 5000,
     },
     delay: {
       disabled: false,
@@ -796,11 +871,141 @@ function stripBackendConfig(config: Record<string, unknown> | undefined): Record
   return backendConfig;
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function removeBlankStringField(config: Record<string, unknown>, field: string) {
+  if (typeof config[field] === "string" && !config[field].trim()) {
+    delete config[field];
+  }
+}
+
 function stripBackendStepConfig(
   componentType: string,
   config: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
   const backendConfig = stripBackendConfig(config);
+
+  if (componentType === "bean" || componentType === "process") {
+    const executableConfig = { ...backendConfig };
+
+    if (typeof executableConfig.ref === "string" && !executableConfig.ref.trim()) {
+      delete executableConfig.ref;
+    }
+
+    if (typeof executableConfig.clazz === "string" && !executableConfig.clazz.trim()) {
+      delete executableConfig.clazz;
+    }
+
+    if (componentType === "bean" && typeof executableConfig.method === "string" && !executableConfig.method.trim()) {
+      delete executableConfig.method;
+    }
+
+    return executableConfig;
+  }
+
+  if (componentType === "aggregation") {
+    const aggregationConfig = { ...backendConfig };
+    const rawAggregationClazz = aggregationConfig.aggregationClazz;
+
+    removeBlankStringField(aggregationConfig, "clazz");
+    removeBlankStringField(aggregationConfig, "correlationExpression");
+
+    if (isPlainRecord(rawAggregationClazz)) {
+      const nextAggregationClazz = { ...rawAggregationClazz };
+      if (
+        typeof nextAggregationClazz.clazz !== "string" ||
+        !nextAggregationClazz.clazz.trim()
+      ) {
+        nextAggregationClazz.clazz = DEFAULT_AGGREGATION_STRATEGY_CLASS;
+      }
+      nextAggregationClazz.parameters = isPlainRecord(nextAggregationClazz.parameters)
+        ? nextAggregationClazz.parameters
+        : {};
+      aggregationConfig.aggregationClazz = nextAggregationClazz;
+    } else if (typeof aggregationConfig.clazz === "string" && aggregationConfig.clazz.trim()) {
+      aggregationConfig.aggregationClazz = {
+        clazz: aggregationConfig.clazz,
+        parameters: isPlainRecord(aggregationConfig.parameters) ? aggregationConfig.parameters : {},
+      };
+    } else {
+      aggregationConfig.aggregationClazz = {
+        clazz: DEFAULT_AGGREGATION_STRATEGY_CLASS,
+        parameters: isPlainRecord(aggregationConfig.parameters) ? aggregationConfig.parameters : {},
+      };
+    }
+
+    delete aggregationConfig.clazz;
+
+    if (typeof aggregationConfig.completionSize !== "number" || !Number.isFinite(aggregationConfig.completionSize)) {
+      delete aggregationConfig.completionSize;
+    }
+
+    if (
+      typeof aggregationConfig.completionTimeOut !== "number" ||
+      !Number.isFinite(aggregationConfig.completionTimeOut)
+    ) {
+      delete aggregationConfig.completionTimeOut;
+    }
+
+    return aggregationConfig;
+  }
+
+  if (componentType === "dynamicroute") {
+    const dynamicRouteConfig = { ...backendConfig };
+    removeBlankStringField(dynamicRouteConfig, "clazz");
+
+    if (!Array.isArray(dynamicRouteConfig.routes)) {
+      dynamicRouteConfig.routes = [];
+    }
+
+    if (typeof dynamicRouteConfig.isMap !== "boolean") {
+      dynamicRouteConfig.isMap = true;
+    }
+
+    return dynamicRouteConfig;
+  }
+
+  if (componentType === "filter") {
+    const filterConfig = { ...backendConfig };
+    removeBlankStringField(filterConfig, "clazz");
+
+    if (!Array.isArray(filterConfig.steps) || filterConfig.steps.length === 0) {
+      delete filterConfig.steps;
+    }
+
+    return filterConfig;
+  }
+
+  if (componentType === "enrich") {
+    const enrichConfig = { ...backendConfig };
+
+    if (typeof enrichConfig.enrichStrategyClazz !== "string" || !enrichConfig.enrichStrategyClazz.trim()) {
+      enrichConfig.enrichStrategyClazz = DEFAULT_ENRICH_STRATEGY_CLASS;
+    }
+
+    if (!["NONE", "REST", "DB"].includes(String(enrichConfig.endpointType ?? ""))) {
+      enrichConfig.endpointType = "NONE";
+    }
+
+    enrichConfig.requestMapper = isPlainRecord(enrichConfig.requestMapper) ? enrichConfig.requestMapper : {};
+    enrichConfig.responseMapper = isPlainRecord(enrichConfig.responseMapper) ? enrichConfig.responseMapper : {};
+
+    if (enrichConfig.split === true) {
+      if (
+        typeof enrichConfig.aggregationStrategyClazz !== "string" ||
+        !enrichConfig.aggregationStrategyClazz.trim()
+      ) {
+        enrichConfig.aggregationStrategyClazz = DEFAULT_SPLIT_AGGREGATION_STRATEGY_CLASS;
+      }
+    } else {
+      delete enrichConfig.aggregationStrategyClazz;
+      delete enrichConfig.parallelProcessing;
+    }
+
+    return enrichConfig;
+  }
 
   if (componentType !== "marshal") {
     return backendConfig;
@@ -1164,13 +1369,19 @@ function buildWorkflowFromRouteDefinition(
       step?.type === "setHeader" ||
       step?.type === "setProperty" ||
       step?.type === "setContext" ||
+      step?.type === "globalOption" ||
       step?.type === "convertBodyTo" ||
       step?.type === "transform" ||
+      step?.type === "filter" ||
+      step?.type === "dynamicroute" ||
       step?.type === "validate" ||
       step?.type === "process" ||
+      step?.type === "bean" ||
       step?.type === "upload" ||
       step?.type === "download" ||
+      step?.type === "enrich" ||
       step?.type === "dbCrud" ||
+      step?.type === "aggregation" ||
       step?.type === "delay" ||
       step?.type === "log",
   );
@@ -1218,6 +1429,8 @@ function buildWorkflowFromRouteDefinition(
       label:
         componentKey === "process"
           ? step.ref?.trim() || "Process"
+          : componentKey === "bean"
+            ? step.ref?.trim() || step.method?.trim() || "Bean"
           : componentKey === "log"
             ? step.name?.trim() || "Log"
             : componentKey === "setBody"
@@ -1228,18 +1441,28 @@ function buildWorkflowFromRouteDefinition(
                 ? step.name?.trim() || "Set Property"
                 : componentKey === "setContext"
                   ? step.name?.trim() || "Set Context"
+                : componentKey === "globalOption"
+                  ? step.name?.trim() || "Global Option"
                 : componentKey === "convertBodyTo"
                   ? "Convert Body"
                   : componentKey === "transform"
                     ? "Transform"
+              : componentKey === "filter"
+                ? "Filter"
+              : componentKey === "dynamicroute"
+                ? "Dynamic Route"
               : componentKey === "validate"
                 ? "Validate"
               : componentKey === "delay"
                 ? "Delay"
+              : componentKey === "aggregation"
+                ? "Aggregation"
               : componentKey === "marshal"
                 ? "Marshal"
                 : componentKey === "unmarshal"
                   ? "Unmarshal"
+                  : componentKey === "enrich"
+                    ? "Enrich"
                   : "Set Header",
       config:
         componentKey === "process"
@@ -1249,6 +1472,16 @@ function buildWorkflowFromRouteDefinition(
               disabled: Boolean(step.disabled),
               parameters: step.parameters ?? {},
               dependencies: normalizeDependencyList(step.dependencies),
+              }
+          : componentKey === "bean"
+            ? {
+                ref: step.ref ?? "",
+                clazz: step.clazz ?? "",
+                method: step.method ?? "",
+                constructorArgs: Array.isArray(step.constructorArgs) ? step.constructorArgs : [],
+                enableSecurityContext: Boolean(step.enableSecurityContext),
+                disabled: Boolean(step.disabled),
+                dependencies: normalizeDependencyList(step.dependencies),
               }
           : componentKey === "unmarshal"
             ? {
@@ -1305,6 +1538,14 @@ function buildWorkflowFromRouteDefinition(
                 parameters: step.parameters ?? {},
                 dependencies: normalizeDependencyList(step.dependencies),
               }
+          : componentKey === "globalOption"
+            ? {
+                name: step.name ?? "optionName",
+                expression: step.expression ?? "",
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
           : componentKey === "convertBodyTo"
             ? {
                 clazz: step.clazz ?? "java.lang.String",
@@ -1324,6 +1565,24 @@ function buildWorkflowFromRouteDefinition(
                 parameters: step.parameters ?? {},
                 dependencies: normalizeDependencyList(step.dependencies),
               }
+          : componentKey === "filter"
+            ? {
+                expression: step.expression ?? "${body} != null",
+                clazz: step.clazz ?? "",
+                steps: Array.isArray(step.steps) ? step.steps : [],
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
+          : componentKey === "dynamicroute"
+            ? {
+                clazz: step.clazz ?? "",
+                routes: Array.isArray(step.routes) ? step.routes : [],
+                isMap: step.isMap !== false,
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
           : componentKey === "log"
             ? {
                 message: typeof step.message === "string" ? step.message : "Processing exchange",
@@ -1338,6 +1597,50 @@ function buildWorkflowFromRouteDefinition(
                 expression: step.expression ?? "1000",
                 disabled: Boolean(step.disabled),
                 parameters: step.parameters ?? {},
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
+          : componentKey === "enrich"
+            ? {
+                endpoint: step.endpoint ?? "",
+                endpointType: step.endpointType ?? "NONE",
+                enrichStrategyClazz:
+                  typeof step.enrichStrategyClazz === "string" && step.enrichStrategyClazz.trim()
+                    ? step.enrichStrategyClazz
+                    : DEFAULT_ENRICH_STRATEGY_CLASS,
+                requestMapper:
+                  step.requestMapper && typeof step.requestMapper === "object" && !Array.isArray(step.requestMapper)
+                    ? step.requestMapper
+                    : {},
+                responseMapper:
+                  step.responseMapper && typeof step.responseMapper === "object" && !Array.isArray(step.responseMapper)
+                    ? step.responseMapper
+                    : {},
+                split: Boolean(step.split),
+                parallelProcessing: Boolean(step.parallelProcessing),
+                aggregationStrategyClazz:
+                  typeof step.aggregationStrategyClazz === "string" && step.aggregationStrategyClazz.trim()
+                    ? step.aggregationStrategyClazz
+                    : DEFAULT_SPLIT_AGGREGATION_STRATEGY_CLASS,
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
+          : componentKey === "aggregation"
+            ? {
+                aggregationClazz:
+                  step.aggregationClazz && typeof step.aggregationClazz === "object" && !Array.isArray(step.aggregationClazz)
+                    ? step.aggregationClazz
+                    : {
+                        clazz:
+                          typeof step.clazz === "string" && step.clazz.trim()
+                            ? step.clazz
+                            : DEFAULT_AGGREGATION_STRATEGY_CLASS,
+                        parameters: step.parameters ?? {},
+                      },
+                correlationExpression: step.correlationExpression ?? "",
+                completionSize: step.completionSize,
+                completionTimeOut: step.completionTimeOut,
+                disabled: Boolean(step.disabled),
                 dependencies: normalizeDependencyList(step.dependencies),
               }
           : {
@@ -1403,13 +1706,19 @@ function normalizePersistedState(
       "setHeader",
       "setProperty",
       "setContext",
+      "globalOption",
       "convertBodyTo",
       "transform",
+      "filter",
+      "dynamicroute",
       "validate",
       "process",
+      "bean",
       "upload",
       "download",
+      "enrich",
       "dbCrud",
+      "aggregation",
       "delay",
       "log",
     ].includes(node.type ?? "");
