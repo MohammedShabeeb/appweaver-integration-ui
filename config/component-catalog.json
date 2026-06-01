@@ -129,6 +129,14 @@
       "dependencies": []
     },
     {
+      "type": "split",
+      "defaultGroup": "batchParallel",
+      "singleEndpointOnly": false,
+      "color": "#0d9488",
+      "bgClass": "sidebar-item-setheader",
+      "dependencies": []
+    },
+    {
       "type": "dynamicroute",
       "defaultGroup": "logic",
       "singleEndpointOnly": false,
@@ -165,6 +173,22 @@
       "defaultGroup": "processing",
       "singleEndpointOnly": false,
       "color": "#a855f7",
+      "bgClass": "sidebar-item-switch",
+      "dependencies": []
+    },
+    {
+      "type": "to",
+      "defaultGroup": "connectors",
+      "singleEndpointOnly": false,
+      "color": "#2563eb",
+      "bgClass": "sidebar-item-http",
+      "dependencies": []
+    },
+    {
+      "type": "toD",
+      "defaultGroup": "connectors",
+      "singleEndpointOnly": false,
+      "color": "#7c3aed",
       "bgClass": "sidebar-item-switch",
       "dependencies": []
     },

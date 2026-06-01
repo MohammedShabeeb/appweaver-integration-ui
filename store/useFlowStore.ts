@@ -221,6 +221,13 @@ type RouteImportStep = {
   ref?: string;
   expression?: string;
   steps?: unknown;
+  splitClazz?: unknown;
+  tokenize?: string;
+  parallel?: boolean;
+  streaming?: boolean;
+  executorServiceRef?: string;
+  enableParallelExecutorServiceRef?: boolean;
+  useVirtualThread?: boolean;
   mapper?: unknown;
   data?: unknown;
   value?: unknown;
@@ -243,6 +250,7 @@ type RouteImportStep = {
   split?: boolean;
   parallelProcessing?: boolean;
   endpoint?: string;
+  toD?: boolean;
   timeout?: number;
   contentType?: string;
   isInline?: boolean;
@@ -357,10 +365,13 @@ function createFlowNode(
     convertBodyTo: "Convert Body",
     transform: "Transform",
     filter: "Filter",
+    split: "Split",
     dynamicroute: "Dynamic Route",
     validate: "Validate",
     process: "Process",
     bean: "Bean",
+    to: "To",
+    toD: "To Dynamic",
     upload: "Upload",
     download: "Download",
     enrich: "Enrich",
@@ -427,6 +438,21 @@ function createFlowNode(
       clazz: "",
       steps: [],
     },
+    split: {
+      disabled: false,
+      expression: "",
+      tokenize: "",
+      parallel: false,
+      streaming: true,
+      useVirtualThread: false,
+      enableParallelExecutorServiceRef: false,
+      executorServiceRef: "",
+      aggregationClazz: {
+        clazz: DEFAULT_AGGREGATION_STRATEGY_CLASS,
+        parameters: {},
+      },
+      steps: [],
+    },
     dynamicroute: {
       disabled: false,
       clazz: "com.example.DynamicRouter",
@@ -456,6 +482,16 @@ function createFlowNode(
       method: "",
       constructorArgs: [],
       enableSecurityContext: false,
+    },
+    to: {
+      disabled: false,
+      endpoint: "direct:next",
+      parameters: {},
+    },
+    toD: {
+      disabled: false,
+      endpoint: "direct:${header.nextEndpoint}",
+      parameters: {},
     },
     upload: {
       disabled: false,
@@ -978,6 +1014,39 @@ function stripBackendStepConfig(
     return filterConfig;
   }
 
+  if (componentType === "split") {
+    const splitConfig = { ...backendConfig };
+
+    removeBlankStringField(splitConfig, "expression");
+    removeBlankStringField(splitConfig, "tokenize");
+    removeBlankStringField(splitConfig, "executorServiceRef");
+
+    if (!isPlainRecord(splitConfig.splitClazz)) {
+      delete splitConfig.splitClazz;
+    }
+
+    if (!isPlainRecord(splitConfig.aggregationClazz)) {
+      delete splitConfig.aggregationClazz;
+    }
+
+    if (!Array.isArray(splitConfig.steps)) {
+      splitConfig.steps = [];
+    }
+
+    if (typeof splitConfig.completionSize !== "number" || !Number.isFinite(splitConfig.completionSize)) {
+      delete splitConfig.completionSize;
+    }
+
+    if (
+      typeof splitConfig.completionTimeOut !== "number" ||
+      !Number.isFinite(splitConfig.completionTimeOut)
+    ) {
+      delete splitConfig.completionTimeOut;
+    }
+
+    return splitConfig;
+  }
+
   if (componentType === "enrich") {
     const enrichConfig = { ...backendConfig };
 
@@ -1373,10 +1442,13 @@ function buildWorkflowFromRouteDefinition(
       step?.type === "convertBodyTo" ||
       step?.type === "transform" ||
       step?.type === "filter" ||
+      step?.type === "split" ||
       step?.type === "dynamicroute" ||
       step?.type === "validate" ||
       step?.type === "process" ||
       step?.type === "bean" ||
+      step?.type === "to" ||
+      step?.type === "toD" ||
       step?.type === "upload" ||
       step?.type === "download" ||
       step?.type === "enrich" ||
@@ -1433,6 +1505,10 @@ function buildWorkflowFromRouteDefinition(
             ? step.ref?.trim() || step.method?.trim() || "Bean"
           : componentKey === "log"
             ? step.name?.trim() || "Log"
+          : componentKey === "to"
+            ? "To"
+          : componentKey === "toD"
+            ? "To Dynamic"
             : componentKey === "setBody"
               ? step.name?.trim() || "Set Body"
             : componentKey === "setHeader"
@@ -1449,6 +1525,8 @@ function buildWorkflowFromRouteDefinition(
                     ? "Transform"
               : componentKey === "filter"
                 ? "Filter"
+              : componentKey === "split"
+                ? "Split"
               : componentKey === "dynamicroute"
                 ? "Dynamic Route"
               : componentKey === "validate"
@@ -1574,6 +1652,30 @@ function buildWorkflowFromRouteDefinition(
                 parameters: step.parameters ?? {},
                 dependencies: normalizeDependencyList(step.dependencies),
               }
+          : componentKey === "split"
+            ? {
+                expression: step.expression ?? "",
+                tokenize: step.tokenize ?? "",
+                splitClazz:
+                  step.splitClazz && typeof step.splitClazz === "object" && !Array.isArray(step.splitClazz)
+                    ? step.splitClazz
+                    : undefined,
+                aggregationClazz:
+                  step.aggregationClazz && typeof step.aggregationClazz === "object" && !Array.isArray(step.aggregationClazz)
+                    ? step.aggregationClazz
+                    : undefined,
+                parallel: Boolean(step.parallel),
+                streaming: step.streaming !== false,
+                executorServiceRef: step.executorServiceRef ?? "",
+                enableParallelExecutorServiceRef: Boolean(step.enableParallelExecutorServiceRef),
+                useVirtualThread: Boolean(step.useVirtualThread),
+                completionSize: step.completionSize,
+                completionTimeOut: step.completionTimeOut,
+                steps: Array.isArray(step.steps) ? step.steps : [],
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
           : componentKey === "dynamicroute"
             ? {
                 clazz: step.clazz ?? "",
@@ -1588,6 +1690,13 @@ function buildWorkflowFromRouteDefinition(
                 message: typeof step.message === "string" ? step.message : "Processing exchange",
                 name: step.name ?? "DEFAULT",
                 logLevel: typeof step.logLevel === "string" ? step.logLevel : "INFO",
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
+          : componentKey === "to" || componentKey === "toD"
+            ? {
+                endpoint: step.endpoint ?? "",
                 disabled: Boolean(step.disabled),
                 parameters: step.parameters ?? {},
                 dependencies: normalizeDependencyList(step.dependencies),
@@ -1710,10 +1819,13 @@ function normalizePersistedState(
       "convertBodyTo",
       "transform",
       "filter",
+      "split",
       "dynamicroute",
       "validate",
       "process",
       "bean",
+      "to",
+      "toD",
       "upload",
       "download",
       "enrich",

@@ -152,6 +152,18 @@ export function DynamicRouteIcon(props: IconProps) {
   );
 }
 
+export function SplitIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M5 6h5v5H5z" />
+      <path d="M14 3h5v5h-5z" />
+      <path d="M14 16h5v5h-5z" />
+      <path d="M10 8.5c2.5 0 2.5-3 4-3" />
+      <path d="M10 8.5c2.5 0 2.5 10 4 10" />
+    </BaseIcon>
+  );
+}
+
 export function UnmarshalIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>
@@ -225,6 +237,29 @@ export function ConnectorIcon(props: IconProps) {
       <circle cx="6" cy="12" r="2.5" />
       <circle cx="18" cy="12" r="2.5" />
       <path d="M8.5 12h7" />
+    </BaseIcon>
+  );
+}
+
+export function ToEndpointIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <circle cx="6" cy="12" r="2.5" />
+      <path d="M9 12h8" />
+      <path d="m14 8 4 4-4 4" />
+      <path d="M18 6v12" />
+    </BaseIcon>
+  );
+}
+
+export function ToDynamicEndpointIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <circle cx="5.5" cy="12" r="2.5" />
+      <path d="M8 12h5" />
+      <path d="M13 8h3.5a2.5 2.5 0 0 1 0 5H14" />
+      <path d="M13 16h3.5a2.5 2.5 0 0 0 0-5H14" />
+      <path d="m17 9 3 3-3 3" />
     </BaseIcon>
   );
 }
@@ -328,6 +363,10 @@ export const nodeTypeMeta = {
     label: "Filter",
     Icon: FilterIcon,
   },
+  split: {
+    label: "Split",
+    Icon: SplitIcon,
+  },
   dynamicroute: {
     label: "Dynamic Route",
     Icon: DynamicRouteIcon,
@@ -347,6 +386,14 @@ export const nodeTypeMeta = {
   bean: {
     label: "Bean",
     Icon: BeanIcon,
+  },
+  to: {
+    label: "To",
+    Icon: ToEndpointIcon,
+  },
+  toD: {
+    label: "To Dynamic",
+    Icon: ToDynamicEndpointIcon,
   },
   upload: {
     label: "Upload",

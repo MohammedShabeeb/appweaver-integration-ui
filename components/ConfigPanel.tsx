@@ -423,10 +423,16 @@ export default function ConfigPanel() {
           ? "Transform the exchange body with a simple expression or JSON mapper."
         : type === "filter"
           ? "Continue only when an expression or processor allows the exchange."
+        : type === "split"
+          ? "Split the exchange body and run nested backend steps."
         : type === "dynamicroute"
           ? "Route exchanges dynamically through a backend router class."
         : type === "validate"
           ? "Validate the JSON payload with backend validation rules."
+        : type === "to"
+          ? "Send the exchange to a static Camel endpoint."
+        : type === "toD"
+          ? "Send the exchange to a dynamic Camel endpoint URI."
         : type === "upload"
           ? "Upload multipart documents to the configured backend endpoint."
         : type === "download"
@@ -1106,6 +1112,122 @@ export default function ConfigPanel() {
           </div>
         )}
 
+        {type === "split" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Simple expression</span>
+              <input
+                value={String(config.expression ?? "")}
+                placeholder="${body}"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { expression: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Optional. When empty, the backend splits the current body.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Tokenize delimiter</span>
+              <input
+                value={String(config.tokenize ?? "")}
+                placeholder=","
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { tokenize: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Used only when no simple expression or split class is configured.</p>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={config.streaming !== false}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { streaming: event.target.checked },
+                  })
+                }
+              />
+              <span style={{ fontWeight: 700 }}>Streaming split</span>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={Boolean(config.parallel)}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { parallel: event.target.checked },
+                  })
+                }
+              />
+              <span style={{ fontWeight: 700 }}>Parallel processing</span>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={Boolean(config.useVirtualThread)}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { useVirtualThread: event.target.checked },
+                  })
+                }
+              />
+              <span style={{ fontWeight: 700 }}>Use virtual thread executor</span>
+            </label>
+            <label>
+              <span style={labelStyle}>Aggregation class JSON</span>
+              <textarea
+                key={`${selectedNode.id}-split-aggregation`}
+                defaultValue={JSON.stringify(
+                  config.aggregationClazz && typeof config.aggregationClazz === "object" && !Array.isArray(config.aggregationClazz)
+                    ? config.aggregationClazz
+                    : {},
+                  null,
+                  2,
+                )}
+                placeholder='{"clazz":"com.example.AggregationStrategy","parameters":{}}'
+                style={{ ...inputStyle, minHeight: 110, resize: "vertical", fontFamily: "monospace" }}
+                onBlur={(event) => {
+                  try {
+                    updateNodeData(selectedNode.id, {
+                      config: { aggregationClazz: parseParameters(event.target.value) },
+                    });
+                  } catch (issue) {
+                    window.alert(issue instanceof Error ? issue.message : "Aggregation class must be valid JSON.");
+                  }
+                }}
+              />
+            </label>
+            <label>
+              <span style={labelStyle}>Nested steps JSON</span>
+              <textarea
+                key={`${selectedNode.id}-split-steps`}
+                defaultValue={JSON.stringify(Array.isArray(config.steps) ? config.steps : [], null, 2)}
+                placeholder='[{"type":"log","message":"Inside split"}]'
+                style={{ ...inputStyle, minHeight: 130, resize: "vertical", fontFamily: "monospace" }}
+                onBlur={(event) => {
+                  try {
+                    const parsed = JSON.parse(event.target.value || "[]");
+                    if (!Array.isArray(parsed)) {
+                      throw new Error("Nested steps must be a JSON array.");
+                    }
+                    updateNodeData(selectedNode.id, {
+                      config: { steps: parsed },
+                    });
+                  } catch (issue) {
+                    window.alert(issue instanceof Error ? issue.message : "Nested steps must be valid JSON.");
+                  }
+                }}
+              />
+              <p style={helperTextStyle}>Saved as backend `steps` and applied inside the split block.</p>
+            </label>
+          </div>
+        )}
+
         {type === "dynamicroute" && (
           <div style={sectionStyle}>
             <label>
@@ -1427,6 +1549,54 @@ export default function ConfigPanel() {
                 }
               />
               <span style={{ fontWeight: 700 }}>Enable security context</span>
+            </label>
+          </div>
+        )}
+
+        {(type === "to" || type === "toD") && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Endpoint</span>
+              <input
+                value={String(config.endpoint ?? "")}
+                placeholder={type === "toD" ? "direct:${header.nextEndpoint}" : "direct:next"}
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { endpoint: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>
+                Saved as `endpoint` and converted with backend component URI parameters.
+              </p>
+            </label>
+            <label>
+              <span style={labelStyle}>Parameters JSON</span>
+              <textarea
+                key={`${selectedNode.id}-${type}-parameters`}
+                defaultValue={JSON.stringify(
+                  config.parameters && typeof config.parameters === "object" && !Array.isArray(config.parameters)
+                    ? config.parameters
+                    : {},
+                  null,
+                  2,
+                )}
+                placeholder='{"bridgeEndpoint":true}'
+                style={{ ...inputStyle, minHeight: 110, resize: "vertical", fontFamily: "monospace" }}
+                onBlur={(event) => {
+                  try {
+                    updateNodeData(selectedNode.id, {
+                      config: { parameters: parseParameters(event.target.value) },
+                    });
+                  } catch (issue) {
+                    window.alert(issue instanceof Error ? issue.message : "Parameters must be valid JSON.");
+                  }
+                }}
+              />
+              <p style={helperTextStyle}>
+                Saved as `parameters` and appended to the endpoint URI before Camel {type === "toD" ? "`toD`" : "`to`"} runs.
+              </p>
             </label>
           </div>
         )}
