@@ -3,7 +3,7 @@
 import {
   BaseEdge,
   EdgeLabelRenderer,
-  getBezierPath,
+  getStraightPath,
   type EdgeProps,
 } from "reactflow";
 import { useFlowStore } from "@/store/useFlowStore";
@@ -14,19 +14,15 @@ export default function InsertableEdge({
   sourceY,
   targetX,
   targetY,
-  sourcePosition,
-  targetPosition,
   selected,
 }: EdgeProps) {
   const insertNodeOnEdge = useFlowStore((state) => state.insertNodeOnEdge);
 
-  const [edgePath, labelX, labelY] = getBezierPath({
+  const [edgePath, labelX, labelY] = getStraightPath({
     sourceX,
     sourceY,
     targetX,
     targetY,
-    sourcePosition,
-    targetPosition,
   });
 
   return (

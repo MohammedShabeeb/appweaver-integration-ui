@@ -1404,6 +1404,47 @@ function arrangeRouteCanvas(canvas: CanvasState): CanvasState {
 
       return position ? { ...node, position } : node;
     }),
+    edges: canvas.edges.map((edge) => {
+      const sourceIndex = routeNodes.findIndex((node) => node.id === edge.source);
+      const targetIndex = routeNodes.findIndex((node) => node.id === edge.target);
+
+      if (sourceIndex === -1 || targetIndex !== sourceIndex + 1) {
+        return edge;
+      }
+
+      const sourcePosition = positions.get(edge.source);
+      const targetPosition = positions.get(edge.target);
+
+      if (!sourcePosition || !targetPosition) {
+        return edge;
+      }
+
+      return {
+        ...edge,
+        ...getRouteEdgeHandles(sourcePosition, targetPosition),
+      };
+    }),
+  };
+}
+
+function getRouteEdgeHandles(sourcePosition: XYPosition, targetPosition: XYPosition) {
+  if (Math.abs(sourcePosition.y - targetPosition.y) > Math.abs(sourcePosition.x - targetPosition.x)) {
+    return {
+      sourceHandle: "source-bottom",
+      targetHandle: "target-top",
+    };
+  }
+
+  if (targetPosition.x < sourcePosition.x) {
+    return {
+      sourceHandle: "source-left",
+      targetHandle: "target-right",
+    };
+  }
+
+  return {
+    sourceHandle: "source-right",
+    targetHandle: "target-left",
   };
 }
 
@@ -1531,6 +1572,7 @@ function buildWorkflowFromRouteDefinition(
   const nodes: AppNode[] = [startNode];
   const edges: AppEdge[] = [];
   let previousNodeId = startNodeId;
+  let previousNodePosition = startNode.position;
 
   supportedSteps.forEach((step, index) => {
     const componentKey = step.type;
@@ -1806,9 +1848,11 @@ function buildWorkflowFromRouteDefinition(
       id: `${previousNodeId}-${node.id}`,
       source: previousNodeId,
       target: node.id,
+      ...getRouteEdgeHandles(previousNodePosition, node.position),
       type: "insertable",
     });
     previousNodeId = node.id;
+    previousNodePosition = node.position;
   });
 
   return {

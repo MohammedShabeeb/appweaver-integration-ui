@@ -175,11 +175,13 @@ export default function FlowNodeCard({
         <>
           <Handle id="target-top" type="target" position={Position.Top} className="flow-handle" />
           <Handle id="target-left" type="target" position={Position.Left} className="flow-handle" />
+          <Handle id="target-right" type="target" position={Position.Right} className="flow-handle" />
         </>
       ) : null}
       {sourceHandles ? (
         <>
           <Handle id="source-bottom" type="source" position={Position.Bottom} className="flow-handle" />
+          <Handle id="source-left" type="source" position={Position.Left} className="flow-handle" />
           <Handle id="source-right" type="source" position={Position.Right} className="flow-handle" />
         </>
       ) : null}
