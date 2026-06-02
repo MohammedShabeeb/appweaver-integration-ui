@@ -75,6 +75,7 @@ export default function FlowCanvas() {
     clearSelection,
     deleteNode,
     deleteEdge,
+    arrangeCurrentRoute,
     clearCurrentCanvas,
     goBackCanvas,
     openCanvasFromBreadcrumb,
@@ -633,9 +634,7 @@ export default function FlowCanvas() {
         <Background color="#d7dee8" gap={20} size={1} />
         <Controls />
       </ReactFlow>
-      <button
-        type="button"
-        onClick={clearCurrentCanvas}
+      <div
         style={{
           position: "absolute",
           right: 16,
@@ -643,24 +642,65 @@ export default function FlowCanvas() {
           zIndex: 20,
           display: "inline-flex",
           alignItems: "center",
-          justifyContent: "center",
-          minWidth: 92,
-          height: 36,
-          borderRadius: 10,
-          border: "1px solid rgba(248, 113, 113, 0.25)",
-          background: "rgba(255, 245, 245, 0.96)",
-          backdropFilter: "blur(12px)",
-          padding: "0 12px",
-          color: "#dc2626",
-          fontSize: 12,
-          fontWeight: 700,
-          fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
-          cursor: "pointer",
-          boxShadow: "0 8px 20px rgba(15, 23, 42, 0.08)",
+          gap: 8,
+          borderRadius: 12,
+          border: "1px solid rgba(226, 232, 240, 0.95)",
+          background: "rgba(255, 255, 255, 0.94)",
+          backdropFilter: "blur(14px)",
+          padding: 6,
+          boxShadow: "0 12px 28px rgba(15, 23, 42, 0.10)",
         }}
       >
-        Clear Canvas
-      </button>
+        <button
+          type="button"
+          onClick={() => {
+            arrangeCurrentRoute();
+            window.setTimeout(() => {
+              reactFlowRef.current?.fitView({ padding: 0.35, maxZoom: 0.95, duration: 260 });
+            }, 0);
+          }}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            minWidth: 108,
+            height: 34,
+            borderRadius: 8,
+            border: "1px solid rgba(45, 183, 128, 0.34)",
+            background: "rgba(240, 253, 244, 0.98)",
+            padding: "0 12px",
+            color: "var(--workflow-accent)",
+            fontSize: 12,
+            fontWeight: 800,
+            fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
+            cursor: "pointer",
+          }}
+        >
+          Arrange Route
+        </button>
+        <button
+          type="button"
+          onClick={clearCurrentCanvas}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            minWidth: 96,
+            height: 34,
+            borderRadius: 8,
+            border: "1px solid rgba(248, 113, 113, 0.30)",
+            background: "rgba(255, 245, 245, 0.98)",
+            padding: "0 12px",
+            color: "#dc2626",
+            fontSize: 12,
+            fontWeight: 800,
+            fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
+            cursor: "pointer",
+          }}
+        >
+          Clear Canvas
+        </button>
+      </div>
     </div>
   );
 }

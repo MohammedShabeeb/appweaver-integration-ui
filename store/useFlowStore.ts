@@ -1367,6 +1367,46 @@ function getRouteOrderedNodes(canvas: CanvasState): AppNode[] {
   return orderedNodes;
 }
 
+const ROUTE_CANVAS_LAYOUT = {
+  startX: 160,
+  startY: 140,
+  columnGap: 240,
+  rowGap: 160,
+  nodesPerRow: 3,
+};
+
+function getRouteCanvasPosition(layoutIndex: number): XYPosition {
+  const row = Math.floor(layoutIndex / ROUTE_CANVAS_LAYOUT.nodesPerRow);
+  const column = layoutIndex % ROUTE_CANVAS_LAYOUT.nodesPerRow;
+  const isReverseRow = row % 2 === 1;
+  const visualColumn = isReverseRow ? ROUTE_CANVAS_LAYOUT.nodesPerRow - 1 - column : column;
+
+  return {
+    x: ROUTE_CANVAS_LAYOUT.startX + visualColumn * ROUTE_CANVAS_LAYOUT.columnGap,
+    y: ROUTE_CANVAS_LAYOUT.startY + row * ROUTE_CANVAS_LAYOUT.rowGap,
+  };
+}
+
+function arrangeRouteCanvas(canvas: CanvasState): CanvasState {
+  const startNode = canvas.nodes.find((node) => node.type === "start") ?? canvas.nodes[0] ?? null;
+
+  if (!startNode) {
+    return canvas;
+  }
+
+  const routeNodes = [startNode, ...getRouteOrderedNodes(canvas)];
+  const positions = new Map(routeNodes.map((node, index) => [node.id, getRouteCanvasPosition(index)]));
+
+  return {
+    ...canvas,
+    nodes: canvas.nodes.map((node) => {
+      const position = positions.get(node.id);
+
+      return position ? { ...node, position } : node;
+    }),
+  };
+}
+
 function createBackendRouteJson(workflow: WorkflowRecord): BackendRouteExport {
   const rootCanvas = workflow.canvases[workflow.rootCanvasId];
   const startNode = rootCanvas?.nodes.find((node) => node.type === "start") ?? null;
@@ -1471,7 +1511,7 @@ function buildWorkflowFromRouteDefinition(
   const workflowId = createWorkflowId(workflowName);
   const rootCanvasId = `canvas-${workflowId}`;
   const startNodeId = `${rootCanvasId}-start`;
-  const startNode = createStartNode(startNodeId, { x: 160, y: 140 });
+  const startNode = createStartNode(startNodeId, getRouteCanvasPosition(0));
 
   startNode.data = {
     ...startNode.data,
@@ -1494,7 +1534,7 @@ function buildWorkflowFromRouteDefinition(
 
   supportedSteps.forEach((step, index) => {
     const componentKey = step.type;
-    const node = createFlowNode(componentKey, { x: 160 + (index + 1) * 240, y: 140 });
+    const node = createFlowNode(componentKey, getRouteCanvasPosition(index + 1));
 
     node.data = {
       ...node.data,
@@ -1962,6 +2002,7 @@ interface FlowState {
   updateNodeData: (id: string, data: Partial<AppNodeData>) => void;
   deleteNode: (id: string) => void;
   deleteEdge: (id: string) => void;
+  arrangeCurrentRoute: () => void;
   clearCurrentCanvas: () => void;
   insertNodeOnEdge: (edgeId: string, type: InsertableNodeType) => void;
   goBackCanvas: () => void;
@@ -3032,6 +3073,29 @@ export const useFlowStore = create<FlowState>()(
             }),
             selectedEdge: state.selectedEdge?.id === id ? null : state.selectedEdge,
           };
+        }),
+
+      arrangeCurrentRoute: () =>
+        set((state) => {
+          const activeWorkflow = state.workflows[state.activeWorkflowId];
+
+          if (!activeWorkflow) {
+            return state;
+          }
+
+          const currentCanvas = activeWorkflow.canvases[activeWorkflow.currentCanvasId];
+
+          if (!currentCanvas) {
+            return state;
+          }
+
+          return syncActiveWorkflow(state, {
+            ...activeWorkflow,
+            canvases: {
+              ...activeWorkflow.canvases,
+              [activeWorkflow.currentCanvasId]: arrangeRouteCanvas(currentCanvas),
+            },
+          });
         }),
 
       clearCurrentCanvas: () =>
