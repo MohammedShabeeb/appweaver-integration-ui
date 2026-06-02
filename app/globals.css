@@ -307,12 +307,35 @@ body::-webkit-scrollbar-thumb:hover,
   transform: translateX(-50%) translateY(0) scale(1);
 }
 
+.topnav-action:last-child .topnav-tooltip {
+  left: auto;
+  right: 0;
+  transform: translateY(6px) scale(0.96);
+}
+
+.topnav-action:last-child .topnav-tooltip::before {
+  left: auto;
+  right: 18px;
+  transform: rotate(45deg);
+}
+
+.topnav-action:last-child:hover .topnav-tooltip,
+.topnav-action:last-child:focus-within .topnav-tooltip {
+  transform: translateY(0) scale(1);
+}
+
 .topnav-tooltip-hidden,
 .topnav-action:hover .topnav-tooltip-hidden,
 .topnav-action:focus-within .topnav-tooltip-hidden {
   opacity: 0;
   visibility: hidden;
   transform: translateX(-50%) translateY(6px) scale(0.96);
+}
+
+.topnav-action:last-child .topnav-tooltip-hidden,
+.topnav-action:last-child:hover .topnav-tooltip-hidden,
+.topnav-action:last-child:focus-within .topnav-tooltip-hidden {
+  transform: translateY(6px) scale(0.96);
 }
 
 .topnav-btn-active {
