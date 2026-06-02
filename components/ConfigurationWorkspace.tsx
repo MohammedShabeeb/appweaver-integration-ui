@@ -1523,15 +1523,67 @@ function BeansWorkspace() {
   const [isLoading, setIsLoading] = useState(false);
   const [loadMessage, setLoadMessage] = useState<string | null>(null);
   const [lookupName, setLookupName] = useState("");
+  const [activeBeanSearchIndex, setActiveBeanSearchIndex] = useState(0);
   const constructorArgs = normalizeConstructorArgs(editor.constructorArgs);
 
   const selectedBean = beans.find((bean) => bean.id === selectedBeanId) ?? null;
+  const beanSearchResults = useMemo(() => {
+    const query = lookupName.trim().toLowerCase();
+
+    if (!query) {
+      return beans;
+    }
+
+    const scoredBeans = beans
+      .map((bean) => {
+        const name = bean.name.toLowerCase();
+        const className = bean.className.toLowerCase();
+
+        if (name.startsWith(query)) {
+          return { bean, score: 0 };
+        }
+
+        if (className.startsWith(query)) {
+          return { bean, score: 1 };
+        }
+
+        if (query.length < 2) {
+          return null;
+        }
+
+        if (name.includes(query)) {
+          return { bean, score: 2 };
+        }
+
+        if (className.includes(query)) {
+          return { bean, score: 3 };
+        }
+
+        return null;
+      })
+      .filter((result): result is { bean: CreatedBean; score: number } => result !== null);
+
+    return scoredBeans
+      .sort((a, b) => a.score - b.score || a.bean.name.localeCompare(b.bean.name))
+      .map((result) => result.bean);
+  }, [beans, lookupName]);
+  const activeBeanSearchResult = beanSearchResults[activeBeanSearchIndex] ?? beanSearchResults[0] ?? null;
+  const visibleBeanSearchResults = beanSearchResults.slice(0, 6);
+  const shouldShowBeanSearchResults = lookupName.trim().length > 0 && visibleBeanSearchResults.length > 0;
 
   const parseBeanEditor = () => ({
     name: editor.name,
     className: editor.className,
     constructorArgs: constructorArgs.map((arg) => parseConstructorArgValue(arg)),
   });
+
+  const selectBean = (bean: CreatedBean) => {
+    setSelectedBeanId(bean.id);
+    setEditor(createBeanEditorFromItem(bean));
+    setLookupName(bean.name);
+    setActiveBeanSearchIndex(0);
+    setError(null);
+  };
 
   const loadBeans = useCallback(async () => {
     setIsLoading(true);
@@ -1832,12 +1884,128 @@ function BeansWorkspace() {
                 alignItems: "center",
               }}
             >
-              <input
-                value={lookupName}
-                onChange={(event) => setLookupName(event.target.value)}
-                placeholder="bean name"
-                style={{ ...fieldStyle, minHeight: 44, padding: "9px 12px" }}
-              />
+              <div style={{ position: "relative", minWidth: 0 }}>
+                <input
+                  value={lookupName}
+                  onChange={(event) => {
+                    setLookupName(event.target.value);
+                    setActiveBeanSearchIndex(0);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "ArrowDown" && visibleBeanSearchResults.length > 0) {
+                      event.preventDefault();
+                      setActiveBeanSearchIndex((current) => (current + 1) % visibleBeanSearchResults.length);
+                      return;
+                    }
+
+                    if (event.key === "ArrowUp" && visibleBeanSearchResults.length > 0) {
+                      event.preventDefault();
+                      setActiveBeanSearchIndex(
+                        (current) => (current - 1 + visibleBeanSearchResults.length) % visibleBeanSearchResults.length,
+                      );
+                      return;
+                    }
+
+                    if (event.key === "Tab" && activeBeanSearchResult) {
+                      event.preventDefault();
+                      setLookupName(activeBeanSearchResult.name);
+                      setActiveBeanSearchIndex(0);
+                      return;
+                    }
+
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+
+                      if (activeBeanSearchResult) {
+                        selectBean(activeBeanSearchResult);
+                        return;
+                      }
+
+                      void handleGetBeanByName();
+                    }
+                  }}
+                  placeholder="bean name"
+                  autoComplete="off"
+                  aria-autocomplete="list"
+                  aria-controls="bean-search-results"
+                  style={{ ...fieldStyle, minHeight: 44, padding: "9px 12px" }}
+                />
+                {shouldShowBeanSearchResults ? (
+                  <div
+                    id="bean-search-results"
+                    role="listbox"
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 8px)",
+                      left: 0,
+                      width: "min(300px, calc(100vw - 48px))",
+                      maxWidth: "calc(100vw - 48px)",
+                      zIndex: 30,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
+                      borderRadius: 12,
+                      border: "1px solid rgba(203, 213, 225, 0.9)",
+                      background: "rgba(255, 255, 255, 0.99)",
+                      padding: 6,
+                      boxShadow: "0 18px 40px rgba(15, 23, 42, 0.14)",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {visibleBeanSearchResults.map((bean, index) => (
+                      <button
+                        key={bean.id}
+                        type="button"
+                        role="option"
+                        aria-selected={index === activeBeanSearchIndex}
+                        onMouseEnter={() => setActiveBeanSearchIndex(index)}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          selectBean(bean);
+                        }}
+                        style={{
+                          display: "flex",
+                          width: "100%",
+                          alignItems: "center",
+                          gap: 8,
+                          border: "none",
+                          borderRadius: 8,
+                          background: index === activeBeanSearchIndex ? "rgba(45, 183, 128, 0.10)" : "transparent",
+                          padding: "8px",
+                          color: "#0f172a",
+                          cursor: "pointer",
+                          textAlign: "left",
+                          fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
+                        }}
+                      >
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 26,
+                            height: 26,
+                            borderRadius: 8,
+                            background: index === activeBeanSearchIndex ? "#ffffff" : "rgba(241, 245, 249, 0.95)",
+                            color: "var(--workflow-accent)",
+                            fontSize: 12,
+                            fontWeight: 800,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {bean.name.slice(0, 1).toUpperCase()}
+                      </span>
+                        <span style={{ minWidth: 0, flex: 1 }}>
+                          <span style={{ display: "block", fontSize: 13, fontWeight: 700, lineHeight: "18px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {bean.name}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
               <button
                 type="button"
                 onClick={() => void handleGetBeanByName()}
@@ -1871,8 +2039,8 @@ function BeansWorkspace() {
               paddingRight: 6,
             }}
           >
-            {beans.length > 0 ? (
-              beans.map((bean) => (
+            {beanSearchResults.length > 0 ? (
+              beanSearchResults.map((bean) => (
                 <div
                   key={bean.id}
                   style={{
@@ -1882,9 +2050,7 @@ function BeansWorkspace() {
                   <button
                     type="button"
                     onClick={() => {
-                      setSelectedBeanId(bean.id);
-                      setEditor(createBeanEditorFromItem(bean));
-                      setError(null);
+                      selectBean(bean);
                     }}
                     style={{
                       width: "100%",
@@ -1946,7 +2112,7 @@ function BeansWorkspace() {
                   textAlign: "center",
                 }}
               >
-                No beans created yet.
+                {beans.length > 0 ? "No matching beans found." : "No beans created yet."}
               </div>
             )}
           </div>

@@ -280,6 +280,19 @@ export default function EndpointsConfigurationWorkspace() {
 
   const selectedItem = endpointConfigs.find((item) => item.id === selectedId) ?? null;
   const protocolItems = endpointConfigs.filter((item) => item.protocol === selectedProtocol);
+  const routeLookupSuggestions = useMemo(() => {
+    const query = routeLookupName.trim().toLowerCase();
+    const routeNames = endpointConfigs
+      .filter((item) => item.protocol === "api")
+      .map(getRestRouteNameFromItem);
+    const uniqueRouteNames = Array.from(new Set(routeNames)).sort((a, b) => a.localeCompare(b));
+
+    if (!query) {
+      return uniqueRouteNames;
+    }
+
+    return uniqueRouteNames.filter((name) => name.toLowerCase().includes(query));
+  }, [endpointConfigs, routeLookupName]);
   const groupedItems = useMemo(() => {
     const groups = new Map<EndpointProtocol, CreatedEndpointConfig[]>();
     (["api", "grpc", "sse", "ws"] as const).forEach((protocol) =>
@@ -612,7 +625,30 @@ export default function EndpointsConfigurationWorkspace() {
             {selectedProtocol === "api" ? (
               <>
                 <button type="button" onClick={() => void loadRestRoutes()} disabled={isLoading} style={secondaryButtonStyle}>{isLoading ? "Loading..." : "Load REST Routes"}</button>
-                <input value={routeLookupName} onChange={(event) => setRouteLookupName(event.target.value)} placeholder="route name" style={{ ...fieldStyle, width: 180, minHeight: 43, padding: "9px 12px" }} />
+                <input
+                  value={routeLookupName}
+                  onChange={(event) => setRouteLookupName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Tab" && routeLookupSuggestions[0]) {
+                      event.preventDefault();
+                      setRouteLookupName(routeLookupSuggestions[0]);
+                      return;
+                    }
+
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void loadRestRouteByName();
+                    }
+                  }}
+                  placeholder="route name"
+                  list="rest-route-lookup-suggestions"
+                  style={{ ...fieldStyle, width: 180, minHeight: 43, padding: "9px 12px" }}
+                />
+                <datalist id="rest-route-lookup-suggestions">
+                  {routeLookupSuggestions.map((routeName) => (
+                    <option key={routeName} value={routeName} />
+                  ))}
+                </datalist>
                 <button type="button" onClick={() => void loadRestRouteByName()} disabled={isLoading} style={secondaryButtonStyle}>Get By Name</button>
               </>
             ) : null}
