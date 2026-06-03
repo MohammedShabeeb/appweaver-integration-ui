@@ -76,6 +76,8 @@ const stepDescriptions: Record<StepListItem["type"], string> = {
   download: "Download content from a configured endpoint.",
   enrich: "Call an endpoint and merge its response.",
   dbCrud: "Run create, read, update, delete, or custom SQL operations against the configured database.",
+  smartRouter: "Route to the selected endpoint and optionally transform the request payload first.",
+  agent: "Invoke an LLM agent with tools filtered by a shared direct-route tag.",
   aggregation: "Group messages with a strategy.",
   delay: "Pause processing with a constant or simple expression.",
   log: "Write a log message with logger name and level.",

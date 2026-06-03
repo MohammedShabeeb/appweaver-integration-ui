@@ -42,6 +42,17 @@ const DB_CRUD_OUTPUT_OPTIONS = [
   { label: "Raw", value: "raw" },
   { label: "No response body", value: "none" },
 ] as const;
+const SMART_ROUTER_PROTOCOL_OPTIONS = ["http", "https", "grpc", "soap"] as const;
+const SMART_ROUTER_METHOD_OPTIONS = ["get", "post", "put", "patch", "delete"] as const;
+const SMART_ROUTER_TRANSFORM_OPTIONS = [
+  { label: "Simple Transform", value: "simple-transform" },
+  { label: "Array Transform", value: "array-transform" },
+  { label: "Nested Object Mapping", value: "nested-object-mapping-transform" },
+  { label: "Nested Array Nested Object", value: "nested-array-nested-object" },
+  { label: "Enrichment Transform", value: "enrichment-transform" },
+  { label: "Multi Array Transform", value: "multi-array-transform" },
+  { label: "Flatten Transform", value: "flatten-transform" },
+] as const;
 const UNMARSHAL_TYPE_OPTIONS = [
   { label: "JSON", value: "json" },
   { label: "CSV", value: "csv" },
@@ -392,6 +403,7 @@ export default function ConfigPanel() {
   const selectedProcessMode = typeof config.clazz === "string" && config.clazz.trim() ? "clazz" : "ref";
   const selectedBeanMode = typeof config.clazz === "string" && config.clazz.trim() ? "clazz" : "ref";
   const selectedDbCrudOperation = String(config.operation ?? "customSql");
+  const selectedSmartRouterProtocol = String(config.protocol ?? "http");
   const aggregationClazz =
     config.aggregationClazz && typeof config.aggregationClazz === "object" && !Array.isArray(config.aggregationClazz)
       ? (config.aggregationClazz as Record<string, unknown>)
@@ -441,6 +453,10 @@ export default function ConfigPanel() {
           ? "Enrich the exchange from another endpoint using request and response mapping."
         : type === "dbCrud"
           ? "Configure a database operation that exports as standard backend route steps."
+        : type === "smartRouter"
+          ? "Route requests to the configured endpoint and optionally transform the payload first."
+        : type === "agent"
+          ? "Invoke the backend agent endpoint with direct-route tools filtered by tag."
         : type === "bean"
           ? "Invoke a backend bean by registry reference or Java class."
         : type === "aggregation"
@@ -1597,6 +1613,260 @@ export default function ConfigPanel() {
               <p style={helperTextStyle}>
                 Saved as `parameters` and appended to the endpoint URI before Camel {type === "toD" ? "`toD`" : "`to`"} runs.
               </p>
+            </label>
+          </div>
+        )}
+
+        {type === "smartRouter" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Protocol</span>
+              <div style={selectWrapStyle}>
+                <select
+                  value={selectedSmartRouterProtocol}
+                  style={selectStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { protocol: event.target.value },
+                    })
+                  }
+                >
+                  {SMART_ROUTER_PROTOCOL_OPTIONS.map((option) => (
+                    <option key={option} value={option} style={optionStyle}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={selectIconStyle} aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+              <p style={helperTextStyle}>Exports inside `parameters.protocol` for the backend `smart-router` endpoint.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Target URL</span>
+              <input
+                value={String(config.url ?? "")}
+                placeholder={selectedSmartRouterProtocol === "grpc" ? "localhost:9090/MyService" : "https://example.com/api"}
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { url: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>For HTTP/SOAP this is the target URL; for gRPC the backend builds `grpc://url?method=...`.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Method</span>
+              <div style={selectWrapStyle}>
+                <select
+                  value={String(config.method ?? "post")}
+                  style={selectStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { method: event.target.value },
+                    })
+                  }
+                >
+                  {SMART_ROUTER_METHOD_OPTIONS.map((option) => (
+                    <option key={option} value={option} style={optionStyle}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={selectIconStyle} aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+            </label>
+            <label>
+              <span style={labelStyle}>Content type</span>
+              <input
+                value={String(config.contentType ?? "application/json")}
+                placeholder="application/json"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { contentType: event.target.value },
+                  })
+                }
+              />
+            </label>
+            <label>
+              <span style={labelStyle}>Header params</span>
+              <input
+                value={String(config.headerParams ?? "")}
+                placeholder="X-App:MyFramework,X-Tenant:${header.tenant}"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { headerParams: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Comma-separated `Header:value` mappings passed as `parameters.headerParams`.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Query params</span>
+              <input
+                value={String(config.queryParams ?? "")}
+                placeholder="query:${header.query},limit:10"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { queryParams: event.target.value },
+                  })
+                }
+              />
+            </label>
+            {selectedSmartRouterProtocol === "soap" ? (
+              <label>
+                <span style={labelStyle}>SOAP action</span>
+                <input
+                  value={String(config.soapAction ?? "")}
+                  placeholder="urn:SomeAction"
+                  style={inputStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { soapAction: event.target.value },
+                    })
+                  }
+                />
+              </label>
+            ) : null}
+            <label style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={config.enableTransformation !== false}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: {
+                      enableTransformation: event.target.checked,
+                      payloadTransformer: event.target.checked
+                        ? String(config.payloadTransformer ?? "#joltPayloadTransformer") || "#joltPayloadTransformer"
+                        : "",
+                    },
+                  })
+                }
+              />
+              <span style={{ fontWeight: 700 }}>Transform request payload</span>
+            </label>
+            {config.enableTransformation !== false ? (
+              <>
+                <label>
+                  <span style={labelStyle}>Transformation strategy</span>
+                  <div style={selectWrapStyle}>
+                    <select
+                      value={String(config.transformerConfig ?? "simple-transform")}
+                      style={selectStyle}
+                      onChange={(event) =>
+                        updateNodeData(selectedNode.id, {
+                          config: {
+                            transformerConfig: event.target.value,
+                            payloadTransformer: "#joltPayloadTransformer",
+                          },
+                        })
+                      }
+                    >
+                      {SMART_ROUTER_TRANSFORM_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value} style={optionStyle}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={selectIconStyle} aria-hidden="true">
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </div>
+                  <p style={helperTextStyle}>Exports the config id as `transformerConfig`; the backend receives `#joltPayloadTransformer`.</p>
+                </label>
+                <label>
+                  <span style={labelStyle}>Payload transformer bean</span>
+                  <input
+                    value={String(config.payloadTransformer ?? "#joltPayloadTransformer")}
+                    placeholder="#joltPayloadTransformer"
+                    style={inputStyle}
+                    onChange={(event) =>
+                      updateNodeData(selectedNode.id, {
+                        config: { payloadTransformer: event.target.value },
+                      })
+                    }
+                  />
+                </label>
+              </>
+            ) : null}
+          </div>
+        )}
+
+        {type === "agent" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Tool tag</span>
+              <input
+                value={String(config.tag ?? "")}
+                placeholder="agent-direct"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { tag: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Direct routes must expose a matching `toolConfig.tag` to be available as tools.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>LLM ID</span>
+              <input
+                value={String(config.llmId ?? "")}
+                placeholder="azure_gpt-4o-mini"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { llmId: event.target.value },
+                  })
+                }
+              />
+            </label>
+            <label>
+              <span style={labelStyle}>Chat settings ID</span>
+              <input
+                value={String(config.chatSettingsId ?? "")}
+                placeholder="default"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { chatSettingsId: event.target.value },
+                  })
+                }
+              />
+            </label>
+            <label>
+              <span style={labelStyle}>RAG ID</span>
+              <input
+                value={String(config.ragId ?? "")}
+                placeholder="optional-rag-id"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { ragId: event.target.value },
+                  })
+                }
+              />
+            </label>
+            <label>
+              <span style={labelStyle}>Prompt template</span>
+              <input
+                value={String(config.promptTemplate ?? "")}
+                placeholder="/agents/commonAgent.md"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { promptTemplate: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Exports to `parameters.promptTemplate` for the backend `agent:chat` endpoint.</p>
             </label>
           </div>
         )}

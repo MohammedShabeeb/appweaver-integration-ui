@@ -32,6 +32,8 @@ export type BuiltInComponentType =
   | "download"
   | "enrich"
   | "dbCrud"
+  | "smartRouter"
+  | "agent"
   | "aggregation"
   | "delay"
   | "log";

@@ -310,6 +310,35 @@ export function DatabaseIcon(props: IconProps) {
   );
 }
 
+export function SmartRouterIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M5 6h5" />
+      <path d="M14 4h5v5h-5z" />
+      <path d="M14 15h5v5h-5z" />
+      <path d="M10 6c2.5 0 2.5 1 4 1" />
+      <path d="M10 6c2.5 0 2.5 11.5 4 11.5" />
+      <path d="M5 12h4" />
+      <path d="m7 10 2 2-2 2" />
+    </BaseIcon>
+  );
+}
+
+export function AgentIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <rect x="5" y="7" width="14" height="11" rx="3" />
+      <path d="M9 7V5" />
+      <path d="M15 7V5" />
+      <circle cx="10" cy="12" r="1" fill="currentColor" stroke="none" />
+      <circle cx="14" cy="12" r="1" fill="currentColor" stroke="none" />
+      <path d="M9.5 15h5" />
+      <path d="M3.5 12h1.5" />
+      <path d="M19 12h1.5" />
+    </BaseIcon>
+  );
+}
+
 export function AggregationIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>
@@ -410,6 +439,14 @@ export const nodeTypeMeta = {
   dbCrud: {
     label: "DB CRUD",
     Icon: DatabaseIcon,
+  },
+  smartRouter: {
+    label: "Smart Router",
+    Icon: SmartRouterIcon,
+  },
+  agent: {
+    label: "Agent",
+    Icon: AgentIcon,
   },
   aggregation: {
     label: "Aggregation",

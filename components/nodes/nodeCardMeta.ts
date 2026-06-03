@@ -27,6 +27,8 @@ const defaultDescriptions: Record<string, string> = {
   download: "Download content from a configured endpoint.",
   enrich: "Call an endpoint and merge its response.",
   dbCrud: "Run database CRUD or custom SQL operations.",
+  smartRouter: "Route requests to an endpoint with optional payload transformation.",
+  agent: "Invoke an LLM agent and filter direct-route tools by tag.",
   aggregation: "Group messages with a strategy.",
   delay: "Pause route processing with a constant or simple expression.",
   log: "Write route details to the configured logger.",

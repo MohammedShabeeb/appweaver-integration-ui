@@ -231,6 +231,22 @@
       ]
     },
     {
+      "type": "smartRouter",
+      "defaultGroup": "connectors",
+      "singleEndpointOnly": false,
+      "color": "#0f766e",
+      "bgClass": "sidebar-item-http",
+      "dependencies": []
+    },
+    {
+      "type": "agent",
+      "defaultGroup": "processing",
+      "singleEndpointOnly": false,
+      "color": "#7c3aed",
+      "bgClass": "sidebar-item-switch",
+      "dependencies": []
+    },
+    {
       "type": "aggregation",
       "defaultGroup": "batchParallel",
       "singleEndpointOnly": false,

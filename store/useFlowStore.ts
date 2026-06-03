@@ -376,6 +376,8 @@ function createFlowNode(
     download: "Download",
     enrich: "Enrich",
     dbCrud: "DB CRUD",
+    smartRouter: "Smart Router",
+    agent: "Agent",
     aggregation: "Aggregation",
     delay: "Delay",
     log: "Log",
@@ -558,6 +560,27 @@ function createFlowNode(
       ],
       output: "json",
       logSql: false,
+    },
+    smartRouter: {
+      disabled: false,
+      protocol: "http",
+      url: "http://localhost:8080/api/gateway/test",
+      method: "post",
+      contentType: "application/json",
+      headerParams: "",
+      queryParams: "",
+      enableTransformation: true,
+      payloadTransformer: "#joltPayloadTransformer",
+      transformerConfig: "simple-transform",
+      soapAction: "",
+    },
+    agent: {
+      disabled: false,
+      tag: "agent-direct",
+      llmId: "azure_gpt-4o-mini",
+      chatSettingsId: "default",
+      ragId: "",
+      promptTemplate: "/agents/commonAgent.md",
     },
     aggregation: {
       disabled: false,
@@ -915,6 +938,77 @@ function removeBlankStringField(config: Record<string, unknown>, field: string) 
   if (typeof config[field] === "string" && !config[field].trim()) {
     delete config[field];
   }
+}
+
+function compactStringParameters(
+  params: Record<string, unknown>,
+  fields: string[],
+): Record<string, unknown> {
+  const compacted = { ...params };
+
+  fields.forEach((field) => removeBlankStringField(compacted, field));
+
+  return compacted;
+}
+
+function buildSmartRouterBackendStep(config: Record<string, unknown> | undefined): BackendRouteStep {
+  const smartConfig = stripBackendConfig(config);
+  const enableTransformation = smartConfig.enableTransformation !== false;
+  const parameters = compactStringParameters(
+    {
+      protocol: smartConfig.protocol ?? "http",
+      url: smartConfig.url ?? "",
+      method: smartConfig.method ?? "post",
+      contentType: smartConfig.contentType ?? "application/json",
+      headerParams: smartConfig.headerParams ?? "",
+      queryParams: smartConfig.queryParams ?? "",
+      ...(enableTransformation
+        ? {
+            payloadTransformer: smartConfig.payloadTransformer ?? "#joltPayloadTransformer",
+            transformerConfig: smartConfig.transformerConfig ?? "",
+          }
+        : {}),
+      ...(String(smartConfig.protocol ?? "http") === "soap"
+        ? { soapAction: smartConfig.soapAction ?? "" }
+        : {}),
+    },
+    [
+      "url",
+      "method",
+      "contentType",
+      "headerParams",
+      "queryParams",
+      "payloadTransformer",
+      "transformerConfig",
+      "soapAction",
+    ],
+  );
+
+  return {
+    type: "to",
+    endpoint: "smart-router",
+    parameters,
+  };
+}
+
+function buildAgentBackendStep(config: Record<string, unknown> | undefined): BackendRouteStep {
+  const agentConfig = stripBackendConfig(config);
+  const parameters = compactStringParameters(
+    {
+      tag: String(agentConfig.tag ?? "").trim() || "default",
+      llmId: agentConfig.llmId ?? "",
+      chatSettingsId: agentConfig.chatSettingsId ?? "",
+      ragId: agentConfig.ragId ?? "",
+      promptTemplate: agentConfig.promptTemplate ?? "",
+    },
+    ["llmId", "chatSettingsId", "ragId", "promptTemplate"],
+  );
+
+  return {
+    type: "to",
+    endpoint: "agent:chat",
+    parameters,
+  };
 }
 
 function stripBackendStepConfig(
@@ -1463,6 +1557,14 @@ function createBackendRouteJson(workflow: WorkflowRecord): BackendRouteExport {
               return buildDbCrudBackendSteps(node.data?.config);
             }
 
+            if (componentType === "smartRouter") {
+              return buildSmartRouterBackendStep(node.data?.config);
+            }
+
+            if (componentType === "agent") {
+              return buildAgentBackendStep(node.data?.config);
+            }
+
             return {
               type: componentType,
               ...stripBackendStepConfig(componentType, node.data?.config),
@@ -1534,6 +1636,8 @@ function buildWorkflowFromRouteDefinition(
       step?.type === "download" ||
       step?.type === "enrich" ||
       step?.type === "dbCrud" ||
+      step?.type === "smartRouter" ||
+      step?.type === "agent" ||
       step?.type === "aggregation" ||
       step?.type === "delay" ||
       step?.type === "log",
@@ -1575,7 +1679,13 @@ function buildWorkflowFromRouteDefinition(
   let previousNodePosition = startNode.position;
 
   supportedSteps.forEach((step, index) => {
-    const componentKey = step.type;
+    const stepParameters = isPlainRecord(step.parameters) ? step.parameters : {};
+    const componentKey: BuiltInComponentType =
+      step.type === "to" && step.endpoint === "smart-router"
+        ? "smartRouter"
+        : step.type === "to" && step.endpoint === "agent:chat"
+          ? "agent"
+          : step.type;
     const node = createFlowNode(componentKey, getRouteCanvasPosition(index + 1));
 
     node.data = {
@@ -1589,6 +1699,10 @@ function buildWorkflowFromRouteDefinition(
             ? step.name?.trim() || "Log"
           : componentKey === "to"
             ? "To"
+          : componentKey === "smartRouter"
+            ? "Smart Router"
+          : componentKey === "agent"
+            ? "Agent"
           : componentKey === "toD"
             ? "To Dynamic"
             : componentKey === "setBody"
@@ -1781,6 +1895,33 @@ function buildWorkflowFromRouteDefinition(
                 endpoint: step.endpoint ?? "",
                 disabled: Boolean(step.disabled),
                 parameters: step.parameters ?? {},
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
+          : componentKey === "smartRouter"
+            ? {
+                protocol: stepParameters.protocol ?? "http",
+                url: stepParameters.url ?? "",
+                method: stepParameters.method ?? "post",
+                contentType: stepParameters.contentType ?? "application/json",
+                headerParams: stepParameters.headerParams ?? "",
+                queryParams: stepParameters.queryParams ?? "",
+                enableTransformation:
+                  Boolean(stepParameters.payloadTransformer) ||
+                  Boolean(stepParameters.transformerConfig),
+                payloadTransformer: stepParameters.payloadTransformer ?? "#joltPayloadTransformer",
+                transformerConfig: stepParameters.transformerConfig ?? "",
+                soapAction: stepParameters.soapAction ?? "",
+                disabled: Boolean(step.disabled),
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
+          : componentKey === "agent"
+            ? {
+                tag: stepParameters.tag ?? "default",
+                llmId: stepParameters.llmId ?? "",
+                chatSettingsId: stepParameters.chatSettingsId ?? "",
+                ragId: stepParameters.ragId ?? "",
+                promptTemplate: stepParameters.promptTemplate ?? "",
+                disabled: Boolean(step.disabled),
                 dependencies: normalizeDependencyList(step.dependencies),
               }
           : componentKey === "delay"

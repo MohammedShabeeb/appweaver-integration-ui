@@ -47,6 +47,8 @@ const nodeTypes = {
   download: StepNode,
   enrich: StepNode,
   dbCrud: StepNode,
+  smartRouter: StepNode,
+  agent: StepNode,
   aggregation: StepNode,
   delay: StepNode,
   log: StepNode,
