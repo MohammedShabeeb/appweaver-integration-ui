@@ -54,6 +54,11 @@ export type AppWeaverRagConfig = {
   };
 };
 
+export type AppWeaverPromptTemplate = {
+  path: string;
+  content: string;
+};
+
 export type AppWeaverRestRouteConfig = {
   enabled?: boolean;
   name: string;
@@ -121,6 +126,8 @@ const appWeaverEndpoints = {
     llmProvider: (id: string) => `/system/llm/provider/${encodeURIComponent(id)}`,
     llmRagConfigs: "/system/llm/rag",
     llmRagConfig: (id: string) => `/system/llm/rag/${encodeURIComponent(id)}`,
+    promptTemplates: "/system/prompt-templates",
+    promptTemplate: (path: string) => `/system/prompt-templates?path=${encodeURIComponent(path)}`,
     restRoutes: "/system/routes/rest-routes",
     restRoutesByPath: (path: string) =>
       `/system/routes/rest-routes?path=${encodeURIComponent(path)}`,
@@ -282,6 +289,22 @@ function normalizeDirectRoutePayload(route: AppWeaverDirectRouteConfig): AppWeav
   };
 }
 
+function normalizePromptTemplatePayload(payload: unknown, fallbackPath: string): AppWeaverPromptTemplate {
+  if (typeof payload === "string") {
+    return { path: fallbackPath, content: payload };
+  }
+
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const template = payload as Record<string, unknown>;
+    return {
+      path: String(template.path ?? template.filePath ?? template.name ?? fallbackPath),
+      content: String(template.content ?? template.template ?? template.body ?? ""),
+    };
+  }
+
+  return { path: fallbackPath, content: "" };
+}
+
 export const appWeaverApiClient = {
   system: {
     beans: {
@@ -386,6 +409,29 @@ export const appWeaverApiClient = {
             method: "DELETE",
           }),
       },
+    },
+    promptTemplates: {
+      get: async (path: string) =>
+        normalizePromptTemplatePayload(
+          await request<unknown>(appWeaverEndpoints.system.promptTemplate(path)),
+          path,
+        ),
+      create: async (template: AppWeaverPromptTemplate) =>
+        normalizePromptTemplatePayload(
+          await request<unknown>(appWeaverEndpoints.system.promptTemplates, {
+            method: "POST",
+            body: template,
+          }),
+          template.path,
+        ),
+      update: async (path: string, content: string) =>
+        normalizePromptTemplatePayload(
+          await request<unknown>(appWeaverEndpoints.system.promptTemplate(path), {
+            method: "PUT",
+            body: { path, content },
+          }),
+          path,
+        ),
     },
     restRoutes: {
       list: (path?: string) =>

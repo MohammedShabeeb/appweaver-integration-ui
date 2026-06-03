@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { appWeaverApiClient } from "@/lib/appweaverApiClient";
 import { useFlowStore } from "@/store/useFlowStore";
 import { ConnectorIcon, nodeTypeMeta } from "./node-icons";
 
@@ -88,6 +90,16 @@ const panelStyle: React.CSSProperties = {
   boxShadow: "0 12px 28px rgba(15, 23, 42, 0.10)",
 };
 
+const promptTemplatePanelStyle: React.CSSProperties = {
+  ...panelStyle,
+  right: "calc(min(520px, calc(100vw - 32px)) + 16px)",
+  width: "min(440px, calc(100vw - 32px))",
+  maxWidth: "calc(100vw - 32px)",
+  display: "flex",
+  flexDirection: "column",
+  overflowY: "hidden",
+};
+
 const inputStyle: React.CSSProperties = {
   width: "100%",
   boxSizing: "border-box",
@@ -152,6 +164,39 @@ const deleteBtnStyle: React.CSSProperties = {
   color: "#fff",
   cursor: "pointer",
   fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
+};
+
+const iconButtonStyle: React.CSSProperties = {
+  width: 38,
+  height: 38,
+  flex: "0 0 38px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 8,
+  border: "1px solid rgba(203, 213, 225, 0.95)",
+  background: "#ffffff",
+  color: "#0f172a",
+  cursor: "pointer",
+};
+
+const secondaryBtnStyle: React.CSSProperties = {
+  borderRadius: 8,
+  border: "1px solid rgba(203, 213, 225, 0.95)",
+  background: "#ffffff",
+  padding: "8px 12px",
+  fontSize: 13,
+  fontWeight: 700,
+  color: "#0f172a",
+  cursor: "pointer",
+  fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
+};
+
+const primaryBtnStyle: React.CSSProperties = {
+  ...secondaryBtnStyle,
+  border: "1px solid rgba(var(--workflow-accent-rgb), 0.32)",
+  background: "var(--workflow-accent)",
+  color: "#ffffff",
 };
 
 const labelStyle: React.CSSProperties = {
@@ -350,8 +395,62 @@ function appendDefaultTenantValueMapping(values: unknown[]) {
   ];
 }
 
+type PromptTemplateEditorMode = "view" | "create";
+
+type PromptTemplateEditorState = {
+  isOpen: boolean;
+  nodeId: string | null;
+  mode: PromptTemplateEditorMode;
+  path: string;
+  draft: string;
+  isLoading: boolean;
+  isSaving: boolean;
+  message: string | null;
+  error: string | null;
+};
+
+const closedPromptTemplateEditor: PromptTemplateEditorState = {
+  isOpen: false,
+  nodeId: null,
+  mode: "view",
+  path: "",
+  draft: "",
+  isLoading: false,
+  isSaving: false,
+  message: null,
+  error: null,
+};
+
+function EyeIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" />
+      <circle cx="12" cy="12" r="2.8" />
+    </svg>
+  );
+}
+
+function PlusIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
+function XIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
 export default function ConfigPanel() {
   const { selectedNode, selectedEdge, updateNodeData, deleteEdge, deleteNode, customComponents } = useFlowStore();
+  const [promptEditor, setPromptEditor] = useState<PromptTemplateEditorState>(closedPromptTemplateEditor);
 
   if (!selectedNode && !selectedEdge) {
     return null;
@@ -398,6 +497,7 @@ export default function ConfigPanel() {
 
   const nodeMeta = nodeTypeMeta[type as keyof typeof nodeTypeMeta] ?? nodeTypeMeta.process;
   const config = (selectedNode.data.config as Record<string, unknown> | undefined) ?? {};
+  const isPromptEditorOpen = promptEditor.isOpen && promptEditor.nodeId === selectedNode.id;
   const selectedUnmarshalType = String(config.name ?? "json");
   const selectedTransformType = String(config.name ?? "simple");
   const selectedProcessMode = typeof config.clazz === "string" && config.clazz.trim() ? "clazz" : "ref";
@@ -408,6 +508,112 @@ export default function ConfigPanel() {
     config.aggregationClazz && typeof config.aggregationClazz === "object" && !Array.isArray(config.aggregationClazz)
       ? (config.aggregationClazz as Record<string, unknown>)
       : {};
+  const promptTemplatePath = String(config.promptTemplate ?? "");
+  const openPromptTemplateEditor = async () => {
+    const path = promptTemplatePath.trim();
+
+    if (!path) {
+      setPromptEditor({
+        ...closedPromptTemplateEditor,
+        isOpen: true,
+        nodeId: selectedNode.id,
+        mode: "view",
+        error: "Enter a prompt template path before opening it.",
+      });
+      return;
+    }
+
+    setPromptEditor({
+      isOpen: true,
+      nodeId: selectedNode.id,
+      mode: "view",
+      path,
+      draft: "",
+      isLoading: true,
+      isSaving: false,
+      message: null,
+      error: null,
+    });
+
+    try {
+      const template = await appWeaverApiClient.system.promptTemplates.get(path);
+      setPromptEditor({
+        isOpen: true,
+        nodeId: selectedNode.id,
+        mode: "view",
+        path: template.path || path,
+        draft: template.content,
+        isLoading: false,
+        isSaving: false,
+        message: `Loaded ${template.path || path}.`,
+        error: null,
+      });
+    } catch (issue) {
+      setPromptEditor((current) => ({
+        ...current,
+        isLoading: false,
+        error: issue instanceof Error ? issue.message : "Could not load the prompt template.",
+      }));
+    }
+  };
+  const createPromptTemplateEditor = () => {
+    const currentPath = promptTemplatePath.trim();
+    const basePath = currentPath.includes("/")
+      ? currentPath.slice(0, currentPath.lastIndexOf("/") + 1)
+      : "/agents/";
+
+    setPromptEditor({
+      isOpen: true,
+      nodeId: selectedNode.id,
+      mode: "create",
+      path: `${basePath}newPromptTemplate.md`,
+      draft: "# New prompt template\n\n",
+      isLoading: false,
+      isSaving: false,
+      message: null,
+      error: null,
+    });
+  };
+  const savePromptTemplateEditor = async () => {
+    const path = promptEditor.path.trim();
+
+    if (!path) {
+      setPromptEditor((current) => ({ ...current, error: "Prompt template path is required." }));
+      return;
+    }
+
+    setPromptEditor((current) => ({ ...current, isSaving: true, message: null, error: null }));
+
+    try {
+      const savedTemplate =
+        promptEditor.mode === "create"
+          ? await appWeaverApiClient.system.promptTemplates.create({
+              path,
+              content: promptEditor.draft,
+            })
+          : await appWeaverApiClient.system.promptTemplates.update(path, promptEditor.draft);
+
+      updateNodeData(selectedNode.id, {
+        config: { promptTemplate: savedTemplate.path || path },
+      });
+      setPromptEditor((current) => ({
+        ...current,
+        nodeId: selectedNode.id,
+        mode: "view",
+        path: savedTemplate.path || path,
+        draft: savedTemplate.content || current.draft,
+        isSaving: false,
+        message: `Saved ${savedTemplate.path || path}.`,
+        error: null,
+      }));
+    } catch (issue) {
+      setPromptEditor((current) => ({
+        ...current,
+        isSaving: false,
+        error: issue instanceof Error ? issue.message : "Could not save the prompt template.",
+      }));
+    }
+  };
   const dbCrudValuesForEditor =
     ["create", "batchInsert"].includes(selectedDbCrudOperation)
       ? appendDefaultTenantValueMapping(Array.isArray(config.values) ? config.values : [])
@@ -470,7 +676,8 @@ export default function ConfigPanel() {
           : "Run a processor bean by its Spring or Camel reference name.";
 
   return (
-    <div style={panelStyle}>
+    <>
+      <div style={panelStyle}>
         <h2
           style={{
             display: "flex",
@@ -1856,16 +2063,36 @@ export default function ConfigPanel() {
             </label>
             <label>
               <span style={labelStyle}>Prompt template</span>
-              <input
-                value={String(config.promptTemplate ?? "")}
-                placeholder="/agents/commonAgent.md"
-                style={inputStyle}
-                onChange={(event) =>
-                  updateNodeData(selectedNode.id, {
-                    config: { promptTemplate: event.target.value },
-                  })
-                }
-              />
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  value={promptTemplatePath}
+                  placeholder="/agents/commonAgent.md"
+                  style={inputStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { promptTemplate: event.target.value },
+                    })
+                  }
+                />
+                <button
+                  type="button"
+                  title="View prompt template"
+                  aria-label="View prompt template"
+                  style={iconButtonStyle}
+                  onClick={() => void openPromptTemplateEditor()}
+                >
+                  <EyeIcon style={{ width: 18, height: 18 }} />
+                </button>
+                <button
+                  type="button"
+                  title="Create prompt template"
+                  aria-label="Create prompt template"
+                  style={iconButtonStyle}
+                  onClick={createPromptTemplateEditor}
+                >
+                  <PlusIcon style={{ width: 18, height: 18 }} />
+                </button>
+              </div>
               <p style={helperTextStyle}>Exports to `parameters.promptTemplate` for the backend `agent:chat` endpoint.</p>
             </label>
           </div>
@@ -2676,7 +2903,111 @@ export default function ConfigPanel() {
         <button type="button" style={deleteBtnStyle} onClick={() => deleteNode(selectedNode.id)}>
           Delete component
         </button>
+        </div>
       </div>
-    </div>
+      {isPromptEditorOpen ? (
+        <div style={promptTemplatePanelStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+            <h2
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontWeight: 700,
+                color: "#0f172a",
+                margin: 0,
+                fontSize: 14,
+              }}
+            >
+              {promptEditor.mode === "create" ? (
+                <PlusIcon style={{ width: 16, height: 16, color: "var(--workflow-accent)" }} />
+              ) : (
+                <EyeIcon style={{ width: 16, height: 16, color: "var(--workflow-accent)" }} />
+              )}
+              Prompt Template
+            </h2>
+            <button
+              type="button"
+              title="Close prompt template"
+              aria-label="Close prompt template"
+              style={iconButtonStyle}
+              onClick={() => setPromptEditor(closedPromptTemplateEditor)}
+            >
+              <XIcon style={{ width: 18, height: 18 }} />
+            </button>
+          </div>
+
+          <label>
+            <span style={labelStyle}>Markdown file</span>
+            <input
+              value={promptEditor.path}
+              placeholder="/agents/commonAgent.md"
+              style={inputStyle}
+              onChange={(event) =>
+                setPromptEditor((current) => ({
+                  ...current,
+                  path: event.target.value,
+                  message: null,
+                  error: null,
+                }))
+              }
+              disabled={promptEditor.isLoading || promptEditor.isSaving}
+            />
+          </label>
+
+          <label style={{ display: "flex", flex: 1, minHeight: 0, flexDirection: "column", marginTop: 12 }}>
+            <span style={labelStyle}>Template content</span>
+            <textarea
+              value={promptEditor.isLoading ? "Loading prompt template..." : promptEditor.draft}
+              placeholder="# Agent prompt"
+              style={{
+                ...codeTextAreaStyle,
+                flex: 1,
+                minHeight: 260,
+                resize: "none",
+              }}
+              onChange={(event) =>
+                setPromptEditor((current) => ({
+                  ...current,
+                  draft: event.target.value,
+                  message: null,
+                  error: null,
+                }))
+              }
+              disabled={promptEditor.isLoading || promptEditor.isSaving}
+            />
+          </label>
+
+          {promptEditor.error ? (
+            <p style={{ ...helperTextStyle, color: "#b91c1c", marginTop: 8 }}>{promptEditor.error}</p>
+          ) : promptEditor.message ? (
+            <p style={{ ...helperTextStyle, color: "#166534", marginTop: 8 }}>{promptEditor.message}</p>
+          ) : null}
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+            <button
+              type="button"
+              style={secondaryBtnStyle}
+              onClick={() => setPromptEditor(closedPromptTemplateEditor)}
+              disabled={promptEditor.isSaving}
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              style={{
+                ...primaryBtnStyle,
+                opacity: promptEditor.isLoading || promptEditor.isSaving ? 0.68 : 1,
+                cursor: promptEditor.isLoading || promptEditor.isSaving ? "not-allowed" : "pointer",
+              }}
+              onClick={() => void savePromptTemplateEditor()}
+              disabled={promptEditor.isLoading || promptEditor.isSaving}
+            >
+              {promptEditor.isSaving ? "Saving" : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
