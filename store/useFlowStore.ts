@@ -365,6 +365,7 @@ function createFlowNode(
     convertBodyTo: "Convert Body",
     transform: "Transform",
     filter: "Filter",
+    routeContainer: "Nested Route",
     split: "Split",
     dynamicroute: "Dynamic Route",
     validate: "Validate",
@@ -439,6 +440,14 @@ function createFlowNode(
       expression: "${body} != null",
       clazz: "",
       steps: [],
+    },
+    routeContainer: {
+      disabled: false,
+      backendType: "route",
+      routeId: "nestedRoute",
+      from: "direct:nestedRoute",
+      contentType: "application/json",
+      description: "",
     },
     split: {
       disabled: false,
@@ -1011,6 +1020,30 @@ function buildAgentBackendStep(config: Record<string, unknown> | undefined): Bac
   };
 }
 
+function buildRouteContainerBackendStep(
+  workflow: WorkflowRecord,
+  node: AppNode,
+): BackendRouteStep {
+  const routeConfig = stripBackendConfig(node.data?.config);
+  const childCanvas =
+    node.data?.childCanvasId ? workflow.canvases[node.data.childCanvasId] : null;
+  const steps = childCanvas ? buildBackendStepsFromCanvas(workflow, childCanvas) : [];
+  const backendType = String(routeConfig.backendType ?? "route").trim() || "route";
+  const routeId = String(routeConfig.routeId ?? node.data?.label ?? "nestedRoute").trim();
+  const from = String(routeConfig.from ?? "").trim();
+  const contentType = String(routeConfig.contentType ?? "").trim();
+  const description = String(routeConfig.description ?? "").trim();
+
+  return {
+    type: backendType,
+    ...(routeId ? { routeId } : {}),
+    ...(from ? { from } : {}),
+    ...(contentType ? { contentType } : {}),
+    ...(description ? { description } : {}),
+    steps,
+  };
+}
+
 function stripBackendStepConfig(
   componentType: string,
   config: Record<string, unknown> | undefined,
@@ -1542,36 +1575,44 @@ function getRouteEdgeHandles(sourcePosition: XYPosition, targetPosition: XYPosit
   };
 }
 
+function buildBackendStepsFromCanvas(
+  workflow: WorkflowRecord,
+  canvas: CanvasState,
+): BackendRouteStep[] {
+  return getRouteOrderedNodes(canvas)
+    .filter((node) => node.data?.config?.disabled !== true)
+    .map((node) => {
+      const componentType = String(node.data?.componentKey ?? node.type ?? "");
+
+      if (componentType === "dbCrud") {
+        return buildDbCrudBackendSteps(node.data?.config);
+      }
+
+      if (componentType === "smartRouter") {
+        return buildSmartRouterBackendStep(node.data?.config);
+      }
+
+      if (componentType === "agent") {
+        return buildAgentBackendStep(node.data?.config);
+      }
+
+      if (componentType === "routeContainer") {
+        return buildRouteContainerBackendStep(workflow, node);
+      }
+
+      return {
+        type: componentType,
+        ...stripBackendStepConfig(componentType, node.data?.config),
+      };
+    })
+    .flat();
+}
+
 function createBackendRouteJson(workflow: WorkflowRecord): BackendRouteExport {
   const rootCanvas = workflow.canvases[workflow.rootCanvasId];
   const startNode = rootCanvas?.nodes.find((node) => node.type === "start") ?? null;
   const startConfig = startNode?.data?.config ?? {};
-  const steps =
-    rootCanvas
-      ? getRouteOrderedNodes(rootCanvas)
-          .filter((node) => node.data?.config?.disabled !== true)
-          .map((node) => {
-            const componentType = String(node.data?.componentKey ?? node.type ?? "");
-
-            if (componentType === "dbCrud") {
-              return buildDbCrudBackendSteps(node.data?.config);
-            }
-
-            if (componentType === "smartRouter") {
-              return buildSmartRouterBackendStep(node.data?.config);
-            }
-
-            if (componentType === "agent") {
-              return buildAgentBackendStep(node.data?.config);
-            }
-
-            return {
-              type: componentType,
-              ...stripBackendStepConfig(componentType, node.data?.config),
-            };
-          })
-          .flat()
-      : [];
+  const steps = rootCanvas ? buildBackendStepsFromCanvas(workflow, rootCanvas) : [];
   const routeId = stringValueOrDefault(startConfig.routeId, workflow.name);
   const routeName = stringValueOrDefault(
     startConfig.name ?? startConfig.routeName,
@@ -2190,6 +2231,7 @@ interface FlowState {
   arrangeCurrentRoute: () => void;
   clearCurrentCanvas: () => void;
   insertNodeOnEdge: (edgeId: string, type: InsertableNodeType) => void;
+  openNestedRouteCanvas: (nodeId: string) => void;
   goBackCanvas: () => void;
   openCanvasFromBreadcrumb: (canvasId: string) => void;
   toggleSidebar: () => void;
@@ -3380,6 +3422,64 @@ export const useFlowStore = create<FlowState>()(
               canvases: nextCanvases,
             }),
             selectedNode: newNode,
+            selectedEdge: null,
+          };
+        }),
+
+      openNestedRouteCanvas: (nodeId) =>
+        set((state) => {
+          const activeWorkflow = state.workflows[state.activeWorkflowId];
+
+          if (!activeWorkflow) {
+            return state;
+          }
+
+          const currentCanvas = activeWorkflow.canvases[activeWorkflow.currentCanvasId];
+          const node = currentCanvas?.nodes.find((item) => item.id === nodeId);
+
+          if (!currentCanvas || !node) {
+            return state;
+          }
+
+          const existingChildCanvasId = node.data?.childCanvasId;
+          const childCanvasId =
+            existingChildCanvasId ??
+            `canvas-${nodeId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+          const childCanvasName = node.data?.label || "Nested Route";
+          const childCanvas =
+            activeWorkflow.canvases[childCanvasId] ?? createCanvas(childCanvasId, childCanvasName);
+          const nextNodes = existingChildCanvasId
+            ? currentCanvas.nodes
+            : currentCanvas.nodes.map((item) =>
+                item.id === nodeId
+                  ? {
+                      ...item,
+                      data: {
+                        ...item.data,
+                        childCanvasId,
+                      },
+                    }
+                  : item,
+              );
+          const nextStack = activeWorkflow.canvasStack.includes(childCanvasId)
+            ? activeWorkflow.canvasStack.slice(0, activeWorkflow.canvasStack.indexOf(childCanvasId) + 1)
+            : [...activeWorkflow.canvasStack, childCanvasId];
+
+          return {
+            ...syncActiveWorkflow(state, {
+              ...activeWorkflow,
+              currentCanvasId: childCanvasId,
+              canvasStack: nextStack,
+              canvases: {
+                ...activeWorkflow.canvases,
+                [activeWorkflow.currentCanvasId]: {
+                  ...currentCanvas,
+                  nodes: nextNodes,
+                },
+                [childCanvasId]: childCanvas,
+              },
+            }),
+            selectedNode: null,
             selectedEdge: null,
           };
         }),

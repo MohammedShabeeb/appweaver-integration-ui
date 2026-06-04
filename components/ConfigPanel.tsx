@@ -449,11 +449,60 @@ function XIcon(props: React.SVGProps<SVGSVGElement>) {
 }
 
 export default function ConfigPanel() {
-  const { selectedNode, selectedEdge, updateNodeData, deleteEdge, deleteNode, customComponents } = useFlowStore();
+  const {
+    selectedNode,
+    selectedEdge,
+    updateNodeData,
+    deleteEdge,
+    deleteNode,
+    openNestedRouteCanvas,
+    customComponents,
+  } = useFlowStore();
   const [promptEditor, setPromptEditor] = useState<PromptTemplateEditorState>(closedPromptTemplateEditor);
+  const [llmProviderOptions, setLlmProviderOptions] = useState<string[]>([]);
+  const [ragConfigOptions, setRagConfigOptions] = useState<string[]>([]);
+  const [isAgentOptionsLoading, setIsAgentOptionsLoading] = useState(false);
+  const [agentOptionsError, setAgentOptionsError] = useState<string | null>(null);
   const [promptTemplateOptions, setPromptTemplateOptions] = useState<string[]>([]);
   const [isPromptTemplateOptionsLoading, setIsPromptTemplateOptionsLoading] = useState(false);
   const [promptTemplateOptionsError, setPromptTemplateOptionsError] = useState<string | null>(null);
+
+  const loadAgentOptions = useCallback(async () => {
+    setIsAgentOptionsLoading(true);
+    setAgentOptionsError(null);
+
+    try {
+      const [providers, ragConfigs] = await Promise.all([
+        appWeaverApiClient.system.llm.providers.list(),
+        appWeaverApiClient.system.llm.rag.list(),
+      ]);
+
+      setLlmProviderOptions(
+        Array.from(
+          new Set(
+            providers
+              .map((provider) => String(provider.id ?? provider.model ?? "").trim())
+              .filter(Boolean),
+          ),
+        ).sort((first, second) => first.localeCompare(second)),
+      );
+      setRagConfigOptions(
+        Array.from(
+          new Set(
+            ragConfigs
+              .map((ragConfig) => String(ragConfig.id ?? ragConfig.embeddingStore.indexName ?? "").trim())
+              .filter(Boolean),
+          ),
+        ).sort((first, second) => first.localeCompare(second)),
+      );
+    } catch (issue) {
+      setAgentOptionsError(
+        issue instanceof Error ? issue.message : "Could not load LLM configuration options.",
+      );
+    } finally {
+      setIsAgentOptionsLoading(false);
+    }
+  }, []);
 
   const loadPromptTemplateOptions = useCallback(async () => {
     setIsPromptTemplateOptionsLoading(true);
@@ -480,8 +529,9 @@ export default function ConfigPanel() {
   }, []);
 
   useEffect(() => {
+    void loadAgentOptions();
     void loadPromptTemplateOptions();
-  }, [loadPromptTemplateOptions]);
+  }, [loadAgentOptions, loadPromptTemplateOptions]);
 
   if (!selectedNode && !selectedEdge) {
     return null;
@@ -539,6 +589,24 @@ export default function ConfigPanel() {
     config.aggregationClazz && typeof config.aggregationClazz === "object" && !Array.isArray(config.aggregationClazz)
       ? (config.aggregationClazz as Record<string, unknown>)
       : {};
+  const llmId = String(config.llmId ?? "");
+  const trimmedLlmId = llmId.trim();
+  const llmProviderChoices =
+    trimmedLlmId && !llmProviderOptions.includes(trimmedLlmId)
+      ? [trimmedLlmId, ...llmProviderOptions]
+      : llmProviderOptions;
+  const chatSettingsId = String(config.chatSettingsId ?? "");
+  const trimmedChatSettingsId = chatSettingsId.trim();
+  const chatSettingsChoices =
+    trimmedChatSettingsId && trimmedChatSettingsId !== "default"
+      ? [trimmedChatSettingsId, "default"]
+      : ["default"];
+  const ragId = String(config.ragId ?? "");
+  const trimmedRagId = ragId.trim();
+  const ragConfigChoices =
+    trimmedRagId && !ragConfigOptions.includes(trimmedRagId)
+      ? [trimmedRagId, ...ragConfigOptions]
+      : ragConfigOptions;
   const promptTemplatePath = String(config.promptTemplate ?? "");
   const trimmedPromptTemplatePath = promptTemplatePath.trim();
   const promptTemplateChoices =
@@ -675,8 +743,10 @@ export default function ConfigPanel() {
           ? "Convert the exchange body to a target Java class."
         : type === "transform"
           ? "Transform the exchange body with a simple expression or JSON mapper."
-        : type === "filter"
-          ? "Continue only when an expression or processor allows the exchange."
+      : type === "filter"
+        ? "Continue only when an expression or processor allows the exchange."
+        : type === "routeContainer"
+          ? "Open a nested canvas and define a child route inside this component."
         : type === "split"
           ? "Split the exchange body and run nested backend steps."
         : type === "dynamicroute"
@@ -1371,6 +1441,91 @@ export default function ConfigPanel() {
           </div>
         )}
 
+        {type === "routeContainer" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Route ID</span>
+              <input
+                value={String(config.routeId ?? "")}
+                placeholder="nestedRoute"
+                style={inputStyle}
+                onChange={(event) => {
+                  const routeId = event.target.value;
+                  updateNodeData(selectedNode.id, {
+                    label: routeId.trim() || "Nested Route",
+                    config: { routeId },
+                  });
+                }}
+              />
+              <p style={helperTextStyle}>Exports as `routeId` on the nested route step.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>From endpoint</span>
+              <input
+                value={String(config.from ?? "")}
+                placeholder="direct:nestedRoute"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { from: event.target.value },
+                  })
+                }
+              />
+            </label>
+            <label>
+              <span style={labelStyle}>Backend step type</span>
+              <input
+                value={String(config.backendType ?? "route")}
+                placeholder="route"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { backendType: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Defaults to `route`; nested components are exported under this step&apos;s `steps` array.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Content type</span>
+              <input
+                value={String(config.contentType ?? "")}
+                placeholder="application/json"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { contentType: event.target.value },
+                  })
+                }
+              />
+            </label>
+            <label>
+              <span style={labelStyle}>Description</span>
+              <textarea
+                value={String(config.description ?? "")}
+                placeholder="Nested route purpose"
+                style={{ ...inputStyle, minHeight: 88, resize: "vertical" }}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { description: event.target.value },
+                  })
+                }
+              />
+            </label>
+            <button
+              type="button"
+              style={primaryBtnStyle}
+              onClick={() => openNestedRouteCanvas(selectedNode.id)}
+            >
+              Open nested route
+            </button>
+            <p style={helperTextStyle}>
+              Use the nested canvas to drag and connect normal route components. The parent component exports those
+              components as nested backend `steps`.
+            </p>
+          </div>
+        )}
+
         {type === "split" && (
           <div style={sectionStyle}>
             <label>
@@ -2060,42 +2215,92 @@ export default function ConfigPanel() {
             </label>
             <label>
               <span style={labelStyle}>LLM ID</span>
-              <input
-                value={String(config.llmId ?? "")}
-                placeholder="azure_gpt-4o-mini"
-                style={inputStyle}
-                onChange={(event) =>
-                  updateNodeData(selectedNode.id, {
-                    config: { llmId: event.target.value },
-                  })
-                }
-              />
+              <div style={selectWrapStyle}>
+                <select
+                  value={llmId}
+                  style={selectStyle}
+                  onFocus={() => {
+                    if (!llmProviderOptions.length && !isAgentOptionsLoading) {
+                      void loadAgentOptions();
+                    }
+                  }}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { llmId: event.target.value },
+                    })
+                  }
+                >
+                  <option value="" style={optionStyle}>
+                    {isAgentOptionsLoading ? "Loading LLM providers..." : "Select LLM provider"}
+                  </option>
+                  {llmProviderChoices.map((providerId) => (
+                    <option key={providerId} value={providerId} style={optionStyle}>
+                      {providerId}
+                    </option>
+                  ))}
+                </select>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={selectIconStyle} aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+              {agentOptionsError ? <p style={{ ...helperTextStyle, color: "#b91c1c" }}>{agentOptionsError}</p> : null}
             </label>
             <label>
               <span style={labelStyle}>Chat settings ID</span>
-              <input
-                value={String(config.chatSettingsId ?? "")}
-                placeholder="default"
-                style={inputStyle}
-                onChange={(event) =>
-                  updateNodeData(selectedNode.id, {
-                    config: { chatSettingsId: event.target.value },
-                  })
-                }
-              />
+              <div style={selectWrapStyle}>
+                <select
+                  value={chatSettingsId}
+                  style={selectStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { chatSettingsId: event.target.value },
+                    })
+                  }
+                >
+                  <option value="" style={optionStyle}>
+                    Select chat settings
+                  </option>
+                  {chatSettingsChoices.map((settingsId) => (
+                    <option key={settingsId} value={settingsId} style={optionStyle}>
+                      {settingsId}
+                    </option>
+                  ))}
+                </select>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={selectIconStyle} aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
             </label>
             <label>
               <span style={labelStyle}>RAG ID</span>
-              <input
-                value={String(config.ragId ?? "")}
-                placeholder="optional-rag-id"
-                style={inputStyle}
-                onChange={(event) =>
-                  updateNodeData(selectedNode.id, {
-                    config: { ragId: event.target.value },
-                  })
-                }
-              />
+              <div style={selectWrapStyle}>
+                <select
+                  value={ragId}
+                  style={selectStyle}
+                  onFocus={() => {
+                    if (!ragConfigOptions.length && !isAgentOptionsLoading) {
+                      void loadAgentOptions();
+                    }
+                  }}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { ragId: event.target.value },
+                    })
+                  }
+                >
+                  <option value="" style={optionStyle}>
+                    {isAgentOptionsLoading ? "Loading RAG configs..." : "Select RAG config"}
+                  </option>
+                  {ragConfigChoices.map((configId) => (
+                    <option key={configId} value={configId} style={optionStyle}>
+                      {configId}
+                    </option>
+                  ))}
+                </select>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={selectIconStyle} aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
             </label>
             <label>
               <span style={labelStyle}>Prompt template</span>

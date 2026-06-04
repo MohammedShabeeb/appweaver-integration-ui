@@ -164,6 +164,18 @@ export function SplitIcon(props: IconProps) {
   );
 }
 
+export function RouteContainerIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <rect x="4" y="5" width="16" height="14" rx="3" />
+      <path d="M8 9h8" />
+      <path d="M8 13h4" />
+      <path d="M14 13h2.5a1.5 1.5 0 0 1 0 3H14z" />
+      <path d="M8 17h3" />
+    </BaseIcon>
+  );
+}
+
 export function UnmarshalIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>
@@ -391,6 +403,10 @@ export const nodeTypeMeta = {
   filter: {
     label: "Filter",
     Icon: FilterIcon,
+  },
+  routeContainer: {
+    label: "Nested Route",
+    Icon: RouteContainerIcon,
   },
   split: {
     label: "Split",

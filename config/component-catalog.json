@@ -129,6 +129,14 @@
       "dependencies": []
     },
     {
+      "type": "routeContainer",
+      "defaultGroup": "logic",
+      "singleEndpointOnly": false,
+      "color": "#0f766e",
+      "bgClass": "sidebar-item-container",
+      "dependencies": []
+    },
+    {
       "type": "split",
       "defaultGroup": "batchParallel",
       "singleEndpointOnly": false,

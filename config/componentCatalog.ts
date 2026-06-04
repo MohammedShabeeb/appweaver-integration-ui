@@ -21,6 +21,7 @@ export type BuiltInComponentType =
   | "convertBodyTo"
   | "transform"
   | "filter"
+  | "routeContainer"
   | "split"
   | "dynamicroute"
   | "validate"
