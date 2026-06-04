@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { appWeaverApiClient } from "@/lib/appweaverApiClient";
 import { useFlowStore } from "@/store/useFlowStore";
 import { ConnectorIcon, nodeTypeMeta } from "./node-icons";
@@ -451,6 +451,37 @@ function XIcon(props: React.SVGProps<SVGSVGElement>) {
 export default function ConfigPanel() {
   const { selectedNode, selectedEdge, updateNodeData, deleteEdge, deleteNode, customComponents } = useFlowStore();
   const [promptEditor, setPromptEditor] = useState<PromptTemplateEditorState>(closedPromptTemplateEditor);
+  const [promptTemplateOptions, setPromptTemplateOptions] = useState<string[]>([]);
+  const [isPromptTemplateOptionsLoading, setIsPromptTemplateOptionsLoading] = useState(false);
+  const [promptTemplateOptionsError, setPromptTemplateOptionsError] = useState<string | null>(null);
+
+  const loadPromptTemplateOptions = useCallback(async () => {
+    setIsPromptTemplateOptionsLoading(true);
+    setPromptTemplateOptionsError(null);
+
+    try {
+      const templates = await appWeaverApiClient.system.promptTemplates.list();
+      setPromptTemplateOptions(
+        Array.from(
+          new Set(
+            templates
+              .map((template) => template.path.trim())
+              .filter((templatePath) => templatePath.toLowerCase().endsWith(".md")),
+          ),
+        ).sort((first, second) => first.localeCompare(second)),
+      );
+    } catch (issue) {
+      setPromptTemplateOptionsError(
+        issue instanceof Error ? issue.message : "Could not load prompt templates.",
+      );
+    } finally {
+      setIsPromptTemplateOptionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPromptTemplateOptions();
+  }, [loadPromptTemplateOptions]);
 
   if (!selectedNode && !selectedEdge) {
     return null;
@@ -509,6 +540,11 @@ export default function ConfigPanel() {
       ? (config.aggregationClazz as Record<string, unknown>)
       : {};
   const promptTemplatePath = String(config.promptTemplate ?? "");
+  const trimmedPromptTemplatePath = promptTemplatePath.trim();
+  const promptTemplateChoices =
+    trimmedPromptTemplatePath && !promptTemplateOptions.includes(trimmedPromptTemplatePath)
+      ? [trimmedPromptTemplatePath, ...promptTemplateOptions]
+      : promptTemplateOptions;
   const openPromptTemplateEditor = async () => {
     const path = promptTemplatePath.trim();
 
@@ -2064,16 +2100,34 @@ export default function ConfigPanel() {
             <label>
               <span style={labelStyle}>Prompt template</span>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input
-                  value={promptTemplatePath}
-                  placeholder="/agents/commonAgent.md"
-                  style={inputStyle}
-                  onChange={(event) =>
-                    updateNodeData(selectedNode.id, {
-                      config: { promptTemplate: event.target.value },
-                    })
-                  }
-                />
+                <div style={{ ...selectWrapStyle, flex: 1, minWidth: 0 }}>
+                  <select
+                    value={promptTemplatePath}
+                    style={selectStyle}
+                    onFocus={() => {
+                      if (!promptTemplateOptions.length && !isPromptTemplateOptionsLoading) {
+                        void loadPromptTemplateOptions();
+                      }
+                    }}
+                    onChange={(event) =>
+                      updateNodeData(selectedNode.id, {
+                        config: { promptTemplate: event.target.value },
+                      })
+                    }
+                  >
+                    <option value="" style={optionStyle}>
+                      {isPromptTemplateOptionsLoading ? "Loading markdown files..." : "Select markdown file"}
+                    </option>
+                    {promptTemplateChoices.map((templatePath) => (
+                      <option key={templatePath} value={templatePath} style={optionStyle}>
+                        {templatePath}
+                      </option>
+                    ))}
+                  </select>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={selectIconStyle} aria-hidden="true">
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </div>
                 <button
                   type="button"
                   title="View prompt template"
@@ -2093,7 +2147,13 @@ export default function ConfigPanel() {
                   <PlusIcon style={{ width: 18, height: 18 }} />
                 </button>
               </div>
-              <p style={helperTextStyle}>Exports to `parameters.promptTemplate` for the backend `agent:chat` endpoint.</p>
+              <p style={helperTextStyle}>
+                {promptTemplateOptionsError
+                  ? promptTemplateOptionsError
+                  : promptTemplateOptions.length
+                    ? "Exports to `parameters.promptTemplate` for the backend `agent:chat` endpoint."
+                    : "No markdown templates found yet."}
+              </p>
             </label>
           </div>
         )}

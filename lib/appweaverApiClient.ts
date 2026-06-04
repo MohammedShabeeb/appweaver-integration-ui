@@ -59,6 +59,10 @@ export type AppWeaverPromptTemplate = {
   content: string;
 };
 
+export type AppWeaverPromptTemplateSummary = {
+  path: string;
+};
+
 export type AppWeaverRestRouteConfig = {
   enabled?: boolean;
   name: string;
@@ -411,6 +415,7 @@ export const appWeaverApiClient = {
       },
     },
     promptTemplates: {
+      list: () => request<AppWeaverPromptTemplateSummary[]>("/prompt-template-files"),
       get: async (path: string) =>
         normalizePromptTemplatePayload(
           await request<unknown>(appWeaverEndpoints.system.promptTemplate(path)),

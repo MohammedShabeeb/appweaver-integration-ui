@@ -18,6 +18,14 @@ async function proxyRequest(request: NextRequest, context: RouteContext) {
   headers.delete("host");
   headers.delete("connection");
   headers.delete("content-length");
+  headers.delete("transfer-encoding");
+  headers.delete("expect");
+  headers.delete("keep-alive");
+  headers.delete("proxy-authenticate");
+  headers.delete("proxy-authorization");
+  headers.delete("te");
+  headers.delete("trailer");
+  headers.delete("upgrade");
 
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
   const response = await fetch(backendUrl, {
@@ -29,8 +37,12 @@ async function proxyRequest(request: NextRequest, context: RouteContext) {
   const responseHeaders = new Headers(response.headers);
   responseHeaders.delete("content-encoding");
   responseHeaders.delete("content-length");
+  responseHeaders.delete("transfer-encoding");
+  responseHeaders.delete("connection");
 
-  return new NextResponse(response.body, {
+  const responseBody = response.status === 204 ? null : await response.arrayBuffer();
+
+  return new NextResponse(responseBody, {
     status: response.status,
     statusText: response.statusText,
     headers: responseHeaders,
