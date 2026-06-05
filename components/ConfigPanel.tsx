@@ -92,9 +92,11 @@ const panelStyle: React.CSSProperties = {
 
 const promptTemplatePanelStyle: React.CSSProperties = {
   ...panelStyle,
-  right: "calc(min(520px, calc(100vw - 32px)) + 16px)",
-  width: "min(440px, calc(100vw - 32px))",
-  maxWidth: "calc(100vw - 32px)",
+  left: 16,
+  right: 16,
+  width: "auto",
+  maxWidth: "none",
+  zIndex: 30,
   display: "flex",
   flexDirection: "column",
   overflowY: "hidden",
@@ -397,6 +399,12 @@ function appendDefaultTenantValueMapping(values: unknown[]) {
 
 type PromptTemplateEditorMode = "view" | "create";
 
+const ALLOWED_PROMPT_TEMPLATE_ROLES = new Set(["system", "user"]);
+const RESERVED_PROMPT_TEMPLATE_ROLE_PATTERN =
+  /^\s*(assistant|developer|tool|function|model)\s*:/i;
+const PROMPT_TEMPLATE_ROLE_PATTERN = /^\s*(system|user)\s*:\s*(.*)$/i;
+const MAX_PROMPT_TEMPLATE_CONTENT_LENGTH = 20000;
+
 type PromptTemplateEditorState = {
   isOpen: boolean;
   nodeId: string | null;
@@ -420,6 +428,92 @@ const closedPromptTemplateEditor: PromptTemplateEditorState = {
   message: null,
   error: null,
 };
+
+function sanitizePromptTemplatePath(value: string) {
+  const path = value.trim().replace(/\\/g, "/");
+
+  if (!path) {
+    throw new Error("Prompt template path is required.");
+  }
+
+  if (!path.toLowerCase().endsWith(".md")) {
+    throw new Error("Prompt template path must point to a markdown file.");
+  }
+
+  if (
+    path.includes("..") ||
+    path.includes("?") ||
+    path.includes("#") ||
+    /[\u0000-\u001f]/.test(path)
+  ) {
+    throw new Error("Prompt template path contains unsupported characters.");
+  }
+
+  return path.startsWith("/") ? path : `/${path}`;
+}
+
+function sanitizePromptTemplateContent(value: string) {
+  const normalized = value
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\u0000/g, "");
+  const trimmed = normalized.trim();
+
+  if (!trimmed) {
+    throw new Error("Prompt template content is required.");
+  }
+
+  if (trimmed.length > MAX_PROMPT_TEMPLATE_CONTENT_LENGTH) {
+    throw new Error(`Prompt template content must be ${MAX_PROMPT_TEMPLATE_CONTENT_LENGTH} characters or less.`);
+  }
+
+  const blocks: Array<{ role: "system" | "user"; lines: string[] }> = [];
+
+  for (const rawLine of trimmed.split("\n")) {
+    const line = rawLine.replace(/\s+$/, "");
+    const roleMatch = line.match(PROMPT_TEMPLATE_ROLE_PATTERN);
+
+    if (roleMatch) {
+      const role = roleMatch[1].toLowerCase() as "system" | "user";
+
+      if (!ALLOWED_PROMPT_TEMPLATE_ROLES.has(role)) {
+        throw new Error("Prompt templates can only contain system: and user: sections.");
+      }
+
+      blocks.push({ role, lines: [roleMatch[2].trimStart()] });
+      continue;
+    }
+
+    if (RESERVED_PROMPT_TEMPLATE_ROLE_PATTERN.test(line)) {
+      throw new Error("Prompt templates can only contain system: and user: sections.");
+    }
+
+    if (!blocks.length) {
+      if (!line.trim()) {
+        continue;
+      }
+
+      throw new Error("Start the prompt template with system: or user:.");
+    }
+
+    blocks[blocks.length - 1].lines.push(line);
+  }
+
+  const sanitizedBlocks = blocks
+    .map((block) => ({
+      ...block,
+      content: block.lines.join("\n").trim(),
+    }))
+    .filter((block) => block.content);
+
+  if (!sanitizedBlocks.length) {
+    throw new Error("Add content under a system: or user: section.");
+  }
+
+  return sanitizedBlocks
+    .map((block) => `${block.role}: ${block.content}`)
+    .join("\n\n");
+}
 
 function EyeIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
@@ -614,7 +708,13 @@ export default function ConfigPanel() {
       ? [trimmedPromptTemplatePath, ...promptTemplateOptions]
       : promptTemplateOptions;
   const openPromptTemplateEditor = async () => {
-    const path = promptTemplatePath.trim();
+    let path = "";
+
+    try {
+      path = sanitizePromptTemplatePath(promptTemplatePath);
+    } catch {
+      path = promptTemplatePath.trim();
+    }
 
     if (!path) {
       setPromptEditor({
@@ -671,7 +771,7 @@ export default function ConfigPanel() {
       nodeId: selectedNode.id,
       mode: "create",
       path: `${basePath}newPromptTemplate.md`,
-      draft: "# New prompt template\n\n",
+      draft: "system: \n\nuser: ",
       isLoading: false,
       isSaving: false,
       message: null,
@@ -679,10 +779,17 @@ export default function ConfigPanel() {
     });
   };
   const savePromptTemplateEditor = async () => {
-    const path = promptEditor.path.trim();
+    let path = "";
+    let content = "";
 
-    if (!path) {
-      setPromptEditor((current) => ({ ...current, error: "Prompt template path is required." }));
+    try {
+      path = sanitizePromptTemplatePath(promptEditor.path);
+      content = sanitizePromptTemplateContent(promptEditor.draft);
+    } catch (issue) {
+      setPromptEditor((current) => ({
+        ...current,
+        error: issue instanceof Error ? issue.message : "Prompt template content is invalid.",
+      }));
       return;
     }
 
@@ -693,9 +800,9 @@ export default function ConfigPanel() {
         promptEditor.mode === "create"
           ? await appWeaverApiClient.system.promptTemplates.create({
               path,
-              content: promptEditor.draft,
+              content,
             })
-          : await appWeaverApiClient.system.promptTemplates.update(path, promptEditor.draft);
+          : await appWeaverApiClient.system.promptTemplates.update(path, content);
 
       updateNodeData(selectedNode.id, {
         config: { promptTemplate: savedTemplate.path || path },
@@ -705,7 +812,7 @@ export default function ConfigPanel() {
         nodeId: selectedNode.id,
         mode: "view",
         path: savedTemplate.path || path,
-        draft: savedTemplate.content || current.draft,
+        draft: savedTemplate.content || content,
         isSaving: false,
         message: `Saved ${savedTemplate.path || path}.`,
         error: null,
