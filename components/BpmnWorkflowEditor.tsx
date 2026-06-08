@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { appWeaverApiClient, type AppWeaverWorkflowConfig } from "@/lib/appweaverApiClient";
 import type BpmnModeler from "bpmn-js/lib/Modeler";
 
 type SavedBpmnWorkflow = {
@@ -31,7 +32,7 @@ function createDefaultBpmnXml(workflowId: string, workflowName: string) {
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_${processId}" targetNamespace="http://bpmn.io/schema/bpmn">
-  <bpmn:process id="Process_${processId}" name="${escapedName}" isExecutable="false">
+  <bpmn:process id="Process_${processId}" name="${escapedName}" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1" name="Start">
       <bpmn:outgoing>Flow_1</bpmn:outgoing>
     </bpmn:startEvent>
@@ -80,19 +81,62 @@ function getSavedWorkflows(value: unknown): SavedBpmnWorkflow[] {
     return [];
   }
 
-  return value.filter((item): item is SavedBpmnWorkflow => {
+  return value.flatMap((item): SavedBpmnWorkflow[] => {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
-      return false;
+      return [];
     }
 
-    const workflow = item as Partial<SavedBpmnWorkflow>;
-    return (
-      typeof workflow.id === "string" &&
-      typeof workflow.name === "string" &&
-      typeof workflow.xml === "string" &&
-      typeof workflow.updatedAt === "string"
-    );
+    const workflow = item as Partial<SavedBpmnWorkflow> & Partial<AppWeaverWorkflowConfig>;
+    const id = workflow.id ?? workflow.workflowId;
+    const name = workflow.name ?? workflow.workflowName ?? id;
+    const xml = workflow.xml ?? workflow.bpmnXml;
+
+    if (typeof id !== "string" || typeof name !== "string" || typeof xml !== "string") {
+      return [];
+    }
+
+    return [
+      {
+        id,
+        name,
+        xml,
+        updatedAt:
+          typeof workflow.updatedAt === "string" ? workflow.updatedAt : new Date().toISOString(),
+      },
+    ];
   });
+}
+
+function fromBackendWorkflow(workflow: AppWeaverWorkflowConfig): SavedBpmnWorkflow {
+  return {
+    id: workflow.workflowId,
+    name: workflow.workflowName || workflow.workflowId,
+    xml: workflow.bpmnXml,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function mergeSavedWorkflows(
+  first: SavedBpmnWorkflow[],
+  second: SavedBpmnWorkflow[],
+): SavedBpmnWorkflow[] {
+  const workflowsById = new Map<string, SavedBpmnWorkflow>();
+
+  for (const workflow of [...first, ...second]) {
+    workflowsById.set(workflow.id, workflow);
+  }
+
+  return Array.from(workflowsById.values()).sort((left, right) =>
+    left.name.localeCompare(right.name),
+  );
+}
+
+function isGeneratedWorkflowId(value: string) {
+  return value.startsWith("bpmn-");
+}
+
+function hasOnlyGeneratedWorkflowDefaults(workflows: SavedBpmnWorkflow[]) {
+  return workflows.every((workflow) => isGeneratedWorkflowId(workflow.id));
 }
 
 export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkflowEditorProps) {
@@ -102,13 +146,22 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
   const currentXmlRef = useRef("");
   const workflowIdRef = useRef("");
   const workflowNameRef = useRef("");
+  const savedWorkflowsRef = useRef<SavedBpmnWorkflow[]>([]);
   const onConfigChangeRef = useRef(onConfigChange);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isLoadingWorkflows, setIsLoadingWorkflows] = useState(false);
+  const [isSavingWorkflow, setIsSavingWorkflow] = useState(false);
+  const [isDeletingWorkflow, setIsDeletingWorkflow] = useState(false);
 
-  const savedWorkflows = useMemo(
+  const configSavedWorkflows = useMemo(
     () => getSavedWorkflows(config.savedWorkflows),
     [config.savedWorkflows],
+  );
+  const [loadedWorkflows, setLoadedWorkflows] = useState<SavedBpmnWorkflow[]>([]);
+  const savedWorkflows = useMemo(
+    () => mergeSavedWorkflows(configSavedWorkflows, loadedWorkflows),
+    [configSavedWorkflows, loadedWorkflows],
   );
   const workflowId =
     typeof config.workflowId === "string" && config.workflowId.trim()
@@ -127,11 +180,31 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
     currentXmlRef.current = bpmnXml;
     workflowIdRef.current = workflowId;
     workflowNameRef.current = workflowName;
-  }, [bpmnXml, workflowId, workflowName]);
+    savedWorkflowsRef.current = savedWorkflows;
+  }, [bpmnXml, savedWorkflows, workflowId, workflowName]);
+
+  useEffect(() => {
+    if (typeof config.bpmnXml === "string" && config.bpmnXml.trim()) {
+      return;
+    }
+
+    onConfigChange({
+      workflowId,
+      workflowName,
+      bpmnXml,
+      savedWorkflows,
+    });
+  }, [bpmnXml, config.bpmnXml, onConfigChange, savedWorkflows, workflowId, workflowName]);
 
   useEffect(() => {
     onConfigChangeRef.current = onConfigChange;
   }, [onConfigChange]);
+
+  const syncSavedWorkflows = useCallback((nextSavedWorkflows: SavedBpmnWorkflow[]) => {
+    onConfigChangeRef.current({
+      savedWorkflows: nextSavedWorkflows,
+    });
+  }, []);
 
   const importXml = useCallback(async (xml: string) => {
     const modeler = modelerRef.current;
@@ -152,6 +225,51 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
       isImportingRef.current = false;
     }
   }, []);
+
+  const loadBackendWorkflows = useCallback(async () => {
+    setIsLoadingWorkflows(true);
+    setError(null);
+
+    try {
+      const backendWorkflows = await appWeaverApiClient.system.workflows.list();
+      const backendSavedWorkflows = backendWorkflows.map(fromBackendWorkflow);
+      const nextSavedWorkflows = mergeSavedWorkflows(savedWorkflowsRef.current, backendSavedWorkflows);
+
+      setLoadedWorkflows(nextSavedWorkflows);
+      syncSavedWorkflows(nextSavedWorkflows);
+
+      const shouldSelectBackendWorkflow =
+        backendSavedWorkflows.length > 0 &&
+        hasOnlyGeneratedWorkflowDefaults(savedWorkflowsRef.current) &&
+        isGeneratedWorkflowId(workflowIdRef.current);
+
+      if (shouldSelectBackendWorkflow) {
+        const firstWorkflow = backendSavedWorkflows[0];
+        onConfigChangeRef.current({
+          workflowId: firstWorkflow.id,
+          workflowName: firstWorkflow.name,
+          bpmnXml: firstWorkflow.xml,
+          savedWorkflows: nextSavedWorkflows,
+        });
+        currentXmlRef.current = firstWorkflow.xml;
+        workflowIdRef.current = firstWorkflow.id;
+        workflowNameRef.current = firstWorkflow.name;
+        void importXml(firstWorkflow.xml);
+      }
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not load BPMN workflows.");
+    } finally {
+      setIsLoadingWorkflows(false);
+    }
+  }, [importXml, syncSavedWorkflows]);
+
+  useEffect(() => {
+    const loadTimer = window.setTimeout(() => {
+      void loadBackendWorkflows();
+    }, 0);
+
+    return () => window.clearTimeout(loadTimer);
+  }, [loadBackendWorkflows]);
 
   useEffect(() => {
     let isMounted = true;
@@ -213,6 +331,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
   }, [bpmnXml, importXml]);
 
   const handleWorkflowNameChange = (name: string) => {
+    workflowNameRef.current = name;
     onConfigChange({
       workflowId,
       workflowName: name,
@@ -222,23 +341,45 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
     setError(null);
   };
 
-  const handleSelectWorkflow = (selectedWorkflowId: string) => {
+  const handleSelectWorkflow = async (selectedWorkflowId: string) => {
     const selectedWorkflow = savedWorkflows.find((workflow) => workflow.id === selectedWorkflowId);
 
     if (!selectedWorkflow) {
       return;
     }
 
-    onConfigChange({
-      workflowId: selectedWorkflow.id,
-      workflowName: selectedWorkflow.name,
-      bpmnXml: selectedWorkflow.xml,
-      savedWorkflows,
-    });
-    setStatus(`Selected ${selectedWorkflow.name}.`);
+    setIsLoadingWorkflows(true);
     setError(null);
-    currentXmlRef.current = selectedWorkflow.xml;
-    void importXml(selectedWorkflow.xml);
+
+    try {
+      const backendWorkflow = await appWeaverApiClient.system.workflows.get(selectedWorkflowId);
+      const resolvedWorkflow =
+        backendWorkflow.bpmnXml.trim() ? fromBackendWorkflow(backendWorkflow) : selectedWorkflow;
+      const nextSavedWorkflows = mergeSavedWorkflows([resolvedWorkflow], savedWorkflows);
+
+      onConfigChange({
+        workflowId: resolvedWorkflow.id,
+        workflowName: resolvedWorkflow.name,
+        bpmnXml: resolvedWorkflow.xml,
+        savedWorkflows: nextSavedWorkflows,
+      });
+      setStatus(`Selected ${resolvedWorkflow.name}.`);
+      currentXmlRef.current = resolvedWorkflow.xml;
+      void importXml(resolvedWorkflow.xml);
+    } catch (issue) {
+      onConfigChange({
+        workflowId: selectedWorkflow.id,
+        workflowName: selectedWorkflow.name,
+        bpmnXml: selectedWorkflow.xml,
+        savedWorkflows,
+      });
+      setStatus(`Selected ${selectedWorkflow.name}.`);
+      setError(issue instanceof Error ? issue.message : "Could not load BPMN workflow from backend.");
+      currentXmlRef.current = selectedWorkflow.xml;
+      void importXml(selectedWorkflow.xml);
+    } finally {
+      setIsLoadingWorkflows(false);
+    }
   };
 
   const handleNewWorkflow = () => {
@@ -266,6 +407,8 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
       return;
     }
 
+    setIsSavingWorkflow(true);
+
     try {
       const result = await modeler.saveXML({ format: true });
       const xml = result.xml ?? bpmnXml;
@@ -279,26 +422,106 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
         savedWorkflow,
         ...savedWorkflows.filter((workflow) => workflow.id !== savedWorkflow.id),
       ];
-
-      onConfigChange({
+      const payload: AppWeaverWorkflowConfig = {
         workflowId: savedWorkflow.id,
         workflowName: savedWorkflow.name,
         bpmnXml: xml,
-        savedWorkflows: nextSavedWorkflows,
+        savedWorkflows: nextSavedWorkflows.map((workflow) => ({
+          id: workflow.id,
+          name: workflow.name,
+          xml: workflow.xml,
+          workflowId: workflow.id,
+          workflowName: workflow.name,
+          bpmnXml: workflow.xml,
+        })),
+      };
+      const persistedWorkflow = savedWorkflows.some((workflow) => workflow.id === savedWorkflow.id)
+        ? await appWeaverApiClient.system.workflows.update(savedWorkflow.id, payload)
+        : await appWeaverApiClient.system.workflows.create(payload);
+      const resolvedSavedWorkflow = fromBackendWorkflow(persistedWorkflow);
+      const resolvedSavedWorkflows = mergeSavedWorkflows(
+        [resolvedSavedWorkflow],
+        nextSavedWorkflows,
+      );
+
+      setLoadedWorkflows(resolvedSavedWorkflows);
+      onConfigChange({
+        workflowId: resolvedSavedWorkflow.id,
+        workflowName: resolvedSavedWorkflow.name,
+        bpmnXml: resolvedSavedWorkflow.xml || xml,
+        savedWorkflows: resolvedSavedWorkflows,
       });
-      setStatus(`Saved ${savedWorkflow.name}.`);
+      setStatus(`Saved ${resolvedSavedWorkflow.name}.`);
       setError(null);
     } catch (issue) {
       setError(issue instanceof Error ? issue.message : "Could not save BPMN workflow.");
+    } finally {
+      setIsSavingWorkflow(false);
+    }
+  };
+
+  const handleDeleteWorkflow = async () => {
+    if (!workflowId) {
+      return;
+    }
+
+    setIsDeletingWorkflow(true);
+    setError(null);
+
+    try {
+      await appWeaverApiClient.system.workflows.remove(workflowId);
+      const nextSavedWorkflows = savedWorkflows.filter((workflow) => workflow.id !== workflowId);
+      setLoadedWorkflows(nextSavedWorkflows);
+
+      if (nextSavedWorkflows[0]) {
+        const nextWorkflow = nextSavedWorkflows[0];
+
+        onConfigChange({
+          workflowId: nextWorkflow.id,
+          workflowName: nextWorkflow.name,
+          bpmnXml: nextWorkflow.xml,
+          savedWorkflows: nextSavedWorkflows,
+        });
+        currentXmlRef.current = nextWorkflow.xml;
+        void importXml(nextWorkflow.xml);
+      } else {
+        const nextWorkflowId = createWorkflowId();
+        const nextWorkflowName = DEFAULT_WORKFLOW_NAME;
+        const nextXml = createDefaultBpmnXml(nextWorkflowId, nextWorkflowName);
+
+        onConfigChange({
+          workflowId: nextWorkflowId,
+          workflowName: nextWorkflowName,
+          bpmnXml: nextXml,
+          savedWorkflows: [],
+        });
+        currentXmlRef.current = nextXml;
+        void importXml(nextXml);
+      }
+
+      setStatus("Deleted BPMN workflow.");
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not delete BPMN workflow.");
+    } finally {
+      setIsDeletingWorkflow(false);
     }
   };
 
   return (
     <div style={{ display: "flex", flex: 1, minHeight: 0, flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", gap: 8 }}>
+      <div
+        style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", gap: 8 }}
+        onKeyDownCapture={(event) => event.stopPropagation()}
+        onKeyUpCapture={(event) => event.stopPropagation()}
+      >
         <select
           value={savedWorkflows.some((workflow) => workflow.id === workflowId) ? workflowId : ""}
-          onChange={(event) => handleSelectWorkflow(event.target.value)}
+          onFocus={() => {
+            if (!isLoadingWorkflows && loadedWorkflows.length === 0) {
+              void loadBackendWorkflows();
+            }
+          }}
+          onChange={(event) => void handleSelectWorkflow(event.target.value)}
           style={{
             minWidth: 0,
             borderRadius: 8,
@@ -310,7 +533,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
             fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
           }}
         >
-          <option value="">Select BPMN workflow</option>
+          <option value="">{isLoadingWorkflows ? "Loading BPMN workflows..." : "Select BPMN workflow"}</option>
           {savedWorkflows.map((workflow) => (
             <option key={workflow.id} value={workflow.id}>
               {workflow.name}
@@ -320,16 +543,41 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
         <button type="button" className="app-modal-btn app-modal-btn-secondary" style={{ minWidth: 76, height: 40 }} onClick={handleNewWorkflow}>
           New
         </button>
-        <button type="button" className="app-modal-btn app-modal-btn-danger" style={{ minWidth: 76, height: 40 }} onClick={() => void handleSaveWorkflow()}>
-          Save
+        <button
+          type="button"
+          className="app-modal-btn app-modal-btn-danger"
+          style={{ minWidth: 76, height: 40 }}
+          onClick={() => void handleSaveWorkflow()}
+          disabled={isSavingWorkflow}
+        >
+          {isSavingWorkflow ? "Saving" : "Save"}
         </button>
       </div>
+
+      {savedWorkflows.some((workflow) => workflow.id === workflowId) ? (
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            className="app-modal-btn app-modal-btn-secondary"
+            style={{ minWidth: 96, height: 38 }}
+            onClick={() => void handleDeleteWorkflow()}
+            disabled={isDeletingWorkflow}
+          >
+            {isDeletingWorkflow ? "Deleting" : "Delete"}
+          </button>
+        </div>
+      ) : null}
 
       <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>Workflow name</span>
         <input
-          value={workflowName}
+          key={workflowId}
+          defaultValue={workflowName}
           placeholder={DEFAULT_WORKFLOW_NAME}
+          spellCheck={false}
+          autoComplete="off"
+          onKeyDownCapture={(event) => event.stopPropagation()}
+          onKeyUpCapture={(event) => event.stopPropagation()}
           onChange={(event) => handleWorkflowNameChange(event.target.value)}
           style={{
             width: "100%",
@@ -350,7 +598,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
         style={{
           width: "100%",
           flex: 1,
-          minHeight: 0,
+          minHeight: 420,
           borderRadius: 8,
           border: "1px solid rgba(203, 213, 225, 0.95)",
           background: "#ffffff",

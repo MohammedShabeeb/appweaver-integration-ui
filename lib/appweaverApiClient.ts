@@ -63,6 +63,17 @@ export type AppWeaverPromptTemplateSummary = {
   path: string;
 };
 
+export type AppWeaverWorkflowConfig = {
+  id?: string;
+  name?: string;
+  xml?: string;
+  updatedAt?: string;
+  workflowId: string;
+  workflowName: string;
+  bpmnXml: string;
+  savedWorkflows?: AppWeaverWorkflowConfig[];
+};
+
 export type AppWeaverRestRouteConfig = {
   enabled?: boolean;
   name: string;
@@ -132,6 +143,8 @@ const appWeaverEndpoints = {
     llmRagConfig: (id: string) => `/system/llm/rag/${encodeURIComponent(id)}`,
     promptTemplates: "/system/prompt-templates",
     promptTemplate: (path: string) => `/system/prompt-templates?path=${encodeURIComponent(path)}`,
+    workflows: "/system/workflows",
+    workflow: (workflowId: string) => `/system/workflows/${encodeURIComponent(workflowId)}`,
     restRoutes: "/system/routes/rest-routes",
     restRoutesByPath: (path: string) =>
       `/system/routes/rest-routes?path=${encodeURIComponent(path)}`,
@@ -309,6 +322,46 @@ function normalizePromptTemplatePayload(payload: unknown, fallbackPath: string):
   return { path: fallbackPath, content: "" };
 }
 
+function normalizeWorkflowPayload(payload: unknown, fallbackWorkflowId = ""): AppWeaverWorkflowConfig {
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const workflow = payload as Record<string, unknown>;
+    const workflowId = String(workflow.workflowId ?? workflow.id ?? fallbackWorkflowId);
+    const workflowName = String(workflow.workflowName ?? workflow.name ?? workflowId);
+    const bpmnXml = String(workflow.bpmnXml ?? workflow.xml ?? workflow.content ?? "");
+
+    return {
+      workflowId,
+      workflowName,
+      bpmnXml,
+      savedWorkflows: normalizeWorkflowList(workflow.savedWorkflows),
+    };
+  }
+
+  return {
+    workflowId: fallbackWorkflowId,
+    workflowName: fallbackWorkflowId,
+    bpmnXml: typeof payload === "string" ? payload : "",
+    savedWorkflows: [],
+  };
+}
+
+function normalizeWorkflowList(payload: unknown): AppWeaverWorkflowConfig[] {
+  const workflowsPayload =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? ((payload as Record<string, unknown>).savedWorkflows ??
+        (payload as Record<string, unknown>).workflows ??
+        (payload as Record<string, unknown>).value)
+      : payload;
+
+  if (!Array.isArray(workflowsPayload)) {
+    return [];
+  }
+
+  return workflowsPayload
+    .map((workflow) => normalizeWorkflowPayload(workflow))
+    .filter((workflow) => workflow.workflowId.trim());
+}
+
 export const appWeaverApiClient = {
   system: {
     beans: {
@@ -437,6 +490,35 @@ export const appWeaverApiClient = {
           }),
           path,
         ),
+    },
+    workflows: {
+      list: async () =>
+        normalizeWorkflowList(await request<unknown>(appWeaverEndpoints.system.workflows)),
+      get: async (workflowId: string) =>
+        normalizeWorkflowPayload(
+          await request<unknown>(appWeaverEndpoints.system.workflow(workflowId)),
+          workflowId,
+        ),
+      create: async (workflow: AppWeaverWorkflowConfig) =>
+        normalizeWorkflowPayload(
+          await request<unknown>(appWeaverEndpoints.system.workflows, {
+            method: "POST",
+            body: workflow,
+          }),
+          workflow.workflowId,
+        ),
+      update: async (workflowId: string, workflow: AppWeaverWorkflowConfig) =>
+        normalizeWorkflowPayload(
+          await request<unknown>(appWeaverEndpoints.system.workflow(workflowId), {
+            method: "PUT",
+            body: { ...workflow, workflowId },
+          }),
+          workflowId,
+        ),
+      remove: (workflowId: string) =>
+        request<AppWeaverWorkflowConfig | null>(appWeaverEndpoints.system.workflow(workflowId), {
+          method: "DELETE",
+        }),
     },
     restRoutes: {
       list: (path?: string) =>
