@@ -351,6 +351,19 @@ export function AgentIcon(props: IconProps) {
   );
 }
 
+export function WorkflowIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <rect x="4" y="5" width="6" height="5" rx="1.5" />
+      <rect x="14" y="5" width="6" height="5" rx="1.5" />
+      <rect x="9" y="15" width="6" height="5" rx="1.5" />
+      <path d="M10 7.5h4" />
+      <path d="M17 10v2.5a2.5 2.5 0 0 1-2.5 2.5H12" />
+      <path d="M7 10v2.5A2.5 2.5 0 0 0 9.5 15H12" />
+    </BaseIcon>
+  );
+}
+
 export function AggregationIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>
@@ -463,6 +476,10 @@ export const nodeTypeMeta = {
   agent: {
     label: "Agent",
     Icon: AgentIcon,
+  },
+  workflow: {
+    label: "Workflow",
+    Icon: WorkflowIcon,
   },
   aggregation: {
     label: "Aggregation",

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { appWeaverApiClient } from "@/lib/appweaverApiClient";
 import { useFlowStore } from "@/store/useFlowStore";
+import BpmnWorkflowEditor from "./BpmnWorkflowEditor";
 import { ConnectorIcon, nodeTypeMeta } from "./node-icons";
 
 const JAVA_CLASS_OPTIONS = [
@@ -404,6 +405,9 @@ const RESERVED_PROMPT_TEMPLATE_ROLE_PATTERN =
   /^\s*(assistant|developer|tool|function|model)\s*:/i;
 const PROMPT_TEMPLATE_ROLE_PATTERN = /^\s*(system|user)\s*:\s*(.*)$/i;
 const MAX_PROMPT_TEMPLATE_CONTENT_LENGTH = 20000;
+const AGENT_PROMPT_TEMPLATE_ROOT = "/agents";
+const DEFAULT_AGENT_PROMPT_TEMPLATE_NAME = "commonAgent.md";
+const DEFAULT_NEW_AGENT_PROMPT_TEMPLATE_NAME = "newPromptTemplate.md";
 
 type PromptTemplateEditorState = {
   isOpen: boolean;
@@ -429,6 +433,50 @@ const closedPromptTemplateEditor: PromptTemplateEditorState = {
   error: null,
 };
 
+function normalizePromptTemplateSegments(value: string) {
+  return value
+    .trim()
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function getPromptTemplateName(value: string) {
+  const segments = normalizePromptTemplateSegments(value);
+  return segments[segments.length - 1] ?? "";
+}
+
+function getPromptTemplateAgentFolder(value: string) {
+  const segments = normalizePromptTemplateSegments(value);
+  const agentsIndex = segments.findIndex((segment) => segment.toLowerCase() === "agents");
+
+  if (agentsIndex === -1) {
+    return "";
+  }
+
+  return segments.slice(agentsIndex + 1, -1).join("/");
+}
+
+function buildPromptTemplatePath(folder: string, name: string) {
+  const folderSegments = normalizePromptTemplateSegments(folder);
+  const templateName = getPromptTemplateName(name);
+
+  if (folderSegments.some((segment) => segment.toLowerCase() === "agents")) {
+    throw new Error("Enter the folder relative to agents, without the agents prefix.");
+  }
+
+  if (!templateName) {
+    throw new Error("Prompt template name is required.");
+  }
+
+  return sanitizePromptTemplatePath([AGENT_PROMPT_TEMPLATE_ROOT, ...folderSegments, templateName].join("/"));
+}
+
+function getPromptTemplateDisplayName(value: string) {
+  return getPromptTemplateName(value) || value;
+}
+
 function sanitizePromptTemplatePath(value: string) {
   const path = value.trim().replace(/\\/g, "/");
 
@@ -449,7 +497,14 @@ function sanitizePromptTemplatePath(value: string) {
     throw new Error("Prompt template path contains unsupported characters.");
   }
 
-  return path.startsWith("/") ? path : `/${path}`;
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const lowerPath = normalizedPath.toLowerCase();
+
+  if (lowerPath !== AGENT_PROMPT_TEMPLATE_ROOT && !lowerPath.startsWith(`${AGENT_PROMPT_TEMPLATE_ROOT}/`)) {
+    throw new Error("Prompt templates must be saved inside the agents folder.");
+  }
+
+  return normalizedPath;
 }
 
 function sanitizePromptTemplateContent(value: string) {
@@ -609,7 +664,14 @@ export default function ConfigPanel() {
           new Set(
             templates
               .map((template) => template.path.trim())
-              .filter((templatePath) => templatePath.toLowerCase().endsWith(".md")),
+              .filter((templatePath) => {
+                try {
+                  sanitizePromptTemplatePath(templatePath);
+                  return true;
+                } catch {
+                  return false;
+                }
+              }),
           ),
         ).sort((first, second) => first.localeCompare(second)),
       );
@@ -672,6 +734,56 @@ export default function ConfigPanel() {
 
   const nodeMeta = nodeTypeMeta[type as keyof typeof nodeTypeMeta] ?? nodeTypeMeta.process;
   const config = (selectedNode.data.config as Record<string, unknown> | undefined) ?? {};
+
+  if (type === "workflow") {
+    return (
+      <div
+        style={{
+          ...panelStyle,
+          left: 16,
+          right: 16,
+          bottom: 16,
+          width: "auto",
+          maxWidth: "none",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        <h2
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontWeight: 700,
+            color: "#0f172a",
+            marginBottom: 12,
+            fontSize: 14,
+          }}
+        >
+          <nodeMeta.Icon style={{ width: 16, height: 16, color: "var(--workflow-accent)" }} />
+          Workflow Config
+        </h2>
+        <p style={{ ...helperTextStyle, marginTop: -4, marginBottom: 14 }}>
+          Design, select, and save BPMN workflow diagrams.
+        </p>
+        <BpmnWorkflowEditor
+          config={config}
+          onConfigChange={(nextConfig) =>
+            updateNodeData(selectedNode.id, {
+              config: nextConfig,
+            })
+          }
+        />
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+          <button type="button" style={{ ...deleteBtnStyle, width: "min(260px, 100%)" }} onClick={() => deleteNode(selectedNode.id)}>
+            Delete component
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const isPromptEditorOpen = promptEditor.isOpen && promptEditor.nodeId === selectedNode.id;
   const selectedUnmarshalType = String(config.name ?? "json");
   const selectedTransformType = String(config.name ?? "simple");
@@ -703,17 +815,43 @@ export default function ConfigPanel() {
       : ragConfigOptions;
   const promptTemplatePath = String(config.promptTemplate ?? "");
   const trimmedPromptTemplatePath = promptTemplatePath.trim();
+  const promptTemplateFolder = getPromptTemplateAgentFolder(promptTemplatePath);
+  const promptTemplateName =
+    getPromptTemplateName(promptTemplatePath) || DEFAULT_AGENT_PROMPT_TEMPLATE_NAME;
+  const isPromptTemplatePathAllowed = (() => {
+    try {
+      return Boolean(trimmedPromptTemplatePath && sanitizePromptTemplatePath(trimmedPromptTemplatePath));
+    } catch {
+      return false;
+    }
+  })();
   const promptTemplateChoices =
-    trimmedPromptTemplatePath && !promptTemplateOptions.includes(trimmedPromptTemplatePath)
+    isPromptTemplatePathAllowed && !promptTemplateOptions.includes(trimmedPromptTemplatePath)
       ? [trimmedPromptTemplatePath, ...promptTemplateOptions]
       : promptTemplateOptions;
+  const updatePromptTemplatePath = (folder: string, name: string) => {
+    try {
+      updateNodeData(selectedNode.id, {
+        config: { promptTemplate: buildPromptTemplatePath(folder, name) },
+      });
+    } catch (issue) {
+      window.alert(issue instanceof Error ? issue.message : "Prompt template path is invalid.");
+    }
+  };
   const openPromptTemplateEditor = async () => {
     let path = "";
 
     try {
       path = sanitizePromptTemplatePath(promptTemplatePath);
-    } catch {
-      path = promptTemplatePath.trim();
+    } catch (issue) {
+      setPromptEditor({
+        ...closedPromptTemplateEditor,
+        isOpen: true,
+        nodeId: selectedNode.id,
+        mode: "view",
+        error: issue instanceof Error ? issue.message : "Select a prompt template before opening it.",
+      });
+      return;
     }
 
     if (!path) {
@@ -722,7 +860,7 @@ export default function ConfigPanel() {
         isOpen: true,
         nodeId: selectedNode.id,
         mode: "view",
-        error: "Enter a prompt template path before opening it.",
+        error: "Select a prompt template before opening it.",
       });
       return;
     }
@@ -749,7 +887,7 @@ export default function ConfigPanel() {
         draft: template.content,
         isLoading: false,
         isSaving: false,
-        message: `Loaded ${template.path || path}.`,
+        message: "Loaded prompt template.",
         error: null,
       });
     } catch (issue) {
@@ -761,16 +899,22 @@ export default function ConfigPanel() {
     }
   };
   const createPromptTemplateEditor = () => {
-    const currentPath = promptTemplatePath.trim();
-    const basePath = currentPath.includes("/")
-      ? currentPath.slice(0, currentPath.lastIndexOf("/") + 1)
-      : "/agents/";
+    let path = "";
+
+    try {
+      path = buildPromptTemplatePath(
+        promptTemplateFolder,
+        DEFAULT_NEW_AGENT_PROMPT_TEMPLATE_NAME,
+      );
+    } catch {
+      path = `${AGENT_PROMPT_TEMPLATE_ROOT}/${DEFAULT_NEW_AGENT_PROMPT_TEMPLATE_NAME}`;
+    }
 
     setPromptEditor({
       isOpen: true,
       nodeId: selectedNode.id,
       mode: "create",
-      path: `${basePath}newPromptTemplate.md`,
+      path,
       draft: "system: \n\nuser: ",
       isLoading: false,
       isSaving: false,
@@ -814,7 +958,7 @@ export default function ConfigPanel() {
         path: savedTemplate.path || path,
         draft: savedTemplate.content || content,
         isSaving: false,
-        message: `Saved ${savedTemplate.path || path}.`,
+        message: "Saved prompt template.",
         error: null,
       }));
     } catch (issue) {
@@ -822,6 +966,26 @@ export default function ConfigPanel() {
         ...current,
         isSaving: false,
         error: issue instanceof Error ? issue.message : "Could not save the prompt template.",
+      }));
+    }
+  };
+  const promptEditorFolder = getPromptTemplateAgentFolder(promptEditor.path);
+  const promptEditorName = getPromptTemplateName(promptEditor.path);
+  const updatePromptEditorPath = (folder: string, name: string) => {
+    try {
+      const path = buildPromptTemplatePath(folder, name);
+
+      setPromptEditor((current) => ({
+        ...current,
+        path,
+        message: null,
+        error: null,
+      }));
+    } catch (issue) {
+      setPromptEditor((current) => ({
+        ...current,
+        message: null,
+        error: issue instanceof Error ? issue.message : "Prompt template path is invalid.",
       }));
     }
   };
@@ -2411,6 +2575,12 @@ export default function ConfigPanel() {
             </label>
             <label>
               <span style={labelStyle}>Prompt template</span>
+              <input
+                value={promptTemplateFolder}
+                placeholder="Folder under agents"
+                style={{ ...inputStyle, marginBottom: 8 }}
+                onChange={(event) => updatePromptTemplatePath(event.target.value, promptTemplateName)}
+              />
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ ...selectWrapStyle, flex: 1, minWidth: 0 }}>
                   <select
@@ -2432,7 +2602,7 @@ export default function ConfigPanel() {
                     </option>
                     {promptTemplateChoices.map((templatePath) => (
                       <option key={templatePath} value={templatePath} style={optionStyle}>
-                        {templatePath}
+                        {getPromptTemplateDisplayName(templatePath)}
                       </option>
                     ))}
                   </select>
@@ -2463,7 +2633,7 @@ export default function ConfigPanel() {
                 {promptTemplateOptionsError
                   ? promptTemplateOptionsError
                   : promptTemplateOptions.length
-                    ? "Exports to `parameters.promptTemplate` for the backend `agent:chat` endpoint."
+                    ? "Saved under the backend agents folder."
                     : "No markdown templates found yet."}
               </p>
             </label>
@@ -3309,23 +3479,28 @@ export default function ConfigPanel() {
             </button>
           </div>
 
-          <label>
-            <span style={labelStyle}>Markdown file</span>
-            <input
-              value={promptEditor.path}
-              placeholder="/agents/commonAgent.md"
-              style={inputStyle}
-              onChange={(event) =>
-                setPromptEditor((current) => ({
-                  ...current,
-                  path: event.target.value,
-                  message: null,
-                  error: null,
-                }))
-              }
-              disabled={promptEditor.isLoading || promptEditor.isSaving}
-            />
-          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10 }}>
+            <label>
+              <span style={labelStyle}>Agent folder</span>
+              <input
+                value={promptEditorFolder}
+                placeholder="Folder under agents"
+                style={inputStyle}
+                onChange={(event) => updatePromptEditorPath(event.target.value, promptEditorName)}
+                disabled={promptEditor.isLoading || promptEditor.isSaving}
+              />
+            </label>
+            <label>
+              <span style={labelStyle}>Template name</span>
+              <input
+                value={promptEditorName}
+                placeholder={DEFAULT_NEW_AGENT_PROMPT_TEMPLATE_NAME}
+                style={inputStyle}
+                onChange={(event) => updatePromptEditorPath(promptEditorFolder, event.target.value)}
+                disabled={promptEditor.isLoading || promptEditor.isSaving}
+              />
+            </label>
+          </div>
 
           <label style={{ display: "flex", flex: 1, minHeight: 0, flexDirection: "column", marginTop: 12 }}>
             <span style={labelStyle}>Template content</span>

@@ -10,6 +10,7 @@
     "spec:check": "node scripts/spec-check.mjs"
   },
   "dependencies": {
+    "bpmn-js": "^18.17.1",
     "next": "16.1.7",
     "react": "19.2.3",
     "react-dom": "19.2.3",

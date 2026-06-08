@@ -35,6 +35,7 @@ export type BuiltInComponentType =
   | "dbCrud"
   | "smartRouter"
   | "agent"
+  | "workflow"
   | "aggregation"
   | "delay"
   | "log";

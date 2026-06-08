@@ -79,6 +79,7 @@ const stepDescriptions: Record<StepListItem["type"], string> = {
   dbCrud: "Run create, read, update, delete, or custom SQL operations against the configured database.",
   smartRouter: "Route to the selected endpoint and optionally transform the request payload first.",
   agent: "Invoke an LLM agent with tools filtered by a shared direct-route tag.",
+  workflow: "Design, select, and save BPMN workflows with BPMN.js.",
   aggregation: "Group messages with a strategy.",
   delay: "Pause processing with a constant or simple expression.",
   log: "Write a log message with logger name and level.",

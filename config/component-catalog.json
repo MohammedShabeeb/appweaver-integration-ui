@@ -255,6 +255,14 @@
       "dependencies": []
     },
     {
+      "type": "workflow",
+      "defaultGroup": "processing",
+      "singleEndpointOnly": false,
+      "color": "#0891b2",
+      "bgClass": "sidebar-item-http",
+      "dependencies": []
+    },
+    {
       "type": "aggregation",
       "defaultGroup": "batchParallel",
       "singleEndpointOnly": false,

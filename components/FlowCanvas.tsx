@@ -50,6 +50,7 @@ const nodeTypes = {
   dbCrud: StepNode,
   smartRouter: StepNode,
   agent: StepNode,
+  workflow: StepNode,
   aggregation: StepNode,
   delay: StepNode,
   log: StepNode,

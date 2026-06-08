@@ -30,6 +30,7 @@ const defaultDescriptions: Record<string, string> = {
   dbCrud: "Run database CRUD or custom SQL operations.",
   smartRouter: "Route requests to an endpoint with optional payload transformation.",
   agent: "Invoke an LLM agent and filter direct-route tools by tag.",
+  workflow: "Design and save a BPMN workflow diagram.",
   aggregation: "Group messages with a strategy.",
   delay: "Pause route processing with a constant or simple expression.",
   log: "Write route details to the configured logger.",

@@ -379,6 +379,7 @@ function createFlowNode(
     dbCrud: "DB CRUD",
     smartRouter: "Smart Router",
     agent: "Agent",
+    workflow: "Workflow",
     aggregation: "Aggregation",
     delay: "Delay",
     log: "Log",
@@ -590,6 +591,12 @@ function createFlowNode(
       chatSettingsId: "default",
       ragId: "",
       promptTemplate: "/agents/commonAgent.md",
+    },
+    workflow: {
+      workflowId: "bpmn-default",
+      workflowName: "BPMN Workflow",
+      bpmnXml: "",
+      savedWorkflows: [],
     },
     aggregation: {
       disabled: false,
@@ -1598,6 +1605,10 @@ function buildBackendStepsFromCanvas(
 
       if (componentType === "routeContainer") {
         return buildRouteContainerBackendStep(workflow, node);
+      }
+
+      if (componentType === "workflow") {
+        return [];
       }
 
       return {
