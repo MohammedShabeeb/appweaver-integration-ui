@@ -604,6 +604,7 @@ export default function ConfigPanel() {
     updateNodeData,
     deleteEdge,
     deleteNode,
+    clearSelection,
     openNestedRouteCanvas,
     customComponents,
   } = useFlowStore();
@@ -750,6 +751,7 @@ export default function ConfigPanel() {
           overflow: "hidden",
         }}
       >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
         <h2
           style={{
             display: "flex",
@@ -757,13 +759,23 @@ export default function ConfigPanel() {
             gap: 8,
             fontWeight: 700,
             color: "#0f172a",
-            marginBottom: 12,
+            margin: 0,
             fontSize: 14,
           }}
         >
           <nodeMeta.Icon style={{ width: 16, height: 16, color: "var(--workflow-accent)" }} />
           Workflow Config
         </h2>
+          <button
+            type="button"
+            title="Close workflow builder"
+            aria-label="Close workflow builder"
+            style={iconButtonStyle}
+            onClick={clearSelection}
+          >
+            <XIcon style={{ width: 18, height: 18 }} />
+          </button>
+        </div>
         <p style={{ ...helperTextStyle, marginTop: -4, marginBottom: 14 }}>
           Design, select, and save BPMN workflow diagrams.
         </p>
