@@ -330,6 +330,52 @@ function createCanvas(id: string, name: string): CanvasState {
   };
 }
 
+function parseSqlEndpoint(endpoint: unknown) {
+  const rawEndpoint = String(endpoint ?? "").trim();
+
+  if (!rawEndpoint.toLowerCase().startsWith("sql:")) {
+    return null;
+  }
+
+  const endpointBody = rawEndpoint.slice(4);
+  const queryStart = endpointBody.indexOf("?");
+  const sql = queryStart === -1 ? endpointBody : endpointBody.slice(0, queryStart);
+  const query = queryStart === -1 ? "" : endpointBody.slice(queryStart + 1);
+  const queryParameters = new URLSearchParams(query);
+
+  return {
+    sql: decodeURIComponent(sql).trim(),
+    dataSource: queryParameters.get("dataSource") ?? undefined,
+    batch: queryParameters.get("batch") ?? undefined,
+  };
+}
+
+function isSqlToStep(step: RouteImportStep) {
+  return step.type === "to" && Boolean(parseSqlEndpoint(step.endpoint));
+}
+
+function buildImportedDbCrudConfig(step: RouteImportStep) {
+  const endpoint = parseSqlEndpoint(step.endpoint);
+  const parameters = isPlainRecord(step.parameters) ? step.parameters : {};
+  const dataSource =
+    String(parameters.dataSource ?? endpoint?.dataSource ?? "").trim() || "#dataSource";
+  const batchValue = parameters.batch ?? endpoint?.batch;
+
+  return {
+    operation: "customSql",
+    customSql: endpoint?.sql ?? "",
+    dataSource,
+    output: "raw",
+    logSql: false,
+    disabled: Boolean(step.disabled),
+    parameters: [],
+    dependencies: normalizeDependencyList(step.dependencies),
+    ...(batchValue === true || String(batchValue).toLowerCase() === "true"
+      ? { batch: true }
+      : {}),
+  };
+}
+
 function getRouteStepComponentKey(step: RouteImportStep): BuiltInComponentType | null {
   if (step.type === "to" && step.endpoint === "smart-router") {
     return "smartRouter";
@@ -337,6 +383,10 @@ function getRouteStepComponentKey(step: RouteImportStep): BuiltInComponentType |
 
   if (step.type === "to" && step.endpoint === "agent:chat") {
     return "agent";
+  }
+
+  if (isSqlToStep(step)) {
+    return "dbCrud";
   }
 
   return step.type && isBuiltInComponent(step.type) ? step.type : null;
@@ -373,22 +423,28 @@ function createCanvasFromBackendSteps(
 
     const node = createFlowNode(componentKey, getRouteCanvasPosition(index + 1));
     const label =
-      typeof step.name === "string" && step.name.trim()
+      componentKey === "dbCrud"
+        ? "DB CRUD"
+        : typeof step.name === "string" && step.name.trim()
         ? step.name
         : typeof step.ref === "string" && step.ref.trim()
           ? step.ref
           : node.data.label;
+    const importedConfig =
+      componentKey === "dbCrud"
+        ? buildImportedDbCrudConfig(step)
+        : {
+            ...node.data.config,
+            ...step,
+            disabled: Boolean(step.disabled),
+            parameters: step.parameters ?? {},
+            dependencies: normalizeDependencyList(step.dependencies),
+          };
 
     node.data = {
       ...node.data,
       label,
-      config: {
-        ...node.data.config,
-        ...step,
-        disabled: Boolean(step.disabled),
-        parameters: step.parameters ?? {},
-        dependencies: normalizeDependencyList(step.dependencies),
-      },
+      config: importedConfig,
     };
 
     nodes.push(node);
@@ -1660,7 +1716,7 @@ function buildDbCrudBackendSteps(config: Record<string, unknown> | undefined): B
       endpoint,
       parameters: {
         dataSource,
-        batch: operation === "batchInsert",
+        batch: operation === "batchInsert" || dbConfig.batch === true,
       },
     },
     ...(logSql ? [{ type: "log", message: "Executed SQL operation result: ${body}" }] : []),
@@ -1956,12 +2012,7 @@ function buildWorkflowFromRouteDefinition(
 
   supportedSteps.forEach((step, index) => {
     const stepParameters = isPlainRecord(step.parameters) ? step.parameters : {};
-    const componentKey: BuiltInComponentType =
-      step.type === "to" && step.endpoint === "smart-router"
-        ? "smartRouter"
-        : step.type === "to" && step.endpoint === "agent:chat"
-          ? "agent"
-          : step.type;
+    const componentKey = getRouteStepComponentKey(step) ?? step.type;
     const node = createFlowNode(componentKey, getRouteCanvasPosition(index + 1));
 
     node.data = {
@@ -1979,6 +2030,8 @@ function buildWorkflowFromRouteDefinition(
             ? "Smart Router"
           : componentKey === "agent"
             ? "Agent"
+          : componentKey === "dbCrud"
+            ? "DB CRUD"
           : componentKey === "toD"
             ? "To Dynamic"
             : componentKey === "setBody"
@@ -2139,6 +2192,8 @@ function buildWorkflowFromRouteDefinition(
                 parameters: step.parameters ?? {},
                 dependencies: normalizeDependencyList(step.dependencies),
               }
+          : componentKey === "dbCrud"
+            ? buildImportedDbCrudConfig(step)
           : componentKey === "split"
             ? {
                 expression: step.expression ?? "",
