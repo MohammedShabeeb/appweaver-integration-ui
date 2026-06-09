@@ -74,6 +74,19 @@ export type AppWeaverWorkflowConfig = {
   savedWorkflows?: AppWeaverWorkflowConfig[];
 };
 
+export type WorkflowActionDefinition = {
+  id: string;
+  label: string;
+  kind: string;
+  description: string;
+  endpointTemplate: string;
+  bpmnElementTypes: string[];
+};
+
+export type WorkflowActionRegistryResponse = {
+  actions: WorkflowActionDefinition[];
+};
+
 export type AppWeaverRestRouteConfig = {
   enabled?: boolean;
   name: string;
@@ -145,6 +158,7 @@ const appWeaverEndpoints = {
     promptTemplate: (path: string) => `/system/prompt-templates?path=${encodeURIComponent(path)}`,
     workflows: "/system/workflows",
     workflow: (workflowId: string) => `/system/workflows/${encodeURIComponent(workflowId)}`,
+    workflowActions: "/system/workflow-actions",
     restRoutes: "/system/routes/rest-routes",
     restRoutesByPath: (path: string) =>
       `/system/routes/rest-routes?path=${encodeURIComponent(path)}`,
@@ -362,6 +376,69 @@ function normalizeWorkflowList(payload: unknown): AppWeaverWorkflowConfig[] {
     .filter((workflow) => workflow.workflowId.trim());
 }
 
+function normalizeWorkflowActionDefinition(payload: unknown): WorkflowActionDefinition | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const action = payload as Record<string, unknown>;
+  const id = String(action.id ?? "").trim();
+
+  if (!id) {
+    return null;
+  }
+
+  return {
+    id,
+    label: String(action.label ?? id),
+    kind: String(action.kind ?? ""),
+    description: String(action.description ?? ""),
+    endpointTemplate: String(action.endpointTemplate ?? ""),
+    bpmnElementTypes: Array.isArray(action.bpmnElementTypes)
+      ? action.bpmnElementTypes.map((type) => String(type)).filter(Boolean)
+      : [],
+  };
+}
+
+function normalizeWorkflowActionRegistry(payload: unknown): WorkflowActionRegistryResponse {
+  const parsedPayload =
+    typeof payload === "string"
+      ? (() => {
+          try {
+            return JSON.parse(payload) as unknown;
+          } catch {
+            return payload;
+          }
+        })()
+      : payload;
+  const actionsPayload =
+    parsedPayload && typeof parsedPayload === "object" && !Array.isArray(parsedPayload)
+      ? ((parsedPayload as Record<string, unknown>).actions ??
+        (parsedPayload as Record<string, unknown>).body ??
+        (parsedPayload as Record<string, unknown>).value)
+      : parsedPayload;
+
+  if (
+    actionsPayload &&
+    typeof actionsPayload === "object" &&
+    !Array.isArray(actionsPayload) &&
+    "actions" in actionsPayload
+  ) {
+    return normalizeWorkflowActionRegistry((actionsPayload as Record<string, unknown>).actions);
+  }
+
+  if (!Array.isArray(actionsPayload)) {
+    return { actions: [] };
+  }
+
+  return {
+    actions: actionsPayload.flatMap((action) => {
+      const normalizedAction = normalizeWorkflowActionDefinition(action);
+      return normalizedAction ? [normalizedAction] : [];
+    }),
+  };
+}
+
 export const appWeaverApiClient = {
   system: {
     beans: {
@@ -519,6 +596,12 @@ export const appWeaverApiClient = {
         request<AppWeaverWorkflowConfig | null>(appWeaverEndpoints.system.workflow(workflowId), {
           method: "DELETE",
         }),
+    },
+    workflowActions: {
+      list: async () =>
+        normalizeWorkflowActionRegistry(
+          await request<unknown>(appWeaverEndpoints.system.workflowActions),
+        ),
     },
     restRoutes: {
       list: (path?: string) =>

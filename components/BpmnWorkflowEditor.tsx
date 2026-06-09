@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { appWeaverApiClient, type AppWeaverWorkflowConfig } from "@/lib/appweaverApiClient";
+import {
+  appWeaverApiClient,
+  type AppWeaverWorkflowConfig,
+  type WorkflowActionDefinition,
+} from "@/lib/appweaverApiClient";
 import type BpmnModeler from "bpmn-js/lib/Modeler";
 
 type SavedBpmnWorkflow = {
@@ -16,19 +20,83 @@ type BpmnWorkflowEditorProps = {
   onConfigChange: (config: Record<string, unknown>) => void;
 };
 
+type WorkflowCreationType = "service" | "user";
+
+type BpmnElement = {
+  id: string;
+  type: string;
+  businessObject?: BpmnBusinessObject;
+};
+
+type BpmnBusinessObject = {
+  id?: string;
+  name?: string;
+  $type?: string;
+  extensionElements?: {
+    values?: unknown[];
+  };
+};
+
+type BpmnElementRegistry = {
+  getAll: () => BpmnElement[];
+};
+
+type BpmnSelection = {
+  get: () => BpmnElement[];
+};
+
+type BpmnEventBus = {
+  on: (event: string, callback: (event?: { newSelection?: BpmnElement[] }) => void) => void;
+};
+
+type BpmnModeling = {
+  updateProperties: (element: BpmnElement, properties: Record<string, unknown>) => void;
+};
+
+type BpmnModdle = {
+  create: (type: string, properties?: Record<string, unknown>) => unknown;
+  createAny: (name: string, nsUri: string, properties?: Record<string, unknown>) => unknown;
+};
+
 const DEFAULT_WORKFLOW_NAME = "BPMN Workflow";
+const APPWEAVER_ACTION_NS = "https://appweaver.dev/schema/bpmn";
+const APPWEAVER_ACTION_TYPE = "appweaver:action";
+const SERVICE_TASK_TYPE = "bpmn:ServiceTask";
+
+const workflowCreationOptions: Array<{
+  type: WorkflowCreationType;
+  label: string;
+  helper: string;
+}> = [
+  {
+    type: "service",
+    label: "Service workflow",
+    helper: "Creates a service task for backend workflow actions.",
+  },
+  {
+    type: "user",
+    label: "User workflow",
+    helper: "Creates a user task for human-assigned work.",
+  },
+];
 
 function createWorkflowId() {
   return `bpmn-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function createDefaultBpmnXml(workflowId: string, workflowName: string) {
+function createDefaultBpmnXml(
+  workflowId: string,
+  workflowName: string,
+  workflowType: WorkflowCreationType = "service",
+) {
   const processId = workflowId.replace(/[^A-Za-z0-9_]/g, "_") || "bpmn_workflow";
   const escapedName = workflowName
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+  const taskElement = workflowType === "service" ? "serviceTask" : "userTask";
+  const taskName = workflowType === "service" ? "Service task" : "User task";
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_${processId}" targetNamespace="http://bpmn.io/schema/bpmn">
@@ -36,10 +104,10 @@ function createDefaultBpmnXml(workflowId: string, workflowName: string) {
     <bpmn:startEvent id="StartEvent_1" name="Start">
       <bpmn:outgoing>Flow_1</bpmn:outgoing>
     </bpmn:startEvent>
-    <bpmn:task id="Task_1" name="Task">
+    <bpmn:${taskElement} id="Task_1" name="${taskName}">
       <bpmn:incoming>Flow_1</bpmn:incoming>
       <bpmn:outgoing>Flow_2</bpmn:outgoing>
-    </bpmn:task>
+    </bpmn:${taskElement}>
     <bpmn:endEvent id="EndEvent_1" name="End">
       <bpmn:incoming>Flow_2</bpmn:incoming>
     </bpmn:endEvent>
@@ -139,6 +207,46 @@ function hasOnlyGeneratedWorkflowDefaults(workflows: SavedBpmnWorkflow[]) {
   return workflows.every((workflow) => isGeneratedWorkflowId(workflow.id));
 }
 
+function isServiceTask(element: BpmnElement | null) {
+  return element?.type === SERVICE_TASK_TYPE || element?.businessObject?.$type === SERVICE_TASK_TYPE;
+}
+
+function getElementLabel(element: BpmnElement) {
+  return element.businessObject?.name?.trim() || element.businessObject?.id || element.id;
+}
+
+function isAppWeaverAction(value: unknown): value is { id?: string; $type?: string } {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    (value as { $type?: unknown }).$type === APPWEAVER_ACTION_TYPE
+  );
+}
+
+function getAppWeaverActionId(element: BpmnElement | null) {
+  const values = element?.businessObject?.extensionElements?.values;
+  const action = values?.find((value) => isAppWeaverAction(value));
+
+  return isAppWeaverAction(action) && typeof action.id === "string" ? action.id : "";
+}
+
+function getCompatibleWorkflowActions(
+  actions: WorkflowActionDefinition[],
+  element: BpmnElement | null,
+) {
+  if (!element) {
+    return [];
+  }
+
+  return actions.filter(
+    (action) =>
+      action.bpmnElementTypes.length === 0 ||
+      action.bpmnElementTypes.includes(element.type) ||
+      (element.businessObject?.$type ? action.bpmnElementTypes.includes(element.businessObject.$type) : false),
+  );
+}
+
 export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkflowEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const modelerRef = useRef<BpmnModeler | null>(null);
@@ -147,12 +255,22 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
   const workflowIdRef = useRef("");
   const workflowNameRef = useRef("");
   const savedWorkflowsRef = useRef<SavedBpmnWorkflow[]>([]);
+  const workflowActionsRef = useRef<WorkflowActionDefinition[]>([]);
+  const selectedElementRef = useRef<BpmnElement | null>(null);
+  const refreshWorkflowActionWarningsRef = useRef<() => void>(() => undefined);
+  const syncSelectedElementRef = useRef<(nextSelection?: BpmnElement[]) => void>(() => undefined);
   const onConfigChangeRef = useRef(onConfigChange);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoadingWorkflows, setIsLoadingWorkflows] = useState(false);
   const [isSavingWorkflow, setIsSavingWorkflow] = useState(false);
   const [isDeletingWorkflow, setIsDeletingWorkflow] = useState(false);
+  const [workflowActions, setWorkflowActions] = useState<WorkflowActionDefinition[]>([]);
+  const [isLoadingWorkflowActions, setIsLoadingWorkflowActions] = useState(false);
+  const [selectedElement, setSelectedElement] = useState<BpmnElement | null>(null);
+  const [selectedActionId, setSelectedActionId] = useState("");
+  const [workflowActionWarnings, setWorkflowActionWarnings] = useState<string[]>([]);
+  const [workflowCreationType, setWorkflowCreationType] = useState<WorkflowCreationType>("service");
 
   const configSavedWorkflows = useMemo(
     () => getSavedWorkflows(config.savedWorkflows),
@@ -162,6 +280,10 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
   const savedWorkflows = useMemo(
     () => mergeSavedWorkflows(configSavedWorkflows, loadedWorkflows),
     [configSavedWorkflows, loadedWorkflows],
+  );
+  const compatibleWorkflowActions = useMemo(
+    () => getCompatibleWorkflowActions(workflowActions, selectedElement),
+    [selectedElement, workflowActions],
   );
   const workflowId =
     typeof config.workflowId === "string" && config.workflowId.trim()
@@ -174,7 +296,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
   const bpmnXml =
     (typeof config.bpmnXml === "string" && config.bpmnXml.trim() ? config.bpmnXml : "") ||
     savedWorkflows.find((workflow) => workflow.id === workflowId)?.xml ||
-    createDefaultBpmnXml(workflowId, workflowName);
+    createDefaultBpmnXml(workflowId, workflowName, workflowCreationType);
 
   useEffect(() => {
     currentXmlRef.current = bpmnXml;
@@ -206,6 +328,117 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
     });
   }, []);
 
+  const refreshWorkflowActionWarnings = useCallback(
+    (actions = workflowActionsRef.current) => {
+      const modeler = modelerRef.current;
+
+      if (actions.length === 0 || !modeler) {
+        setWorkflowActionWarnings([]);
+        return;
+      }
+
+      const knownActionIds = new Set(actions.map((action) => action.id));
+      const elementRegistry = modeler.get<BpmnElementRegistry>("elementRegistry");
+      const warnings = elementRegistry
+        .getAll()
+        .filter(isServiceTask)
+        .flatMap((element) => {
+          const actionId = getAppWeaverActionId(element);
+          const label = getElementLabel(element);
+
+          if (!actionId) {
+            return [`${label} has no workflow action.`];
+          }
+
+          if (!knownActionIds.has(actionId)) {
+            return [`${label} uses unknown workflow action "${actionId}".`];
+          }
+
+          return [];
+        });
+
+      setWorkflowActionWarnings(warnings);
+    },
+    [setWorkflowActionWarnings],
+  );
+
+  const syncSelectedElement = useCallback((nextSelection?: BpmnElement[]) => {
+    const selection =
+      nextSelection ??
+      modelerRef.current?.get<BpmnSelection>("selection").get() ??
+      [];
+    const element = selection.length === 1 ? selection[0] : null;
+
+    selectedElementRef.current = element;
+    setSelectedElement(element);
+    setSelectedActionId(getAppWeaverActionId(element));
+  }, [setSelectedActionId, setSelectedElement]);
+
+  useEffect(() => {
+    refreshWorkflowActionWarningsRef.current = refreshWorkflowActionWarnings;
+    syncSelectedElementRef.current = syncSelectedElement;
+  }, [refreshWorkflowActionWarnings, syncSelectedElement]);
+
+  const loadWorkflowActions = useCallback(async () => {
+    setIsLoadingWorkflowActions(true);
+
+    try {
+      const registry = await appWeaverApiClient.system.workflowActions.list();
+      workflowActionsRef.current = registry.actions;
+      setWorkflowActions(registry.actions);
+      refreshWorkflowActionWarnings(registry.actions);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not load workflow actions.");
+    } finally {
+      setIsLoadingWorkflowActions(false);
+    }
+  }, [
+    refreshWorkflowActionWarnings,
+    setError,
+    setIsLoadingWorkflowActions,
+    setWorkflowActions,
+  ]);
+
+  const updateSelectedElementAction = useCallback(
+    (actionId: string) => {
+      const modeler = modelerRef.current;
+
+      const element = selectedElementRef.current;
+
+      if (!modeler || !element || !isServiceTask(element)) {
+        return;
+      }
+
+      const moddle = modeler.get<BpmnModdle>("moddle");
+      const modeling = modeler.get<BpmnModeling>("modeling");
+      const businessObject = element.businessObject;
+
+      if (!businessObject) {
+        return;
+      }
+
+      const existingValues = businessObject.extensionElements?.values ?? [];
+      const nextValues = existingValues.filter((value) => !isAppWeaverAction(value));
+
+      if (actionId) {
+        nextValues.push(moddle.createAny(APPWEAVER_ACTION_TYPE, APPWEAVER_ACTION_NS, { id: actionId }));
+      }
+
+      const extensionElements = moddle.create("bpmn:ExtensionElements", {
+        values: nextValues,
+      });
+
+      modeling.updateProperties(element, {
+        extensionElements: nextValues.length > 0 ? extensionElements : undefined,
+      });
+      setSelectedActionId(actionId);
+      refreshWorkflowActionWarnings();
+      setStatus(null);
+      setError(null);
+    },
+    [refreshWorkflowActionWarnings, setError, setSelectedActionId, setStatus],
+  );
+
   const importXml = useCallback(async (xml: string) => {
     const modeler = modelerRef.current;
 
@@ -218,13 +451,15 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
       await modeler.importXML(xml);
       const canvas = modeler.get<{ zoom: (mode: string) => void }>("canvas");
       canvas.zoom("fit-viewport");
+      syncSelectedElementRef.current();
+      refreshWorkflowActionWarningsRef.current();
       setError(null);
     } catch (issue) {
       setError(issue instanceof Error ? issue.message : "Could not load BPMN XML.");
     } finally {
       isImportingRef.current = false;
     }
-  }, []);
+  }, [refreshWorkflowActionWarningsRef, setError, syncSelectedElementRef]);
 
   const loadBackendWorkflows = useCallback(async () => {
     setIsLoadingWorkflows(true);
@@ -261,7 +496,13 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
     } finally {
       setIsLoadingWorkflows(false);
     }
-  }, [importXml, syncSavedWorkflows]);
+  }, [
+    importXml,
+    setError,
+    setIsLoadingWorkflows,
+    setLoadedWorkflows,
+    syncSavedWorkflows,
+  ]);
 
   useEffect(() => {
     const loadTimer = window.setTimeout(() => {
@@ -270,6 +511,14 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
 
     return () => window.clearTimeout(loadTimer);
   }, [loadBackendWorkflows]);
+
+  useEffect(() => {
+    const loadTimer = window.setTimeout(() => {
+      void loadWorkflowActions();
+    }, 0);
+
+    return () => window.clearTimeout(loadTimer);
+  }, [loadWorkflowActions]);
 
   useEffect(() => {
     let isMounted = true;
@@ -305,11 +554,18 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
           workflowName: workflowNameRef.current,
           bpmnXml: xml,
         });
+        syncSelectedElementRef.current();
+        refreshWorkflowActionWarningsRef.current();
         setStatus(null);
         setError(null);
       });
+      modeler.get<BpmnEventBus>("eventBus").on("selection.changed", (event) => {
+        syncSelectedElementRef.current(event?.newSelection);
+      });
 
       await importXml(currentXmlRef.current);
+      syncSelectedElementRef.current();
+      refreshWorkflowActionWarningsRef.current();
     };
 
     void setupModeler();
@@ -321,7 +577,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
         modelerRef.current = null;
       }
     };
-  }, [importXml]);
+  }, [importXml, refreshWorkflowActionWarningsRef, syncSelectedElementRef]);
 
   useEffect(() => {
     if (bpmnXml && bpmnXml !== currentXmlRef.current) {
@@ -384,8 +640,9 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
 
   const handleNewWorkflow = () => {
     const nextWorkflowId = createWorkflowId();
-    const nextWorkflowName = "New BPMN Workflow";
-    const nextXml = createDefaultBpmnXml(nextWorkflowId, nextWorkflowName);
+    const nextWorkflowName =
+      workflowCreationType === "service" ? "New Service Workflow" : "New User Workflow";
+    const nextXml = createDefaultBpmnXml(nextWorkflowId, nextWorkflowName, workflowCreationType);
 
     onConfigChange({
       workflowId: nextWorkflowId,
@@ -487,7 +744,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
       } else {
         const nextWorkflowId = createWorkflowId();
         const nextWorkflowName = DEFAULT_WORKFLOW_NAME;
-        const nextXml = createDefaultBpmnXml(nextWorkflowId, nextWorkflowName);
+        const nextXml = createDefaultBpmnXml(nextWorkflowId, nextWorkflowName, workflowCreationType);
 
         onConfigChange({
           workflowId: nextWorkflowId,
@@ -508,21 +765,32 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
   };
 
   return (
-    <div style={{ display: "flex", flex: 1, minHeight: 0, flexDirection: "column", gap: 18 }}>
-      <div
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(260px, 300px) minmax(0, 1fr)",
+        flex: 1,
+        minHeight: 0,
+        gap: 14,
+      }}
+    >
+      <aside
         style={{
           display: "flex",
-          flexWrap: "wrap",
-          gap: 14,
-          alignItems: "end",
+          minHeight: 0,
+          flexDirection: "column",
+          gap: 12,
+          overflowY: "auto",
+          borderRadius: 8,
+          border: "1px solid rgba(203, 213, 225, 0.95)",
+          background: "#ffffff",
+          padding: 14,
         }}
         onKeyDownCapture={(event) => event.stopPropagation()}
         onKeyUpCapture={(event) => event.stopPropagation()}
       >
-        <label style={{ display: "flex", minWidth: 280, flex: "1 1 420px", flexDirection: "column", gap: 7 }}>
-          <span style={{ fontSize: 12, fontWeight: 800, color: "#475569", letterSpacing: "0.02em" }}>
-            Saved workflow
-          </span>
+        <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>Saved workflow</span>
           <select
             value={savedWorkflows.some((workflow) => workflow.id === workflowId) ? workflowId : ""}
             onFocus={() => {
@@ -533,19 +801,17 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
             onChange={(event) => void handleSelectWorkflow(event.target.value)}
             style={{
               width: "100%",
-              minWidth: 0,
-              height: 46,
-              borderRadius: 10,
+              height: 42,
+              borderRadius: 8,
               border: "1px solid rgba(203, 213, 225, 0.95)",
               background: "#ffffff",
-              padding: "0 14px",
+              padding: "0 10px",
               color: "#0f172a",
-              fontSize: 14,
+              fontSize: 13,
               fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
-              boxShadow: "0 8px 18px rgba(15, 23, 42, 0.04)",
             }}
           >
-            <option value="">{isLoadingWorkflows ? "Loading BPMN workflows..." : "Select BPMN workflow"}</option>
+            <option value="">{isLoadingWorkflows ? "Loading..." : "Select BPMN workflow"}</option>
             {savedWorkflows.map((workflow) => (
               <option key={workflow.id} value={workflow.id}>
                 {workflow.name}
@@ -554,19 +820,118 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
           </select>
         </label>
 
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            justifyContent: "flex-end",
-            gap: 8,
-            flex: "0 1 auto",
-          }}
-        >
+        <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>Workflow name</span>
+          <input
+            key={workflowId}
+            defaultValue={workflowName}
+            placeholder={DEFAULT_WORKFLOW_NAME}
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(event) => handleWorkflowNameChange(event.target.value)}
+            style={{
+              width: "100%",
+              height: 42,
+              borderRadius: 8,
+              border: "1px solid rgba(203, 213, 225, 0.95)",
+              background: "#ffffff",
+              padding: "0 10px",
+              color: "#0f172a",
+              fontSize: 13,
+              fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
+            }}
+          />
+        </label>
+
+        <section aria-label="Workflow type" style={{ display: "grid", gap: 7 }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>Workflow type</span>
+          <div
+            role="radiogroup"
+            aria-label="Workflow type for new diagrams"
+            style={{ display: "grid", gap: 7 }}
+          >
+            {workflowCreationOptions.map((option) => {
+              const isSelected = workflowCreationType === option.type;
+
+              return (
+                <button
+                  key={option.type}
+                  type="button"
+                  role="radio"
+                  aria-checked={isSelected}
+                  title={option.helper}
+                  onClick={() => setWorkflowCreationType(option.type)}
+                  style={{
+                    height: 42,
+                    borderRadius: 8,
+                    border: isSelected
+                      ? "1px solid rgba(var(--workflow-accent-rgb), 0.52)"
+                      : "1px solid rgba(203, 213, 225, 0.95)",
+                    background: isSelected ? "var(--workflow-accent-soft)" : "#ffffff",
+                    color: isSelected ? "var(--workflow-accent)" : "#0f172a",
+                    padding: "0 10px",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    textAlign: "left",
+                    fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
+                  }}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {isServiceTask(selectedElement) ? (
+          <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>Service task action</span>
+            <select
+              value={selectedActionId}
+              onChange={(event) => updateSelectedElementAction(event.target.value)}
+              disabled={isLoadingWorkflowActions || compatibleWorkflowActions.length === 0}
+              style={{
+                width: "100%",
+                height: 42,
+                borderRadius: 8,
+                border: "1px solid rgba(203, 213, 225, 0.95)",
+                background: "#ffffff",
+                padding: "0 10px",
+                color: "#0f172a",
+                fontSize: 13,
+                fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
+              }}
+            >
+              <option value="">
+                {isLoadingWorkflowActions
+                  ? "Loading actions..."
+                  : compatibleWorkflowActions.length === 0
+                    ? "No workflow actions loaded"
+                    : "Select workflow action"}
+              </option>
+              {selectedActionId && !compatibleWorkflowActions.some((action) => action.id === selectedActionId) ? (
+                <option value={selectedActionId}>Unknown action: {selectedActionId}</option>
+              ) : null}
+              {compatibleWorkflowActions.map((action) => (
+                <option key={action.id} value={action.id}>
+                  {action.label || action.id}
+                </option>
+              ))}
+            </select>
+            {!isLoadingWorkflowActions && compatibleWorkflowActions.length === 0 ? (
+              <span style={{ color: "#92400e", fontSize: 12, lineHeight: 1.35 }}>
+                No bpmn:ServiceTask actions came back from /system/workflow-actions.
+              </span>
+            ) : null}
+          </label>
+        ) : null}
+
+        <div style={{ display: "grid", gap: 8, marginTop: 2 }}>
           <button
             type="button"
             className="app-modal-btn app-modal-btn-secondary"
-            style={{ minWidth: 92, height: 46, borderRadius: 10 }}
+            style={{ width: "100%", height: 42, borderRadius: 8 }}
             onClick={handleNewWorkflow}
           >
             New
@@ -575,13 +940,12 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
             type="button"
             className="app-modal-btn app-modal-btn-secondary"
             style={{
-              minWidth: 104,
-              height: 46,
-              borderRadius: 10,
+              width: "100%",
+              height: 42,
+              borderRadius: 8,
               border: "1px solid rgba(16, 185, 129, 0.35)",
               background: "var(--workflow-accent)",
               color: "#ffffff",
-              boxShadow: "0 12px 24px rgba(45, 183, 128, 0.22)",
             }}
             onClick={() => void handleSaveWorkflow()}
             disabled={isSavingWorkflow}
@@ -593,9 +957,9 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
               type="button"
               className="app-modal-btn app-modal-btn-secondary"
               style={{
-                minWidth: 104,
-                height: 46,
-                borderRadius: 10,
+                width: "100%",
+                height: 42,
+                borderRadius: 8,
                 border: "1px solid rgba(239, 68, 68, 0.24)",
                 background: "#fff7f7",
                 color: "#b91c1c",
@@ -607,55 +971,48 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
             </button>
           ) : null}
         </div>
-      </div>
 
-      <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        <span style={{ fontSize: 12, fontWeight: 800, color: "#475569", letterSpacing: "0.02em" }}>
-          Workflow name
-        </span>
-        <input
-          key={workflowId}
-          defaultValue={workflowName}
-          placeholder={DEFAULT_WORKFLOW_NAME}
-          spellCheck={false}
-          autoComplete="off"
-          onKeyDownCapture={(event) => event.stopPropagation()}
-          onKeyUpCapture={(event) => event.stopPropagation()}
-          onChange={(event) => handleWorkflowNameChange(event.target.value)}
-          style={{
-            width: "100%",
-            height: 46,
-            borderRadius: 10,
-            border: "1px solid rgba(203, 213, 225, 0.95)",
-            background: "#ffffff",
-            padding: "0 14px",
-            color: "#0f172a",
-            fontSize: 14,
-            fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
-            boxShadow: "0 8px 18px rgba(15, 23, 42, 0.04)",
-          }}
-        />
-      </label>
+        {workflowActionWarnings.length > 0 ? (
+          <div
+            style={{
+              display: "grid",
+              gap: 4,
+              borderRadius: 8,
+              border: "1px solid rgba(245, 158, 11, 0.28)",
+              background: "#fffbeb",
+              padding: "9px 10px",
+              color: "#92400e",
+              fontSize: 12,
+            }}
+          >
+            {workflowActionWarnings.map((warning) => (
+              <p key={warning} style={{ margin: 0 }}>
+                {warning}
+              </p>
+            ))}
+          </div>
+        ) : null}
+
+        {error ? (
+          <p style={{ margin: 0, fontSize: 12, color: "#b91c1c" }}>{error}</p>
+        ) : status ? (
+          <p style={{ margin: 0, fontSize: 12, color: "#166534" }}>{status}</p>
+        ) : null}
+      </aside>
 
       <div
         ref={containerRef}
         className="bpmn-workflow-modeler"
         style={{
           width: "100%",
-          flex: 1,
-          minHeight: 420,
+          height: "100%",
+          minHeight: 520,
           borderRadius: 8,
           border: "1px solid rgba(203, 213, 225, 0.95)",
           background: "#ffffff",
           overflow: "hidden",
         }}
       />
-
-      {error ? (
-        <p style={{ margin: 0, fontSize: 12, color: "#b91c1c" }}>{error}</p>
-      ) : status ? (
-        <p style={{ margin: 0, fontSize: 12, color: "#166534" }}>{status}</p>
-      ) : null}
     </div>
   );
 }
