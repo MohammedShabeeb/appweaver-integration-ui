@@ -28,7 +28,7 @@ const defaultDescriptions: Record<string, string> = {
   upload: "Upload multipart documents to a configured endpoint.",
   download: "Download content from a configured endpoint.",
   enrich: "Call an endpoint and merge its response.",
-  dbCrud: "Run database CRUD or custom SQL operations.",
+  dbCrud: "Run SQL queries against a configured database.",
   smartRouter: "Route requests to an endpoint with optional payload transformation.",
   agent: "Invoke an LLM agent and filter direct-route tools by tag.",
   workflow: "Design and save a BPMN workflow diagram.",

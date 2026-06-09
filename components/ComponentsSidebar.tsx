@@ -77,7 +77,7 @@ const stepDescriptions: Record<StepListItem["type"], string> = {
   upload: "Upload multipart documents to a configured endpoint.",
   download: "Download content from a configured endpoint.",
   enrich: "Call an endpoint and merge its response.",
-  dbCrud: "Run create, read, update, delete, or custom SQL operations against the configured database.",
+  dbCrud: "Run SQL queries against the configured database.",
   smartRouter: "Route to the selected endpoint and optionally transform the request payload first.",
   agent: "Invoke an LLM agent with tools filtered by a shared direct-route tag.",
   workflow: "Design, select, and save BPMN workflows with BPMN.js.",

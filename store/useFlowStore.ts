@@ -424,7 +424,7 @@ function createCanvasFromBackendSteps(
     const node = createFlowNode(componentKey, getRouteCanvasPosition(index + 1));
     const label =
       componentKey === "dbCrud"
-        ? "DB CRUD"
+        ? "SQL"
         : typeof step.name === "string" && step.name.trim()
         ? step.name
         : typeof step.ref === "string" && step.ref.trim()
@@ -559,7 +559,7 @@ function createFlowNode(
     upload: "Upload",
     download: "Download",
     enrich: "Enrich",
-    dbCrud: "DB CRUD",
+    dbCrud: "SQL",
     smartRouter: "Smart Router",
     agent: "Agent",
     workflow: "Workflow",
@@ -1702,7 +1702,7 @@ function buildDbCrudBackendSteps(config: Record<string, unknown> | undefined): B
     return [
       {
         type: "log",
-        message: "DB CRUD step is incomplete; configure SQL/table and mappings before publishing.",
+        message: "SQL step is incomplete; configure SQL/table and mappings before publishing.",
         logLevel: "WARN",
       },
     ];
@@ -2031,7 +2031,7 @@ function buildWorkflowFromRouteDefinition(
           : componentKey === "agent"
             ? "Agent"
           : componentKey === "dbCrud"
-            ? "DB CRUD"
+            ? "SQL"
           : componentKey === "toD"
             ? "To Dynamic"
             : componentKey === "setBody"

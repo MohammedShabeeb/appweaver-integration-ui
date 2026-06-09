@@ -484,7 +484,7 @@ export const nodeTypeMeta = {
     Icon: EnrichIcon,
   },
   dbCrud: {
-    label: "DB CRUD",
+    label: "SQL",
     Icon: DatabaseIcon,
   },
   smartRouter: {

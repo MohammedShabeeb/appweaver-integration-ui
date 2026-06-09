@@ -1093,7 +1093,7 @@ export default function ConfigPanel() {
         : type === "enrich"
           ? "Enrich the exchange from another endpoint using request and response mapping."
         : type === "dbCrud"
-          ? "Configure a database operation that exports as standard backend route steps."
+          ? "Configure a SQL operation that exports as standard backend route steps."
         : type === "smartRouter"
           ? "Route requests to the configured endpoint and optionally transform the payload first."
         : type === "agent"
