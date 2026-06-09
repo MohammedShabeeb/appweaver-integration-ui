@@ -65,6 +65,7 @@ const stepDescriptions: Record<StepListItem["type"], string> = {
   convertBodyTo: "Convert the message body to a target Java class.",
   transform: "Transform the message body with a simple expression or mapper.",
   filter: "Pass messages that match a rule.",
+  choice: "Branch messages into matching when and otherwise steps.",
   routeContainer: "Define a nested child route inside this container.",
   split: "Split the exchange body and run nested steps.",
   dynamicroute: "Choose the next endpoint at runtime.",

@@ -36,6 +36,7 @@ const nodeTypes = {
   convertBodyTo: StepNode,
   transform: StepNode,
   filter: StepNode,
+  choice: StepNode,
   routeContainer: StepNode,
   split: StepNode,
   dynamicroute: StepNode,

@@ -14,6 +14,7 @@ type FlowNodeCardProps = {
   onDelete?: (id: string) => void;
   sourceHandles?: boolean;
   targetHandles?: boolean;
+  children?: ReactNode;
 };
 
 const deleteBtnStyle: CSSProperties = {
@@ -69,6 +70,7 @@ export default function FlowNodeCard({
   onDelete,
   sourceHandles = true,
   targetHandles = true,
+  children,
 }: FlowNodeCardProps) {
   return (
     <div style={buildCardStyle(accentColor, selected, disabled)}>
@@ -170,6 +172,8 @@ export default function FlowNodeCard({
           Disabled
         </div>
       ) : null}
+
+      {children ? <div style={{ marginTop: 10 }}>{children}</div> : null}
 
       {targetHandles ? (
         <>

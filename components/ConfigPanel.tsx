@@ -374,6 +374,34 @@ function parseJsonArray(value: string) {
   return parsed;
 }
 
+type ChoiceWhenBranch = Record<string, unknown> & {
+  expression?: string;
+  steps?: unknown;
+};
+
+function normalizeChoiceWhenBranches(value: unknown): ChoiceWhenBranch[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(
+    (item): item is ChoiceWhenBranch =>
+      Boolean(item) && typeof item === "object" && !Array.isArray(item),
+  );
+}
+
+function getChoiceWhenBranchKey(index: number) {
+  return `when-${index}`;
+}
+
+function getCanvasStepCount(canvas: { nodes?: Array<{ type?: string }> } | undefined) {
+  return canvas?.nodes?.filter((node) => node.type !== "start").length ?? 0;
+}
+
+function getBranchConfigStepCount(value: unknown) {
+  return Array.isArray(value) ? value.length : 0;
+}
+
 function appendDefaultTenantValueMapping(values: unknown[]) {
   const hasTenantId = values.some((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
@@ -599,12 +627,14 @@ function XIcon(props: React.SVGProps<SVGSVGElement>) {
 
 export default function ConfigPanel() {
   const {
+    canvases,
     selectedNode,
     selectedEdge,
     updateNodeData,
     deleteEdge,
     clearSelection,
     openNestedRouteCanvas,
+    openChoiceBranchCanvas,
     customComponents,
   } = useFlowStore();
   const [promptEditor, setPromptEditor] = useState<PromptTemplateEditorState>(closedPromptTemplateEditor);
@@ -1001,6 +1031,26 @@ export default function ConfigPanel() {
       : Array.isArray(config.values)
         ? config.values
         : [];
+  const choiceWhenBranches = normalizeChoiceWhenBranches(config.when);
+  const choiceBranchCanvasIds =
+    selectedNode.data.choiceBranchCanvasIds && typeof selectedNode.data.choiceBranchCanvasIds === "object"
+      ? selectedNode.data.choiceBranchCanvasIds
+      : {};
+  const getChoiceBranchStepCount = (branchKey: string, fallbackSteps: unknown) => {
+    const canvasId = choiceBranchCanvasIds[branchKey];
+    return canvasId && canvases[canvasId]
+      ? getCanvasStepCount(canvases[canvasId])
+      : getBranchConfigStepCount(fallbackSteps);
+  };
+  const updateChoiceWhenBranch = (index: number, branch: ChoiceWhenBranch) => {
+    updateNodeData(selectedNode.id, {
+      config: {
+        when: choiceWhenBranches.map((item, itemIndex) =>
+          itemIndex === index ? branch : item,
+        ),
+      },
+    });
+  };
   const panelDescription = customComponent
     ? customComponent.description || "Configure this custom component from its template fields."
     :
@@ -1022,6 +1072,8 @@ export default function ConfigPanel() {
           ? "Transform the exchange body with a simple expression or JSON mapper."
       : type === "filter"
         ? "Continue only when an expression or processor allows the exchange."
+      : type === "choice"
+        ? "Branch to the first matching condition or run otherwise steps."
         : type === "routeContainer"
           ? "Open a nested canvas and define a child route inside this component."
         : type === "split"
@@ -1715,6 +1767,101 @@ export default function ConfigPanel() {
                 }}
               />
             </label>
+          </div>
+        )}
+
+        {type === "choice" && (
+          <div style={sectionStyle}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {choiceWhenBranches.map((branch, index) => {
+                const branchKey = getChoiceWhenBranchKey(index);
+                const stepCount = getChoiceBranchStepCount(branchKey, branch.steps);
+
+                return (
+                  <div
+                    key={`${selectedNode.id}-${branchKey}`}
+                    style={{
+                      borderRadius: 10,
+                      border: "1px solid rgba(203, 213, 225, 0.95)",
+                      background: "#ffffff",
+                      padding: 12,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+                      <span style={{ ...labelStyle, marginBottom: 0 }}>When {index + 1}</span>
+                      <span style={{ ...helperTextStyle, marginTop: 0 }}>{stepCount} steps</span>
+                    </div>
+                    <label>
+                      <span style={labelStyle}>Expression</span>
+                      <textarea
+                        value={String(branch.expression ?? "")}
+                        placeholder="${body.status} == 'approved'"
+                        style={{ ...inputStyle, minHeight: 74, resize: "vertical" }}
+                        onChange={(event) =>
+                          updateChoiceWhenBranch(index, {
+                            ...branch,
+                            expression: event.target.value,
+                          })
+                        }
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      style={{ ...primaryBtnStyle, width: "100%", marginTop: 10 }}
+                      onClick={() => openChoiceBranchCanvas(selectedNode.id, branchKey)}
+                    >
+                      Open branch
+                    </button>
+                  </div>
+                );
+              })}
+
+              <button
+                type="button"
+                style={secondaryBtnStyle}
+                onClick={() =>
+                  updateNodeData(selectedNode.id, {
+                    config: {
+                      when: [
+                        ...choiceWhenBranches,
+                        {
+                          expression: "",
+                          steps: [],
+                        },
+                      ],
+                    },
+                  })
+                }
+              >
+                Add when branch
+              </button>
+            </div>
+
+            <div
+              style={{
+                borderRadius: 10,
+                border: "1px solid rgba(203, 213, 225, 0.95)",
+                background: "#ffffff",
+                padding: 12,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+                <span style={{ ...labelStyle, marginBottom: 0 }}>Otherwise</span>
+                <span style={{ ...helperTextStyle, marginTop: 0 }}>
+                  {getChoiceBranchStepCount("otherwise", config.otherwise)} steps
+                </span>
+              </div>
+              <p style={{ ...helperTextStyle, margin: "0 0 10px" }}>
+                Runs when none of the when expressions match.
+              </p>
+              <button
+                type="button"
+                style={{ ...primaryBtnStyle, width: "100%" }}
+                onClick={() => openChoiceBranchCanvas(selectedNode.id, "otherwise")}
+              >
+                Open otherwise branch
+              </button>
+            </div>
           </div>
         )}
 

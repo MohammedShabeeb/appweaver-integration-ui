@@ -152,6 +152,20 @@ export function DynamicRouteIcon(props: IconProps) {
   );
 }
 
+export function ChoiceIcon(props: IconProps) {
+  return (
+    <BaseIcon {...props}>
+      <path d="M5 6h5" />
+      <path d="M14 4h5v5h-5z" />
+      <path d="M14 15h5v5h-5z" />
+      <path d="M10 6c2.5 0 2.5 1 4 1" />
+      <path d="M10 6c2.5 0 2.5 11.5 4 11.5" />
+      <path d="M5 12h4" />
+      <path d="m7 10 2 2-2 2" />
+    </BaseIcon>
+  );
+}
+
 export function SplitIcon(props: IconProps) {
   return (
     <BaseIcon {...props}>
@@ -416,6 +430,10 @@ export const nodeTypeMeta = {
   filter: {
     label: "Filter",
     Icon: FilterIcon,
+  },
+  choice: {
+    label: "Choice",
+    Icon: ChoiceIcon,
   },
   routeContainer: {
     label: "Nested Route",

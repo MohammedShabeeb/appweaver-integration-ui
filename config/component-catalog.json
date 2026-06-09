@@ -129,6 +129,14 @@
       "dependencies": []
     },
     {
+      "type": "choice",
+      "defaultGroup": "logic",
+      "singleEndpointOnly": false,
+      "color": "#f97316",
+      "bgClass": "sidebar-item-switch",
+      "dependencies": []
+    },
+    {
       "type": "routeContainer",
       "defaultGroup": "logic",
       "singleEndpointOnly": false,

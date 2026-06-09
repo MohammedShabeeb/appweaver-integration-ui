@@ -146,6 +146,7 @@ type AppNodeData = {
   description?: string;
   accentColor?: string;
   childCanvasId?: string;
+  choiceBranchCanvasIds?: Record<string, string>;
 };
 
 type AppNode = Node<AppNodeData>;
@@ -221,6 +222,8 @@ type RouteImportStep = {
   ref?: string;
   expression?: string;
   steps?: unknown;
+  when?: unknown;
+  otherwise?: unknown;
   splitClazz?: unknown;
   tokenize?: string;
   parallel?: boolean;
@@ -327,6 +330,129 @@ function createCanvas(id: string, name: string): CanvasState {
   };
 }
 
+function getRouteStepComponentKey(step: RouteImportStep): BuiltInComponentType | null {
+  if (step.type === "to" && step.endpoint === "smart-router") {
+    return "smartRouter";
+  }
+
+  if (step.type === "to" && step.endpoint === "agent:chat") {
+    return "agent";
+  }
+
+  return step.type && isBuiltInComponent(step.type) ? step.type : null;
+}
+
+function createCanvasFromBackendSteps(
+  id: string,
+  name: string,
+  steps: unknown,
+): CanvasState {
+  const canvas = createCanvas(id, name);
+
+  if (!Array.isArray(steps)) {
+    return canvas;
+  }
+
+  const startNode = canvas.nodes[0];
+  const nodes: AppNode[] = [startNode];
+  const edges: AppEdge[] = [];
+  let previousNodeId = startNode.id;
+  let previousNodePosition = startNode.position;
+
+  steps.forEach((rawStep, index) => {
+    if (!isPlainRecord(rawStep) || typeof rawStep.type !== "string") {
+      return;
+    }
+
+    const step = rawStep as RouteImportStep;
+    const componentKey = getRouteStepComponentKey(step);
+
+    if (!componentKey || componentKey === "start") {
+      return;
+    }
+
+    const node = createFlowNode(componentKey, getRouteCanvasPosition(index + 1));
+    const label =
+      typeof step.name === "string" && step.name.trim()
+        ? step.name
+        : typeof step.ref === "string" && step.ref.trim()
+          ? step.ref
+          : node.data.label;
+
+    node.data = {
+      ...node.data,
+      label,
+      config: {
+        ...node.data.config,
+        ...step,
+        disabled: Boolean(step.disabled),
+        parameters: step.parameters ?? {},
+        dependencies: normalizeDependencyList(step.dependencies),
+      },
+    };
+
+    nodes.push(node);
+    edges.push({
+      id: `${previousNodeId}-${node.id}`,
+      source: previousNodeId,
+      target: node.id,
+      ...getRouteEdgeHandles(previousNodePosition, node.position),
+      type: "insertable",
+    });
+    previousNodeId = node.id;
+    previousNodePosition = node.position;
+  });
+
+  return {
+    ...canvas,
+    nodes,
+    edges,
+  };
+}
+
+function getChoiceWhenBranchKey(index: number) {
+  return `when-${index}`;
+}
+
+function getChoiceBranchName(node: AppNode, branchKey: string) {
+  if (branchKey === "otherwise") {
+    return `${node.data?.label || "Choice"}: Otherwise`;
+  }
+
+  const match = branchKey.match(/^when-(\d+)$/);
+  const branchIndex = match ? Number(match[1]) : 0;
+  const when = Array.isArray(node.data?.config?.when) ? node.data.config.when : [];
+  const branch = when[branchIndex];
+  const expression =
+    branch && typeof branch === "object" && !Array.isArray(branch)
+      ? String((branch as Record<string, unknown>).expression ?? "").trim()
+      : "";
+
+  return `${node.data?.label || "Choice"}: When ${branchIndex + 1}${expression ? ` (${expression})` : ""}`;
+}
+
+function getChoiceBranchFallbackSteps(node: AppNode, branchKey: string) {
+  if (branchKey === "otherwise") {
+    return node.data?.config?.otherwise;
+  }
+
+  const match = branchKey.match(/^when-(\d+)$/);
+  const branchIndex = match ? Number(match[1]) : 0;
+  const when = Array.isArray(node.data?.config?.when) ? node.data.config.when : [];
+  const branch = when[branchIndex];
+
+  return branch && typeof branch === "object" && !Array.isArray(branch)
+    ? (branch as Record<string, unknown>).steps
+    : [];
+}
+
+function getNodeNestedCanvasIds(node: AppNode): string[] {
+  return [
+    ...(node.data?.childCanvasId ? [node.data.childCanvasId] : []),
+    ...Object.values(node.data?.choiceBranchCanvasIds ?? {}),
+  ];
+}
+
 function createInitialWorkflow(id = DEFAULT_WORKFLOW_ID, name = "Root"): WorkflowRecord {
   return {
     id,
@@ -365,6 +491,7 @@ function createFlowNode(
     convertBodyTo: "Convert Body",
     transform: "Transform",
     filter: "Filter",
+    choice: "Choice",
     routeContainer: "Nested Route",
     split: "Split",
     dynamicroute: "Dynamic Route",
@@ -441,6 +568,16 @@ function createFlowNode(
       expression: "${body} != null",
       clazz: "",
       steps: [],
+    },
+    choice: {
+      disabled: false,
+      when: [
+        {
+          expression: "${body} != null",
+          steps: [],
+        },
+      ],
+      otherwise: [],
     },
     routeContainer: {
       disabled: false,
@@ -655,10 +792,10 @@ function removeCanvasSubtree(
   let nextCanvases = { ...canvases };
 
   for (const node of canvas.nodes) {
-    const childCanvasId = node.data?.childCanvasId;
-
-    if (childCanvasId) {
-      nextCanvases = removeCanvasSubtree(nextCanvases, childCanvasId);
+    for (const childCanvasId of getNodeNestedCanvasIds(node)) {
+      if (childCanvasId) {
+        nextCanvases = removeCanvasSubtree(nextCanvases, childCanvasId);
+      }
     }
   }
 
@@ -677,8 +814,8 @@ function pruneDeprecatedNodesFromCanvases(
     let nextCanvasMap = nextCanvases;
 
     for (const node of nodesToDelete) {
-      if (node.data?.childCanvasId) {
-        nextCanvasMap = removeCanvasSubtree(nextCanvasMap, node.data.childCanvasId);
+      for (const childCanvasId of getNodeNestedCanvasIds(node)) {
+        nextCanvasMap = removeCanvasSubtree(nextCanvasMap, childCanvasId);
       }
     }
 
@@ -1051,6 +1188,61 @@ function buildRouteContainerBackendStep(
   };
 }
 
+function getChoiceBranchSteps(
+  workflow: WorkflowRecord,
+  node: AppNode,
+  branchKey: string,
+  fallbackSteps: unknown,
+) {
+  const branchCanvasId = node.data?.choiceBranchCanvasIds?.[branchKey];
+  const branchCanvas = branchCanvasId ? workflow.canvases[branchCanvasId] : null;
+
+  if (branchCanvas) {
+    return buildBackendStepsFromCanvas(workflow, branchCanvas);
+  }
+
+  return Array.isArray(fallbackSteps) ? fallbackSteps : [];
+}
+
+function buildChoiceBackendStep(workflow: WorkflowRecord, node: AppNode): BackendRouteStep {
+  const choiceConfig = stripBackendConfig(node.data?.config);
+  const when = Array.isArray(choiceConfig.when)
+    ? choiceConfig.when.filter(
+        (item) =>
+          isPlainRecord(item) &&
+          typeof item.expression === "string" &&
+          item.expression.trim().length > 0,
+      )
+    : [];
+  const otherwise = getChoiceBranchSteps(
+    workflow,
+    node,
+    "otherwise",
+    choiceConfig.otherwise,
+  );
+  const nextConfig = { ...choiceConfig };
+
+  if (when.length > 0) {
+    nextConfig.when = when.map((item, index) => ({
+      ...item,
+      steps: getChoiceBranchSteps(workflow, node, getChoiceWhenBranchKey(index), item.steps),
+    }));
+  } else {
+    delete nextConfig.when;
+  }
+
+  if (otherwise.length > 0) {
+    nextConfig.otherwise = otherwise;
+  } else {
+    delete nextConfig.otherwise;
+  }
+
+  return {
+    type: "choice",
+    ...nextConfig,
+  };
+}
+
 function stripBackendStepConfig(
   componentType: string,
   config: Record<string, unknown> | undefined,
@@ -1146,6 +1338,33 @@ function stripBackendStepConfig(
     }
 
     return filterConfig;
+  }
+
+  if (componentType === "choice") {
+    const choiceConfig = { ...backendConfig };
+    const when = Array.isArray(choiceConfig.when)
+      ? choiceConfig.when.filter(
+          (item) =>
+            isPlainRecord(item) &&
+            typeof item.expression === "string" &&
+            item.expression.trim().length > 0,
+        )
+      : [];
+
+    if (when.length > 0) {
+      choiceConfig.when = when.map((item) => ({
+        ...item,
+        steps: Array.isArray(item.steps) ? item.steps : [],
+      }));
+    } else {
+      delete choiceConfig.when;
+    }
+
+    if (!Array.isArray(choiceConfig.otherwise) || choiceConfig.otherwise.length === 0) {
+      delete choiceConfig.otherwise;
+    }
+
+    return choiceConfig;
   }
 
   if (componentType === "split") {
@@ -1607,6 +1826,10 @@ function buildBackendStepsFromCanvas(
         return buildRouteContainerBackendStep(workflow, node);
       }
 
+      if (componentType === "choice") {
+        return buildChoiceBackendStep(workflow, node);
+      }
+
       if (componentType === "workflow") {
         return [];
       }
@@ -1677,6 +1900,7 @@ function buildWorkflowFromRouteDefinition(
       step?.type === "convertBodyTo" ||
       step?.type === "transform" ||
       step?.type === "filter" ||
+      step?.type === "choice" ||
       step?.type === "split" ||
       step?.type === "dynamicroute" ||
       step?.type === "validate" ||
@@ -1773,6 +1997,8 @@ function buildWorkflowFromRouteDefinition(
                     ? "Transform"
               : componentKey === "filter"
                 ? "Filter"
+              : componentKey === "choice"
+                ? "Choice"
               : componentKey === "split"
                 ? "Split"
               : componentKey === "dynamicroute"
@@ -1896,6 +2122,19 @@ function buildWorkflowFromRouteDefinition(
                 expression: step.expression ?? "${body} != null",
                 clazz: step.clazz ?? "",
                 steps: Array.isArray(step.steps) ? step.steps : [],
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
+          : componentKey === "choice"
+            ? {
+                when: Array.isArray(step.when)
+                  ? step.when.filter(
+                      (item): item is Record<string, unknown> =>
+                        Boolean(item) && typeof item === "object" && !Array.isArray(item),
+                    )
+                  : [],
+                otherwise: Array.isArray(step.otherwise) ? step.otherwise : [],
                 disabled: Boolean(step.disabled),
                 parameters: step.parameters ?? {},
                 dependencies: normalizeDependencyList(step.dependencies),
@@ -2096,6 +2335,7 @@ function normalizePersistedState(
       "convertBodyTo",
       "transform",
       "filter",
+      "choice",
       "split",
       "dynamicroute",
       "validate",
@@ -2243,6 +2483,7 @@ interface FlowState {
   clearCurrentCanvas: () => void;
   insertNodeOnEdge: (edgeId: string, type: InsertableNodeType) => void;
   openNestedRouteCanvas: (nodeId: string) => void;
+  openChoiceBranchCanvas: (nodeId: string, branchKey: string) => void;
   goBackCanvas: () => void;
   openCanvasFromBreadcrumb: (canvasId: string) => void;
   toggleSidebar: () => void;
@@ -3258,12 +3499,15 @@ export const useFlowStore = create<FlowState>()(
             },
           };
 
-          if (nodeToDelete?.data?.childCanvasId) {
-            nextCanvases = removeCanvasSubtree(nextCanvases, nodeToDelete.data.childCanvasId);
+          for (const childCanvasId of nodeToDelete ? getNodeNestedCanvasIds(nodeToDelete) : []) {
+            nextCanvases = removeCanvasSubtree(nextCanvases, childCanvasId);
           }
 
+          const deletedCanvasIds = new Set(
+            nodeToDelete ? getNodeNestedCanvasIds(nodeToDelete) : [],
+          );
           const nextStack = activeWorkflow.canvasStack.filter(
-            (canvasId) => canvasId !== nodeToDelete?.data?.childCanvasId,
+            (canvasId) => !deletedCanvasIds.has(canvasId),
           );
           const nextCurrentCanvasId = nextCanvases[activeWorkflow.currentCanvasId]
             ? activeWorkflow.currentCanvasId
@@ -3488,6 +3732,76 @@ export const useFlowStore = create<FlowState>()(
                   nodes: nextNodes,
                 },
                 [childCanvasId]: childCanvas,
+              },
+            }),
+            selectedNode: null,
+            selectedEdge: null,
+          };
+        }),
+
+      openChoiceBranchCanvas: (nodeId, branchKey) =>
+        set((state) => {
+          const activeWorkflow = state.workflows[state.activeWorkflowId];
+
+          if (!activeWorkflow) {
+            return state;
+          }
+
+          const currentCanvas = activeWorkflow.canvases[activeWorkflow.currentCanvasId];
+          const node = currentCanvas?.nodes.find((item) => item.id === nodeId);
+
+          if (!currentCanvas || !node) {
+            return state;
+          }
+
+          const existingBranchCanvasId = node.data?.choiceBranchCanvasIds?.[branchKey];
+          const branchCanvasId =
+            existingBranchCanvasId ??
+            `canvas-${nodeId}-${branchKey}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+          const branchCanvasName = getChoiceBranchName(node, branchKey);
+          const branchCanvas =
+            activeWorkflow.canvases[branchCanvasId] ??
+            createCanvasFromBackendSteps(
+              branchCanvasId,
+              branchCanvasName,
+              getChoiceBranchFallbackSteps(node, branchKey),
+            );
+          const nextBranchCanvasIds = {
+            ...(node.data?.choiceBranchCanvasIds ?? {}),
+            [branchKey]: branchCanvasId,
+          };
+          const nextNodes = existingBranchCanvasId
+            ? currentCanvas.nodes
+            : currentCanvas.nodes.map((item) =>
+                item.id === nodeId
+                  ? {
+                      ...item,
+                      data: {
+                        ...item.data,
+                        choiceBranchCanvasIds: nextBranchCanvasIds,
+                      },
+                    }
+                  : item,
+              );
+          const nextStack = activeWorkflow.canvasStack.includes(branchCanvasId)
+            ? activeWorkflow.canvasStack.slice(0, activeWorkflow.canvasStack.indexOf(branchCanvasId) + 1)
+            : [...activeWorkflow.canvasStack, branchCanvasId];
+
+          return {
+            ...syncActiveWorkflow(state, {
+              ...activeWorkflow,
+              currentCanvasId: branchCanvasId,
+              canvasStack: nextStack,
+              canvases: {
+                ...activeWorkflow.canvases,
+                [activeWorkflow.currentCanvasId]: {
+                  ...currentCanvas,
+                  nodes: nextNodes,
+                },
+                [branchCanvasId]: {
+                  ...branchCanvas,
+                  name: branchCanvasName,
+                },
               },
             }),
             selectedNode: null,
