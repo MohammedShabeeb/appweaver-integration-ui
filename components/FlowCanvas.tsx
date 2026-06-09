@@ -69,16 +69,12 @@ export default function FlowCanvas() {
     canvases,
     currentCanvasId,
     canvasStack,
-    selectedNode,
-    selectedEdge,
     setNodes,
     setEdges,
     addNode,
     setSelectedNode,
     setSelectedEdge,
     clearSelection,
-    deleteNode,
-    deleteEdge,
     arrangeCurrentRoute,
     clearCurrentCanvas,
     goBackCanvas,
@@ -305,32 +301,6 @@ export default function FlowCanvas() {
     },
     [addNode]
   );
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const isTyping =
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target?.isContentEditable;
-
-      if (isTyping || (event.key !== "Delete" && event.key !== "Backspace")) {
-        return;
-      }
-
-      if (selectedEdge) {
-        deleteEdge(selectedEdge.id);
-        return;
-      }
-
-      if (selectedNode && selectedNode.type !== "start") {
-        deleteNode(selectedNode.id);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [deleteEdge, deleteNode, selectedEdge, selectedNode]);
 
   return (
     <div

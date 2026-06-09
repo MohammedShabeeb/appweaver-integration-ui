@@ -603,7 +603,6 @@ export default function ConfigPanel() {
     selectedEdge,
     updateNodeData,
     deleteEdge,
-    deleteNode,
     clearSelection,
     openNestedRouteCanvas,
     customComponents,
@@ -787,11 +786,6 @@ export default function ConfigPanel() {
             })
           }
         />
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-          <button type="button" style={{ ...deleteBtnStyle, width: "min(260px, 100%)" }} onClick={() => deleteNode(selectedNode.id)}>
-            Delete component
-          </button>
-        </div>
       </div>
     );
   }
@@ -3454,9 +3448,6 @@ export default function ConfigPanel() {
           </div>
         ) : null}
 
-        <button type="button" style={deleteBtnStyle} onClick={() => deleteNode(selectedNode.id)}>
-          Delete component
-        </button>
         </div>
       </div>
       {isPromptEditorOpen ? (

@@ -508,68 +508,111 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
   };
 
   return (
-    <div style={{ display: "flex", flex: 1, minHeight: 0, flexDirection: "column", gap: 12 }}>
+    <div style={{ display: "flex", flex: 1, minHeight: 0, flexDirection: "column", gap: 18 }}>
       <div
-        style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto auto", gap: 8 }}
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 14,
+          alignItems: "end",
+        }}
         onKeyDownCapture={(event) => event.stopPropagation()}
         onKeyUpCapture={(event) => event.stopPropagation()}
       >
-        <select
-          value={savedWorkflows.some((workflow) => workflow.id === workflowId) ? workflowId : ""}
-          onFocus={() => {
-            if (!isLoadingWorkflows && loadedWorkflows.length === 0) {
-              void loadBackendWorkflows();
-            }
-          }}
-          onChange={(event) => void handleSelectWorkflow(event.target.value)}
-          style={{
-            minWidth: 0,
-            borderRadius: 8,
-            border: "1px solid rgba(203, 213, 225, 0.95)",
-            background: "#ffffff",
-            padding: "9px 10px",
-            color: "#0f172a",
-            fontSize: 13,
-            fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
-          }}
-        >
-          <option value="">{isLoadingWorkflows ? "Loading BPMN workflows..." : "Select BPMN workflow"}</option>
-          {savedWorkflows.map((workflow) => (
-            <option key={workflow.id} value={workflow.id}>
-              {workflow.name}
-            </option>
-          ))}
-        </select>
-        <button type="button" className="app-modal-btn app-modal-btn-secondary" style={{ minWidth: 76, height: 40 }} onClick={handleNewWorkflow}>
-          New
-        </button>
-        <button
-          type="button"
-          className="app-modal-btn app-modal-btn-danger"
-          style={{ minWidth: 76, height: 40 }}
-          onClick={() => void handleSaveWorkflow()}
-          disabled={isSavingWorkflow}
-        >
-          {isSavingWorkflow ? "Saving" : "Save"}
-        </button>
-      </div>
+        <label style={{ display: "flex", minWidth: 280, flex: "1 1 420px", flexDirection: "column", gap: 7 }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: "#475569", letterSpacing: "0.02em" }}>
+            Saved workflow
+          </span>
+          <select
+            value={savedWorkflows.some((workflow) => workflow.id === workflowId) ? workflowId : ""}
+            onFocus={() => {
+              if (!isLoadingWorkflows && loadedWorkflows.length === 0) {
+                void loadBackendWorkflows();
+              }
+            }}
+            onChange={(event) => void handleSelectWorkflow(event.target.value)}
+            style={{
+              width: "100%",
+              minWidth: 0,
+              height: 46,
+              borderRadius: 10,
+              border: "1px solid rgba(203, 213, 225, 0.95)",
+              background: "#ffffff",
+              padding: "0 14px",
+              color: "#0f172a",
+              fontSize: 14,
+              fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
+              boxShadow: "0 8px 18px rgba(15, 23, 42, 0.04)",
+            }}
+          >
+            <option value="">{isLoadingWorkflows ? "Loading BPMN workflows..." : "Select BPMN workflow"}</option>
+            {savedWorkflows.map((workflow) => (
+              <option key={workflow.id} value={workflow.id}>
+                {workflow.name}
+              </option>
+            ))}
+          </select>
+        </label>
 
-      {savedWorkflows.some((workflow) => workflow.id === workflowId) ? (
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+            gap: 8,
+            flex: "0 1 auto",
+          }}
+        >
           <button
             type="button"
             className="app-modal-btn app-modal-btn-secondary"
-            style={{ minWidth: 96, height: 38 }}
-            onClick={() => void handleDeleteWorkflow()}
-            disabled={isDeletingWorkflow}
+            style={{ minWidth: 92, height: 46, borderRadius: 10 }}
+            onClick={handleNewWorkflow}
           >
-            {isDeletingWorkflow ? "Deleting" : "Delete"}
+            New
           </button>
+          <button
+            type="button"
+            className="app-modal-btn app-modal-btn-secondary"
+            style={{
+              minWidth: 104,
+              height: 46,
+              borderRadius: 10,
+              border: "1px solid rgba(16, 185, 129, 0.35)",
+              background: "var(--workflow-accent)",
+              color: "#ffffff",
+              boxShadow: "0 12px 24px rgba(45, 183, 128, 0.22)",
+            }}
+            onClick={() => void handleSaveWorkflow()}
+            disabled={isSavingWorkflow}
+          >
+            {isSavingWorkflow ? "Saving" : "Save"}
+          </button>
+          {savedWorkflows.some((workflow) => workflow.id === workflowId) ? (
+            <button
+              type="button"
+              className="app-modal-btn app-modal-btn-secondary"
+              style={{
+                minWidth: 104,
+                height: 46,
+                borderRadius: 10,
+                border: "1px solid rgba(239, 68, 68, 0.24)",
+                background: "#fff7f7",
+                color: "#b91c1c",
+              }}
+              onClick={() => void handleDeleteWorkflow()}
+              disabled={isDeletingWorkflow}
+            >
+              {isDeletingWorkflow ? "Deleting" : "Delete"}
+            </button>
+          ) : null}
         </div>
-      ) : null}
+      </div>
 
-      <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>Workflow name</span>
+      <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: "#475569", letterSpacing: "0.02em" }}>
+          Workflow name
+        </span>
         <input
           key={workflowId}
           defaultValue={workflowName}
@@ -581,13 +624,15 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
           onChange={(event) => handleWorkflowNameChange(event.target.value)}
           style={{
             width: "100%",
-            borderRadius: 8,
+            height: 46,
+            borderRadius: 10,
             border: "1px solid rgba(203, 213, 225, 0.95)",
             background: "#ffffff",
-            padding: "9px 10px",
+            padding: "0 14px",
             color: "#0f172a",
-            fontSize: 13,
+            fontSize: 14,
             fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
+            boxShadow: "0 8px 18px rgba(15, 23, 42, 0.04)",
           }}
         />
       </label>
