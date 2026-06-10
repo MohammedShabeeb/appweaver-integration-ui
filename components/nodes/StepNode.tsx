@@ -99,6 +99,11 @@ function ChoiceBranchSummary({ data }: { data?: StepNodeData }) {
 export default function StepNode({ id, type, data, selected }: StepNodeProps) {
   const deleteNode = useFlowStore((state) => state.deleteNode);
   const customComponents = useFlowStore((state) => state.customComponents);
+  const isNestedCanvas = useFlowStore((state) => {
+    const activeWorkflow = state.workflows[state.activeWorkflowId];
+
+    return Boolean(activeWorkflow && activeWorkflow.currentCanvasId !== activeWorkflow.rootCanvasId);
+  });
   const componentKey = data?.componentKey ?? type ?? "";
   const customComponent = customComponents.find((component) => component.type === componentKey) ?? null;
 
@@ -112,6 +117,7 @@ export default function StepNode({ id, type, data, selected }: StepNodeProps) {
         Icon={nodeTypeMeta.process.Icon}
         selected={selected}
         disabled={data?.config?.disabled === true}
+        nested={isNestedCanvas}
         onDelete={deleteNode}
       />
     );
@@ -138,6 +144,7 @@ export default function StepNode({ id, type, data, selected }: StepNodeProps) {
       Icon={Icon}
       selected={selected}
       disabled={data?.config?.disabled === true}
+      nested={isNestedCanvas}
       onDelete={deleteNode}
     >
       {type === "choice" ? <ChoiceBranchSummary data={data} /> : null}

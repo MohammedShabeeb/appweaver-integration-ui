@@ -330,6 +330,15 @@ function createCanvas(id: string, name: string): CanvasState {
   };
 }
 
+function createStepOnlyCanvas(id: string, name: string): CanvasState {
+  return {
+    id,
+    name,
+    nodes: [],
+    edges: [],
+  };
+}
+
 function parseSqlEndpoint(endpoint: unknown) {
   const rawEndpoint = String(endpoint ?? "").trim();
 
@@ -396,18 +405,20 @@ function createCanvasFromBackendSteps(
   id: string,
   name: string,
   steps: unknown,
+  options: { includeStart?: boolean } = {},
 ): CanvasState {
-  const canvas = createCanvas(id, name);
+  const includeStart = options.includeStart ?? true;
+  const canvas = includeStart ? createCanvas(id, name) : createStepOnlyCanvas(id, name);
 
   if (!Array.isArray(steps)) {
     return canvas;
   }
 
-  const startNode = canvas.nodes[0];
-  const nodes: AppNode[] = [startNode];
+  const startNode = includeStart ? canvas.nodes[0] : null;
+  const nodes: AppNode[] = startNode ? [startNode] : [];
   const edges: AppEdge[] = [];
-  let previousNodeId = startNode.id;
-  let previousNodePosition = startNode.position;
+  let previousNodeId = startNode?.id ?? null;
+  let previousNodePosition = startNode?.position ?? null;
 
   steps.forEach((rawStep, index) => {
     if (!isPlainRecord(rawStep) || typeof rawStep.type !== "string") {
@@ -421,7 +432,7 @@ function createCanvasFromBackendSteps(
       return;
     }
 
-    const node = createFlowNode(componentKey, getRouteCanvasPosition(index + 1));
+    const node = createFlowNode(componentKey, getRouteCanvasPosition(includeStart ? index + 1 : index));
     const label =
       componentKey === "dbCrud"
         ? "SQL"
@@ -448,13 +459,16 @@ function createCanvasFromBackendSteps(
     };
 
     nodes.push(node);
-    edges.push({
-      id: `${previousNodeId}-${node.id}`,
-      source: previousNodeId,
-      target: node.id,
-      ...getRouteEdgeHandles(previousNodePosition, node.position),
-      type: "insertable",
-    });
+    if (previousNodeId && previousNodePosition) {
+      edges.push({
+        id: `${previousNodeId}-${node.id}`,
+        source: previousNodeId,
+        target: node.id,
+        ...getRouteEdgeHandles(previousNodePosition, node.position),
+        type: "insertable",
+      });
+    }
+
     previousNodeId = node.id;
     previousNodePosition = node.position;
   });
@@ -507,6 +521,14 @@ function getNodeNestedCanvasIds(node: AppNode): string[] {
     ...(node.data?.childCanvasId ? [node.data.childCanvasId] : []),
     ...Object.values(node.data?.choiceBranchCanvasIds ?? {}),
   ];
+}
+
+function isChoiceBranchCanvas(workflow: WorkflowRecord, canvasId: string) {
+  return Object.values(workflow.canvases).some((canvas) =>
+    canvas.nodes.some((node) =>
+      Object.values(node.data?.choiceBranchCanvasIds ?? {}).includes(canvasId),
+    ),
+  );
 }
 
 function createInitialWorkflow(id = DEFAULT_WORKFLOW_ID, name = "Root"): WorkflowRecord {
@@ -1744,10 +1766,21 @@ function buildDefaultRouteName(routeId: string) {
 }
 
 function getRouteOrderedNodes(canvas: CanvasState): AppNode[] {
-  const startNode = canvas.nodes.find((node) => node.type === "start") ?? canvas.nodes[0] ?? null;
+  const startNode = canvas.nodes.find((node) => node.type === "start") ?? null;
+  const nonStartNodes = canvas.nodes.filter((node) => node.type !== "start");
   const nodeMap = new Map(canvas.nodes.map((node) => [node.id, node]));
   const orderedNodes: AppNode[] = [];
   const visited = new Set<string>();
+
+  const visitNode = (node: AppNode) => {
+    if (visited.has(node.id)) {
+      return;
+    }
+
+    visited.add(node.id);
+    orderedNodes.push(node);
+    visitNext(node.id);
+  };
 
   const visitNext = (nodeId: string) => {
     const outgoingEdges = canvas.edges.filter((edge) => edge.source === nodeId);
@@ -1763,14 +1796,24 @@ function getRouteOrderedNodes(canvas: CanvasState): AppNode[] {
         continue;
       }
 
-      visited.add(targetNode.id);
-      orderedNodes.push(targetNode);
-      visitNext(targetNode.id);
+      visitNode(targetNode);
     }
   };
 
   if (startNode) {
     visitNext(startNode.id);
+  } else {
+    const incomingTargets = new Set(canvas.edges.map((edge) => edge.target).filter(Boolean));
+    const sourceNodes = nonStartNodes.filter((node) => !incomingTargets.has(node.id));
+    const orderedSourceNodes = sourceNodes.length > 0 ? sourceNodes : nonStartNodes;
+
+    for (const node of orderedSourceNodes) {
+      visitNode(node);
+    }
+
+    for (const node of nonStartNodes) {
+      visitNode(node);
+    }
   }
 
   return orderedNodes;
@@ -1797,13 +1840,13 @@ function getRouteCanvasPosition(layoutIndex: number): XYPosition {
 }
 
 function arrangeRouteCanvas(canvas: CanvasState): CanvasState {
-  const startNode = canvas.nodes.find((node) => node.type === "start") ?? canvas.nodes[0] ?? null;
+  const startNode = canvas.nodes.find((node) => node.type === "start") ?? null;
+  const routeNodes = startNode ? [startNode, ...getRouteOrderedNodes(canvas)] : getRouteOrderedNodes(canvas);
 
-  if (!startNode) {
+  if (routeNodes.length === 0) {
     return canvas;
   }
 
-  const routeNodes = [startNode, ...getRouteOrderedNodes(canvas)];
   const positions = new Map(routeNodes.map((node, index) => [node.id, getRouteCanvasPosition(index)]));
 
   return {
@@ -3649,9 +3692,11 @@ export const useFlowStore = create<FlowState>()(
             return state;
           }
 
-          const startNode =
-            currentCanvas.nodes.find((node) => node.type === "start") ??
-            createStartNode(`${currentCanvas.id}-start`, { x: 160, y: 120 });
+          const isBranchCanvas = isChoiceBranchCanvas(activeWorkflow, currentCanvas.id);
+          const startNode = isBranchCanvas
+            ? null
+            : currentCanvas.nodes.find((node) => node.type === "start") ??
+              createStartNode(`${currentCanvas.id}-start`, { x: 160, y: 120 });
 
           return {
             ...syncActiveWorkflow(state, {
@@ -3660,7 +3705,7 @@ export const useFlowStore = create<FlowState>()(
                 ...activeWorkflow.canvases,
                 [activeWorkflow.currentCanvasId]: {
                   ...currentCanvas,
-                  nodes: [startNode],
+                  nodes: startNode ? [startNode] : [],
                   edges: [],
                 },
               },
@@ -3820,6 +3865,7 @@ export const useFlowStore = create<FlowState>()(
               branchCanvasId,
               branchCanvasName,
               getChoiceBranchFallbackSteps(node, branchKey),
+              { includeStart: false },
             );
           const nextBranchCanvasIds = {
             ...(node.data?.choiceBranchCanvasIds ?? {}),
@@ -3856,6 +3902,14 @@ export const useFlowStore = create<FlowState>()(
                 [branchCanvasId]: {
                   ...branchCanvas,
                   name: branchCanvasName,
+                  nodes: branchCanvas.nodes.filter((branchNode) => branchNode.type !== "start"),
+                  edges: branchCanvas.edges.filter((edge) =>
+                    branchCanvas.nodes.every(
+                      (branchNode) =>
+                        branchNode.type !== "start" ||
+                        (edge.source !== branchNode.id && edge.target !== branchNode.id),
+                    ),
+                  ),
                 },
               },
             }),
