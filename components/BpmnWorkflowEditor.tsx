@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   appWeaverApiClient,
+  type AppWeaverBeanConfig,
+  type AppWeaverDirectRouteConfig,
   type AppWeaverWorkflowConfig,
-  type WorkflowActionDefinition,
 } from "@/lib/appweaverApiClient";
 import type BpmnModeler from "bpmn-js/lib/Modeler";
 
@@ -21,6 +22,11 @@ type BpmnWorkflowEditorProps = {
 };
 
 type WorkflowCreationType = "service" | "user";
+type ServiceTaskTargetType = "bean" | "directRoute";
+type ServiceTaskTarget = {
+  targetType: ServiceTaskTargetType;
+  target: string;
+};
 
 type BpmnElement = {
   id: string;
@@ -61,6 +67,7 @@ type BpmnModdle = {
 const DEFAULT_WORKFLOW_NAME = "BPMN Workflow";
 const APPWEAVER_ACTION_NS = "https://appweaver.dev/schema/bpmn";
 const APPWEAVER_ACTION_TYPE = "appweaver:action";
+const SERVICE_TASK_TARGET_TYPES: ServiceTaskTargetType[] = ["bean", "directRoute"];
 const SERVICE_TASK_TYPE = "bpmn:ServiceTask";
 const FLOWABLE_NS = "http://flowable.org/bpmn";
 const FLOWABLE_PREFIX = "flowable";
@@ -89,6 +96,14 @@ const workflowCreationOptions: Array<{
     label: "User workflow",
     helper: "Creates a user task for human-assigned work.",
   },
+];
+
+const serviceTaskTargetOptions: Array<{
+  type: ServiceTaskTargetType;
+  label: string;
+}> = [
+  { type: "bean", label: "Bean" },
+  { type: "directRoute", label: "Direct route" },
 ];
 
 function createWorkflowId() {
@@ -275,7 +290,13 @@ function getElementLabel(element: BpmnElement) {
   return element.businessObject?.name?.trim() || element.businessObject?.id || element.id;
 }
 
-function isAppWeaverAction(value: unknown): value is { id?: string; $type?: string } {
+function isServiceTaskTargetType(value: unknown): value is ServiceTaskTargetType {
+  return typeof value === "string" && SERVICE_TASK_TARGET_TYPES.includes(value as ServiceTaskTargetType);
+}
+
+function isAppWeaverAction(
+  value: unknown,
+): value is { id?: string; target?: string; targetType?: string; $type?: string } {
   return (
     Boolean(value) &&
     typeof value === "object" &&
@@ -284,27 +305,31 @@ function isAppWeaverAction(value: unknown): value is { id?: string; $type?: stri
   );
 }
 
-function getAppWeaverActionId(element: BpmnElement | null) {
+function getAppWeaverServiceTaskTarget(element: BpmnElement | null): ServiceTaskTarget | null {
   const values = element?.businessObject?.extensionElements?.values;
   const action = values?.find((value) => isAppWeaverAction(value));
 
-  return isAppWeaverAction(action) && typeof action.id === "string" ? action.id : "";
-}
-
-function getCompatibleWorkflowActions(
-  actions: WorkflowActionDefinition[],
-  element: BpmnElement | null,
-) {
-  if (!element) {
-    return [];
+  if (!isAppWeaverAction(action)) {
+    return null;
   }
 
-  return actions.filter(
-    (action) =>
-      action.bpmnElementTypes.length === 0 ||
-      action.bpmnElementTypes.includes(element.type) ||
-      (element.businessObject?.$type ? action.bpmnElementTypes.includes(element.businessObject.$type) : false),
-  );
+  if (isServiceTaskTargetType(action.targetType) && typeof action.target === "string") {
+    return {
+      targetType: action.targetType,
+      target: action.target,
+    };
+  }
+
+  if (typeof action.id === "string") {
+    const [targetType, ...targetParts] = action.id.split(":");
+    const target = targetParts.join(":");
+
+    if (isServiceTaskTargetType(targetType) && target) {
+      return { targetType, target };
+    }
+  }
+
+  return null;
 }
 
 export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkflowEditorProps) {
@@ -315,9 +340,10 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
   const workflowIdRef = useRef("");
   const workflowNameRef = useRef("");
   const savedWorkflowsRef = useRef<SavedBpmnWorkflow[]>([]);
-  const workflowActionsRef = useRef<WorkflowActionDefinition[]>([]);
+  const beansRef = useRef<AppWeaverBeanConfig[]>([]);
+  const directRoutesRef = useRef<AppWeaverDirectRouteConfig[]>([]);
   const selectedElementRef = useRef<BpmnElement | null>(null);
-  const refreshWorkflowActionWarningsRef = useRef<() => void>(() => undefined);
+  const refreshServiceTaskTargetWarningsRef = useRef<() => void>(() => undefined);
   const syncSelectedElementRef = useRef<(nextSelection?: BpmnElement[]) => void>(() => undefined);
   const onConfigChangeRef = useRef(onConfigChange);
   const [status, setStatus] = useState<string | null>(null);
@@ -325,11 +351,13 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
   const [isLoadingWorkflows, setIsLoadingWorkflows] = useState(false);
   const [isSavingWorkflow, setIsSavingWorkflow] = useState(false);
   const [isDeletingWorkflow, setIsDeletingWorkflow] = useState(false);
-  const [workflowActions, setWorkflowActions] = useState<WorkflowActionDefinition[]>([]);
-  const [isLoadingWorkflowActions, setIsLoadingWorkflowActions] = useState(false);
+  const [beans, setBeans] = useState<AppWeaverBeanConfig[]>([]);
+  const [directRoutes, setDirectRoutes] = useState<AppWeaverDirectRouteConfig[]>([]);
+  const [isLoadingServiceTaskTargets, setIsLoadingServiceTaskTargets] = useState(false);
   const [selectedElement, setSelectedElement] = useState<BpmnElement | null>(null);
-  const [selectedActionId, setSelectedActionId] = useState("");
-  const [workflowActionWarnings, setWorkflowActionWarnings] = useState<string[]>([]);
+  const [selectedTargetType, setSelectedTargetType] = useState<ServiceTaskTargetType>("bean");
+  const [selectedTargetName, setSelectedTargetName] = useState("");
+  const [serviceTaskTargetWarnings, setServiceTaskTargetWarnings] = useState<string[]>([]);
   const [workflowCreationType, setWorkflowCreationType] = useState<WorkflowCreationType>("service");
 
   const configSavedWorkflows = useMemo(
@@ -341,10 +369,14 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
     () => mergeSavedWorkflows(configSavedWorkflows, loadedWorkflows),
     [configSavedWorkflows, loadedWorkflows],
   );
-  const compatibleWorkflowActions = useMemo(
-    () => getCompatibleWorkflowActions(workflowActions, selectedElement),
-    [selectedElement, workflowActions],
-  );
+  const serviceTaskTargetNames = useMemo(() => {
+    const names =
+      selectedTargetType === "bean"
+        ? beans.map((bean) => bean.name ?? "").filter(Boolean)
+        : directRoutes.map((route) => route.name).filter(Boolean);
+
+    return Array.from(new Set(names)).sort((left, right) => left.localeCompare(right));
+  }, [beans, directRoutes, selectedTargetType]);
   const workflowId =
     typeof config.workflowId === "string" && config.workflowId.trim()
       ? config.workflowId
@@ -388,38 +420,49 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
     });
   }, []);
 
-  const refreshWorkflowActionWarnings = useCallback(
-    (actions = workflowActionsRef.current) => {
+  const refreshServiceTaskTargetWarnings = useCallback(
+    (
+      nextBeans = beansRef.current,
+      nextDirectRoutes = directRoutesRef.current,
+    ) => {
       const modeler = modelerRef.current;
 
-      if (actions.length === 0 || !modeler) {
-        setWorkflowActionWarnings([]);
+      if (!modeler) {
+        setServiceTaskTargetWarnings([]);
         return;
       }
 
-      const knownActionIds = new Set(actions.map((action) => action.id));
+      const knownBeanNames = new Set(nextBeans.map((bean) => bean.name ?? "").filter(Boolean));
+      const knownDirectRouteNames = new Set(nextDirectRoutes.map((route) => route.name).filter(Boolean));
       const elementRegistry = modeler.get<BpmnElementRegistry>("elementRegistry");
       const warnings = elementRegistry
         .getAll()
         .filter(isServiceTask)
         .flatMap((element) => {
-          const actionId = getAppWeaverActionId(element);
+          const serviceTaskTarget = getAppWeaverServiceTaskTarget(element);
           const label = getElementLabel(element);
 
-          if (!actionId) {
-            return [`${label} has no workflow action.`];
+          if (!serviceTaskTarget?.target) {
+            return [`${label} has no bean or direct route selected.`];
           }
 
-          if (!knownActionIds.has(actionId)) {
-            return [`${label} uses unknown workflow action "${actionId}".`];
+          if (serviceTaskTarget.targetType === "bean" && !knownBeanNames.has(serviceTaskTarget.target)) {
+            return [`${label} uses unknown bean "${serviceTaskTarget.target}".`];
+          }
+
+          if (
+            serviceTaskTarget.targetType === "directRoute" &&
+            !knownDirectRouteNames.has(serviceTaskTarget.target)
+          ) {
+            return [`${label} uses unknown direct route "${serviceTaskTarget.target}".`];
           }
 
           return [];
         });
 
-      setWorkflowActionWarnings(warnings);
+      setServiceTaskTargetWarnings(warnings);
     },
-    [setWorkflowActionWarnings],
+    [setServiceTaskTargetWarnings],
   );
 
   const syncSelectedElement = useCallback((nextSelection?: BpmnElement[]) => {
@@ -431,36 +474,50 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
 
     selectedElementRef.current = element;
     setSelectedElement(element);
-    setSelectedActionId(getAppWeaverActionId(element));
-  }, [setSelectedActionId, setSelectedElement]);
+    const serviceTaskTarget = getAppWeaverServiceTaskTarget(element);
+
+    if (serviceTaskTarget) {
+      setSelectedTargetType(serviceTaskTarget.targetType);
+      setSelectedTargetName(serviceTaskTarget.target);
+    } else {
+      setSelectedTargetName("");
+    }
+  }, [setSelectedElement, setSelectedTargetName, setSelectedTargetType]);
 
   useEffect(() => {
-    refreshWorkflowActionWarningsRef.current = refreshWorkflowActionWarnings;
+    refreshServiceTaskTargetWarningsRef.current = refreshServiceTaskTargetWarnings;
     syncSelectedElementRef.current = syncSelectedElement;
-  }, [refreshWorkflowActionWarnings, syncSelectedElement]);
+  }, [refreshServiceTaskTargetWarnings, syncSelectedElement]);
 
-  const loadWorkflowActions = useCallback(async () => {
-    setIsLoadingWorkflowActions(true);
+  const loadServiceTaskTargets = useCallback(async () => {
+    setIsLoadingServiceTaskTargets(true);
 
     try {
-      const registry = await appWeaverApiClient.system.workflowActions.list();
-      workflowActionsRef.current = registry.actions;
-      setWorkflowActions(registry.actions);
-      refreshWorkflowActionWarnings(registry.actions);
+      const [backendBeans, backendDirectRoutes] = await Promise.all([
+        appWeaverApiClient.system.beans.list(),
+        appWeaverApiClient.system.directRoutes.list(),
+      ]);
+
+      beansRef.current = backendBeans;
+      directRoutesRef.current = backendDirectRoutes;
+      setBeans(backendBeans);
+      setDirectRoutes(backendDirectRoutes);
+      refreshServiceTaskTargetWarnings(backendBeans, backendDirectRoutes);
     } catch (issue) {
-      setError(issue instanceof Error ? issue.message : "Could not load workflow actions.");
+      setError(issue instanceof Error ? issue.message : "Could not load beans and direct routes.");
     } finally {
-      setIsLoadingWorkflowActions(false);
+      setIsLoadingServiceTaskTargets(false);
     }
   }, [
-    refreshWorkflowActionWarnings,
+    refreshServiceTaskTargetWarnings,
     setError,
-    setIsLoadingWorkflowActions,
-    setWorkflowActions,
+    setBeans,
+    setDirectRoutes,
+    setIsLoadingServiceTaskTargets,
   ]);
 
-  const updateSelectedElementAction = useCallback(
-    (actionId: string) => {
+  const updateSelectedElementTarget = useCallback(
+    (targetType: ServiceTaskTargetType, targetName: string) => {
       const modeler = modelerRef.current;
 
       const element = selectedElementRef.current;
@@ -480,8 +537,14 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
       const existingValues = businessObject.extensionElements?.values ?? [];
       const nextValues = existingValues.filter((value) => !isAppWeaverAction(value));
 
-      if (actionId) {
-        nextValues.push(moddle.createAny(APPWEAVER_ACTION_TYPE, APPWEAVER_ACTION_NS, { id: actionId }));
+      if (targetName) {
+        nextValues.push(
+          moddle.createAny(APPWEAVER_ACTION_TYPE, APPWEAVER_ACTION_NS, {
+            id: `${targetType}:${targetName}`,
+            target: targetName,
+            targetType,
+          }),
+        );
       }
 
       const extensionElements = moddle.create("bpmn:ExtensionElements", {
@@ -491,12 +554,19 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
       modeling.updateProperties(element, {
         extensionElements: nextValues.length > 0 ? extensionElements : undefined,
       });
-      setSelectedActionId(actionId);
-      refreshWorkflowActionWarnings();
+      setSelectedTargetType(targetType);
+      setSelectedTargetName(targetName);
+      refreshServiceTaskTargetWarnings();
       setStatus(null);
       setError(null);
     },
-    [refreshWorkflowActionWarnings, setError, setSelectedActionId, setStatus],
+    [
+      refreshServiceTaskTargetWarnings,
+      setError,
+      setSelectedTargetName,
+      setSelectedTargetType,
+      setStatus,
+    ],
   );
 
   const importXml = useCallback(async (xml: string) => {
@@ -512,14 +582,14 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
       const canvas = modeler.get<{ zoom: (mode: string) => void }>("canvas");
       canvas.zoom("fit-viewport");
       syncSelectedElementRef.current();
-      refreshWorkflowActionWarningsRef.current();
+      refreshServiceTaskTargetWarningsRef.current();
       setError(null);
     } catch (issue) {
       setError(issue instanceof Error ? issue.message : "Could not load BPMN XML.");
     } finally {
       isImportingRef.current = false;
     }
-  }, [refreshWorkflowActionWarningsRef, setError, syncSelectedElementRef]);
+  }, [refreshServiceTaskTargetWarningsRef, setError, syncSelectedElementRef]);
 
   const loadBackendWorkflows = useCallback(async () => {
     setIsLoadingWorkflows(true);
@@ -574,11 +644,11 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
 
   useEffect(() => {
     const loadTimer = window.setTimeout(() => {
-      void loadWorkflowActions();
+      void loadServiceTaskTargets();
     }, 0);
 
     return () => window.clearTimeout(loadTimer);
-  }, [loadWorkflowActions]);
+  }, [loadServiceTaskTargets]);
 
   useEffect(() => {
     let isMounted = true;
@@ -615,7 +685,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
           bpmnXml: xml,
         });
         syncSelectedElementRef.current();
-        refreshWorkflowActionWarningsRef.current();
+        refreshServiceTaskTargetWarningsRef.current();
         setStatus(null);
         setError(null);
       });
@@ -625,7 +695,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
 
       await importXml(currentXmlRef.current);
       syncSelectedElementRef.current();
-      refreshWorkflowActionWarningsRef.current();
+      refreshServiceTaskTargetWarningsRef.current();
     };
 
     void setupModeler();
@@ -637,7 +707,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
         modelerRef.current = null;
       }
     };
-  }, [importXml, refreshWorkflowActionWarningsRef, syncSelectedElementRef]);
+  }, [importXml, refreshServiceTaskTargetWarningsRef, syncSelectedElementRef]);
 
   useEffect(() => {
     if (bpmnXml && bpmnXml !== currentXmlRef.current) {
@@ -945,12 +1015,42 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
         </section>
 
         {isServiceTask(selectedElement) ? (
-          <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-            <span style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>Service task action</span>
+          <section style={{ display: "grid", gap: 7 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>Service task target</span>
             <select
-              value={selectedActionId}
-              onChange={(event) => updateSelectedElementAction(event.target.value)}
-              disabled={isLoadingWorkflowActions || compatibleWorkflowActions.length === 0}
+              value={selectedTargetType}
+              onChange={(event) => {
+                const nextTargetType = event.target.value;
+
+                if (isServiceTaskTargetType(nextTargetType)) {
+                  updateSelectedElementTarget(nextTargetType, "");
+                }
+              }}
+              disabled={isLoadingServiceTaskTargets}
+              style={{
+                width: "100%",
+                height: 42,
+                borderRadius: 8,
+                border: "1px solid rgba(203, 213, 225, 0.95)",
+                background: "#ffffff",
+                padding: "0 10px",
+                color: "#0f172a",
+                fontSize: 13,
+                fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
+              }}
+            >
+              {serviceTaskTargetOptions.map((option) => (
+                <option key={option.type} value={option.type}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={selectedTargetName}
+              onChange={(event) =>
+                updateSelectedElementTarget(selectedTargetType, event.target.value)
+              }
+              disabled={isLoadingServiceTaskTargets || serviceTaskTargetNames.length === 0}
               style={{
                 width: "100%",
                 height: 42,
@@ -964,27 +1064,33 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
               }}
             >
               <option value="">
-                {isLoadingWorkflowActions
-                  ? "Loading actions..."
-                  : compatibleWorkflowActions.length === 0
-                    ? "No workflow actions loaded"
-                    : "Select workflow action"}
+                {isLoadingServiceTaskTargets
+                  ? "Loading targets..."
+                  : serviceTaskTargetNames.length === 0
+                    ? selectedTargetType === "bean"
+                      ? "No beans loaded"
+                      : "No direct routes loaded"
+                    : selectedTargetType === "bean"
+                      ? "Select bean"
+                      : "Select direct route"}
               </option>
-              {selectedActionId && !compatibleWorkflowActions.some((action) => action.id === selectedActionId) ? (
-                <option value={selectedActionId}>Unknown action: {selectedActionId}</option>
+              {selectedTargetName && !serviceTaskTargetNames.includes(selectedTargetName) ? (
+                <option value={selectedTargetName}>Unknown target: {selectedTargetName}</option>
               ) : null}
-              {compatibleWorkflowActions.map((action) => (
-                <option key={action.id} value={action.id}>
-                  {action.label || action.id}
+              {serviceTaskTargetNames.map((targetName) => (
+                <option key={targetName} value={targetName}>
+                  {targetName}
                 </option>
               ))}
             </select>
-            {!isLoadingWorkflowActions && compatibleWorkflowActions.length === 0 ? (
+            {!isLoadingServiceTaskTargets && serviceTaskTargetNames.length === 0 ? (
               <span style={{ color: "#92400e", fontSize: 12, lineHeight: 1.35 }}>
-                No bpmn:ServiceTask actions came back from /system/workflow-actions.
+                {selectedTargetType === "bean"
+                  ? "No beans came back from /system/beans."
+                  : "No direct routes came back from /system/routes/direct-routes."}
               </span>
             ) : null}
-          </label>
+          </section>
         ) : null}
 
         <div style={{ display: "grid", gap: 8, marginTop: 2 }}>
@@ -1032,7 +1138,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
           ) : null}
         </div>
 
-        {workflowActionWarnings.length > 0 ? (
+        {serviceTaskTargetWarnings.length > 0 ? (
           <div
             style={{
               display: "grid",
@@ -1045,7 +1151,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
               fontSize: 12,
             }}
           >
-            {workflowActionWarnings.map((warning) => (
+            {serviceTaskTargetWarnings.map((warning) => (
               <p key={warning} style={{ margin: 0 }}>
                 {warning}
               </p>

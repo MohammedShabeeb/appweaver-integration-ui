@@ -628,6 +628,8 @@ export const appWeaverApiClient = {
         }),
     },
     directRoutes: {
+      list: () =>
+        request<AppWeaverDirectRouteConfig[]>(appWeaverEndpoints.system.directRoutes),
       get: (name: string) =>
         request<AppWeaverDirectRouteConfig>(appWeaverEndpoints.system.directRoute(name)),
       create: (route: AppWeaverDirectRouteConfig) =>
