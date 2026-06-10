@@ -294,6 +294,18 @@ function isServiceTaskTargetType(value: unknown): value is ServiceTaskTargetType
   return typeof value === "string" && SERVICE_TASK_TARGET_TYPES.includes(value as ServiceTaskTargetType);
 }
 
+function normalizeServiceTaskTargetType(value: unknown): ServiceTaskTargetType | null {
+  if (isServiceTaskTargetType(value)) {
+    return value;
+  }
+
+  return value === "Route" ? "directRoute" : null;
+}
+
+function getSerializedServiceTaskTargetType(targetType: ServiceTaskTargetType) {
+  return targetType === "directRoute" ? "Route" : targetType;
+}
+
 function isAppWeaverAction(
   value: unknown,
 ): value is { id?: string; target?: string; targetType?: string; $type?: string } {
@@ -313,9 +325,11 @@ function getAppWeaverServiceTaskTarget(element: BpmnElement | null): ServiceTask
     return null;
   }
 
-  if (isServiceTaskTargetType(action.targetType) && typeof action.target === "string") {
+  const normalizedTargetType = normalizeServiceTaskTargetType(action.targetType);
+
+  if (normalizedTargetType && typeof action.target === "string") {
     return {
-      targetType: action.targetType,
+      targetType: normalizedTargetType,
       target: action.target,
     };
   }
@@ -330,6 +344,57 @@ function getAppWeaverServiceTaskTarget(element: BpmnElement | null): ServiceTask
   }
 
   return null;
+}
+
+function normalizeAppWeaverDirectRouteActions(xml: string) {
+  if (typeof window === "undefined" || typeof DOMParser === "undefined") {
+    return xml;
+  }
+
+  const document = new DOMParser().parseFromString(xml, "application/xml");
+  const parseError = document.querySelector("parsererror");
+
+  if (parseError) {
+    return xml;
+  }
+
+  let didUpdate = false;
+  const actions = Array.from(document.getElementsByTagNameNS(APPWEAVER_ACTION_NS, "action"));
+
+  for (const action of actions) {
+    const id = action.getAttribute("id") ?? "";
+    const target = action.getAttribute("target") ?? "";
+    const targetType = action.getAttribute("targetType") ?? "";
+    const isDirectRouteAction =
+      targetType === "directRoute" || targetType === "Route" || id.startsWith("directRoute:");
+
+    if (!isDirectRouteAction) {
+      continue;
+    }
+
+    const normalizedTarget = target || id.replace(/^directRoute:/, "");
+
+    if (normalizedTarget && action.getAttribute("id") !== normalizedTarget) {
+      action.setAttribute("id", normalizedTarget);
+      didUpdate = true;
+    }
+
+    if (normalizedTarget && action.getAttribute("target") !== normalizedTarget) {
+      action.setAttribute("target", normalizedTarget);
+      didUpdate = true;
+    }
+
+    if (action.getAttribute("targetType") !== "Route") {
+      action.setAttribute("targetType", "Route");
+      didUpdate = true;
+    }
+  }
+
+  return didUpdate ? new XMLSerializer().serializeToString(document) : xml;
+}
+
+function prepareBpmnXmlForBackend(xml: string) {
+  return normalizeAppWeaverDirectRouteActions(ensureFlowableServiceTaskImplementations(xml));
 }
 
 export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkflowEditorProps) {
@@ -540,9 +605,9 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
       if (targetName) {
         nextValues.push(
           moddle.createAny(APPWEAVER_ACTION_TYPE, APPWEAVER_ACTION_NS, {
-            id: `${targetType}:${targetName}`,
+            id: targetType === "directRoute" ? targetName : `${targetType}:${targetName}`,
             target: targetName,
-            targetType,
+            targetType: getSerializedServiceTaskTargetType(targetType),
           }),
         );
       }
@@ -677,7 +742,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
         }
 
         const result = await modelerRef.current.saveXML({ format: true });
-        const xml = ensureFlowableServiceTaskImplementations(result.xml ?? "");
+        const xml = prepareBpmnXmlForBackend(result.xml ?? "");
         currentXmlRef.current = xml;
         onConfigChangeRef.current({
           workflowId: workflowIdRef.current,
@@ -798,7 +863,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
 
     try {
       const result = await modeler.saveXML({ format: true });
-      const xml = ensureFlowableServiceTaskImplementations(result.xml ?? bpmnXml);
+      const xml = prepareBpmnXmlForBackend(result.xml ?? bpmnXml);
       const savedWorkflow: SavedBpmnWorkflow = {
         id: workflowId,
         name: workflowName.trim() || DEFAULT_WORKFLOW_NAME,
@@ -813,14 +878,18 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
         workflowId: savedWorkflow.id,
         workflowName: savedWorkflow.name,
         bpmnXml: xml,
-        savedWorkflows: nextSavedWorkflows.map((workflow) => ({
-          id: workflow.id,
-          name: workflow.name,
-          xml: workflow.xml,
-          workflowId: workflow.id,
-          workflowName: workflow.name,
-          bpmnXml: workflow.xml,
-        })),
+        savedWorkflows: nextSavedWorkflows.map((workflow) => {
+          const workflowXml = prepareBpmnXmlForBackend(workflow.xml);
+
+          return {
+            id: workflow.id,
+            name: workflow.name,
+            xml: workflowXml,
+            workflowId: workflow.id,
+            workflowName: workflow.name,
+            bpmnXml: workflowXml,
+          };
+        }),
       };
       const persistedWorkflow = savedWorkflows.some((workflow) => workflow.id === savedWorkflow.id)
         ? await appWeaverApiClient.system.workflows.update(savedWorkflow.id, payload)

@@ -281,8 +281,9 @@ export default function TopNav() {
       !hasBackendRouteSteps(backendRoute) ||
       backendRoutePublication.lastSyncedSignature === backendRouteSignature
     ) {
-      setRouteSyncState("idle");
-      return;
+      const idleTimeout = window.setTimeout(() => setRouteSyncState("idle"), 0);
+
+      return () => window.clearTimeout(idleTimeout);
     }
 
     const timeout = window.setTimeout(async () => {
