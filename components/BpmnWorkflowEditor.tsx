@@ -62,6 +62,17 @@ const DEFAULT_WORKFLOW_NAME = "BPMN Workflow";
 const APPWEAVER_ACTION_NS = "https://appweaver.dev/schema/bpmn";
 const APPWEAVER_ACTION_TYPE = "appweaver:action";
 const SERVICE_TASK_TYPE = "bpmn:ServiceTask";
+const FLOWABLE_NS = "http://flowable.org/bpmn";
+const FLOWABLE_PREFIX = "flowable";
+const XMLNS_NS = "http://www.w3.org/2000/xmlns/";
+const FLOWABLE_FALLBACK_EXPRESSION = "${true}";
+const FLOWABLE_SERVICE_TASK_IMPLEMENTATION_ATTRIBUTES = [
+  "class",
+  "delegateExpression",
+  "type",
+  "operation",
+  "expression",
+];
 
 const workflowCreationOptions: Array<{
   type: WorkflowCreationType;
@@ -98,13 +109,16 @@ function createDefaultBpmnXml(
   const taskElement = workflowType === "service" ? "serviceTask" : "userTask";
   const taskName = workflowType === "service" ? "Service task" : "User task";
 
+  const taskImplementation =
+    workflowType === "service" ? ` flowable:expression="${FLOWABLE_FALLBACK_EXPRESSION}"` : "";
+
   return `<?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" id="Definitions_${processId}" targetNamespace="http://bpmn.io/schema/bpmn">
+<bpmn:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:flowable="${FLOWABLE_NS}" id="Definitions_${processId}" targetNamespace="http://bpmn.io/schema/bpmn">
   <bpmn:process id="Process_${processId}" name="${escapedName}" isExecutable="true">
     <bpmn:startEvent id="StartEvent_1" name="Start">
       <bpmn:outgoing>Flow_1</bpmn:outgoing>
     </bpmn:startEvent>
-    <bpmn:${taskElement} id="Task_1" name="${taskName}">
+    <bpmn:${taskElement} id="Task_1" name="${taskName}"${taskImplementation}>
       <bpmn:incoming>Flow_1</bpmn:incoming>
       <bpmn:outgoing>Flow_2</bpmn:outgoing>
     </bpmn:${taskElement}>
@@ -142,6 +156,52 @@ function createDefaultBpmnXml(
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
 </bpmn:definitions>`;
+}
+
+function hasFlowableServiceTaskImplementation(task: Element) {
+  return FLOWABLE_SERVICE_TASK_IMPLEMENTATION_ATTRIBUTES.some((attributeName) =>
+    Array.from(task.attributes).some((attribute) => attribute.localName === attributeName),
+  );
+}
+
+function ensureFlowableServiceTaskImplementations(xml: string) {
+  if (typeof window === "undefined" || typeof DOMParser === "undefined") {
+    return xml;
+  }
+
+  const document = new DOMParser().parseFromString(xml, "application/xml");
+  const parseError = document.querySelector("parsererror");
+
+  if (parseError) {
+    return xml;
+  }
+
+  const definitions = document.documentElement;
+  const serviceTasks = Array.from(document.getElementsByTagNameNS("*", "serviceTask"));
+  const serviceTasksMissingImplementation = serviceTasks.filter(
+    (task) => !hasFlowableServiceTaskImplementation(task),
+  );
+  let didUpdate = false;
+
+  if (serviceTasksMissingImplementation.length === 0) {
+    return xml;
+  }
+
+  if (!definitions.getAttribute(`xmlns:${FLOWABLE_PREFIX}`)) {
+    definitions.setAttributeNS(XMLNS_NS, `xmlns:${FLOWABLE_PREFIX}`, FLOWABLE_NS);
+    didUpdate = true;
+  }
+
+  for (const task of serviceTasksMissingImplementation) {
+    task.setAttributeNS(
+      FLOWABLE_NS,
+      `${FLOWABLE_PREFIX}:expression`,
+      FLOWABLE_FALLBACK_EXPRESSION,
+    );
+    didUpdate = true;
+  }
+
+  return didUpdate ? new XMLSerializer().serializeToString(document) : xml;
 }
 
 function getSavedWorkflows(value: unknown): SavedBpmnWorkflow[] {
@@ -547,7 +607,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
         }
 
         const result = await modelerRef.current.saveXML({ format: true });
-        const xml = result.xml ?? "";
+        const xml = ensureFlowableServiceTaskImplementations(result.xml ?? "");
         currentXmlRef.current = xml;
         onConfigChangeRef.current({
           workflowId: workflowIdRef.current,
@@ -668,7 +728,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
 
     try {
       const result = await modeler.saveXML({ format: true });
-      const xml = result.xml ?? bpmnXml;
+      const xml = ensureFlowableServiceTaskImplementations(result.xml ?? bpmnXml);
       const savedWorkflow: SavedBpmnWorkflow = {
         id: workflowId,
         name: workflowName.trim() || DEFAULT_WORKFLOW_NAME,
