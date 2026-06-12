@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   appWeaverApiClient,
-  type AppWeaverBeanConfig,
+  // type AppWeaverBeanConfig,
   type AppWeaverDirectRouteConfig,
   type AppWeaverWorkflowConfig,
 } from "@/lib/appweaverApiClient";
@@ -22,7 +22,7 @@ type BpmnWorkflowEditorProps = {
 };
 
 type WorkflowCreationType = "service" | "user";
-type ServiceTaskTargetType = "bean" | "directRoute";
+type ServiceTaskTargetType = /* "bean" | */ "directRoute";
 type ServiceTaskTarget = {
   targetType: ServiceTaskTargetType;
   target: string;
@@ -67,7 +67,10 @@ type BpmnModdle = {
 const DEFAULT_WORKFLOW_NAME = "BPMN Workflow";
 const APPWEAVER_ACTION_NS = "https://appweaver.dev/schema/bpmn";
 const APPWEAVER_ACTION_TYPE = "appweaver:action";
-const SERVICE_TASK_TARGET_TYPES: ServiceTaskTargetType[] = ["bean", "directRoute"];
+const SERVICE_TASK_TARGET_TYPES: ServiceTaskTargetType[] = [
+  // "bean",
+  "directRoute",
+];
 const SERVICE_TASK_TYPE = "bpmn:ServiceTask";
 const FLOWABLE_NS = "http://flowable.org/bpmn";
 const FLOWABLE_PREFIX = "flowable";
@@ -98,13 +101,13 @@ const workflowCreationOptions: Array<{
   },
 ];
 
-const serviceTaskTargetOptions: Array<{
-  type: ServiceTaskTargetType;
-  label: string;
-}> = [
-  { type: "bean", label: "Bean" },
-  { type: "directRoute", label: "Direct route" },
-];
+// const serviceTaskTargetOptions: Array<{
+//   type: ServiceTaskTargetType;
+//   label: string;
+// }> = [
+//   { type: "bean", label: "Bean" },
+//   { type: "directRoute", label: "Direct route" },
+// ];
 
 function createWorkflowId() {
   return `bpmn-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -259,6 +262,10 @@ function fromBackendWorkflow(workflow: AppWeaverWorkflowConfig): SavedBpmnWorkfl
   };
 }
 
+function isWorkflowEndpointRouteConfigError(issue: unknown) {
+  return issue instanceof Error && /route config is required/i.test(issue.message);
+}
+
 function mergeSavedWorkflows(
   first: SavedBpmnWorkflow[],
   second: SavedBpmnWorkflow[],
@@ -405,7 +412,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
   const workflowIdRef = useRef("");
   const workflowNameRef = useRef("");
   const savedWorkflowsRef = useRef<SavedBpmnWorkflow[]>([]);
-  const beansRef = useRef<AppWeaverBeanConfig[]>([]);
+  // const beansRef = useRef<AppWeaverBeanConfig[]>([]);
   const directRoutesRef = useRef<AppWeaverDirectRouteConfig[]>([]);
   const selectedElementRef = useRef<BpmnElement | null>(null);
   const refreshServiceTaskTargetWarningsRef = useRef<() => void>(() => undefined);
@@ -416,11 +423,11 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
   const [isLoadingWorkflows, setIsLoadingWorkflows] = useState(false);
   const [isSavingWorkflow, setIsSavingWorkflow] = useState(false);
   const [isDeletingWorkflow, setIsDeletingWorkflow] = useState(false);
-  const [beans, setBeans] = useState<AppWeaverBeanConfig[]>([]);
+  // const [beans, setBeans] = useState<AppWeaverBeanConfig[]>([]);
   const [directRoutes, setDirectRoutes] = useState<AppWeaverDirectRouteConfig[]>([]);
   const [isLoadingServiceTaskTargets, setIsLoadingServiceTaskTargets] = useState(false);
   const [selectedElement, setSelectedElement] = useState<BpmnElement | null>(null);
-  const [selectedTargetType, setSelectedTargetType] = useState<ServiceTaskTargetType>("bean");
+  const [selectedTargetType, setSelectedTargetType] = useState<ServiceTaskTargetType>("directRoute");
   const [selectedTargetName, setSelectedTargetName] = useState("");
   const [serviceTaskTargetWarnings, setServiceTaskTargetWarnings] = useState<string[]>([]);
   const [workflowCreationType, setWorkflowCreationType] = useState<WorkflowCreationType>("service");
@@ -435,13 +442,14 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
     [configSavedWorkflows, loadedWorkflows],
   );
   const serviceTaskTargetNames = useMemo(() => {
-    const names =
-      selectedTargetType === "bean"
-        ? beans.map((bean) => bean.name ?? "").filter(Boolean)
-        : directRoutes.map((route) => route.name).filter(Boolean);
+    // const names =
+    //   selectedTargetType === "bean"
+    //     ? beans.map((bean) => bean.name ?? "").filter(Boolean)
+    //     : directRoutes.map((route) => route.name).filter(Boolean);
+    const names = directRoutes.map((route) => route.name).filter(Boolean);
 
     return Array.from(new Set(names)).sort((left, right) => left.localeCompare(right));
-  }, [beans, directRoutes, selectedTargetType]);
+  }, [directRoutes]);
   const workflowId =
     typeof config.workflowId === "string" && config.workflowId.trim()
       ? config.workflowId
@@ -487,7 +495,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
 
   const refreshServiceTaskTargetWarnings = useCallback(
     (
-      nextBeans = beansRef.current,
+      // nextBeans = beansRef.current,
       nextDirectRoutes = directRoutesRef.current,
     ) => {
       const modeler = modelerRef.current;
@@ -497,7 +505,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
         return;
       }
 
-      const knownBeanNames = new Set(nextBeans.map((bean) => bean.name ?? "").filter(Boolean));
+      // const knownBeanNames = new Set(nextBeans.map((bean) => bean.name ?? "").filter(Boolean));
       const knownDirectRouteNames = new Set(nextDirectRoutes.map((route) => route.name).filter(Boolean));
       const elementRegistry = modeler.get<BpmnElementRegistry>("elementRegistry");
       const warnings = elementRegistry
@@ -508,12 +516,12 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
           const label = getElementLabel(element);
 
           if (!serviceTaskTarget?.target) {
-            return [`${label} has no bean or direct route selected.`];
+            return [`${label} has no direct route selected.`];
           }
 
-          if (serviceTaskTarget.targetType === "bean" && !knownBeanNames.has(serviceTaskTarget.target)) {
-            return [`${label} uses unknown bean "${serviceTaskTarget.target}".`];
-          }
+          // if (serviceTaskTarget.targetType === "bean" && !knownBeanNames.has(serviceTaskTarget.target)) {
+          //   return [`${label} uses unknown bean "${serviceTaskTarget.target}".`];
+          // }
 
           if (
             serviceTaskTarget.targetType === "directRoute" &&
@@ -558,25 +566,26 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
     setIsLoadingServiceTaskTargets(true);
 
     try {
-      const [backendBeans, backendDirectRoutes] = await Promise.all([
-        appWeaverApiClient.system.beans.list(),
-        appWeaverApiClient.system.directRoutes.list(),
-      ]);
+      // const [backendBeans, backendDirectRoutes] = await Promise.all([
+      //   appWeaverApiClient.system.beans.list(),
+      //   appWeaverApiClient.system.directRoutes.list(),
+      // ]);
+      const backendDirectRoutes = await appWeaverApiClient.system.directRoutes.list();
 
-      beansRef.current = backendBeans;
+      // beansRef.current = backendBeans;
       directRoutesRef.current = backendDirectRoutes;
-      setBeans(backendBeans);
+      // setBeans(backendBeans);
       setDirectRoutes(backendDirectRoutes);
-      refreshServiceTaskTargetWarnings(backendBeans, backendDirectRoutes);
+      refreshServiceTaskTargetWarnings(backendDirectRoutes);
     } catch (issue) {
-      setError(issue instanceof Error ? issue.message : "Could not load beans and direct routes.");
+      setError(issue instanceof Error ? issue.message : "Could not load direct routes.");
     } finally {
       setIsLoadingServiceTaskTargets(false);
     }
   }, [
     refreshServiceTaskTargetWarnings,
     setError,
-    setBeans,
+    // setBeans,
     setDirectRoutes,
     setIsLoadingServiceTaskTargets,
   ]);
@@ -605,7 +614,8 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
       if (targetName) {
         nextValues.push(
           moddle.createAny(APPWEAVER_ACTION_TYPE, APPWEAVER_ACTION_NS, {
-            id: targetType === "directRoute" ? targetName : `${targetType}:${targetName}`,
+            // id: targetType === "directRoute" ? targetName : `${targetType}:${targetName}`,
+            id: targetName,
             target: targetName,
             targetType: getSerializedServiceTaskTargetType(targetType),
           }),
@@ -891,14 +901,27 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
           };
         }),
       };
-      const persistedWorkflow = savedWorkflows.some((workflow) => workflow.id === savedWorkflow.id)
-        ? await appWeaverApiClient.system.workflows.update(savedWorkflow.id, payload)
-        : await appWeaverApiClient.system.workflows.create(payload);
-      const resolvedSavedWorkflow = fromBackendWorkflow(persistedWorkflow);
-      const resolvedSavedWorkflows = mergeSavedWorkflows(
-        [resolvedSavedWorkflow],
-        nextSavedWorkflows,
-      );
+      let resolvedSavedWorkflow = savedWorkflow;
+      let resolvedSavedWorkflows = nextSavedWorkflows;
+      let savedToBackend = true;
+
+      try {
+        const persistedWorkflow = savedWorkflows.some((workflow) => workflow.id === savedWorkflow.id)
+          ? await appWeaverApiClient.system.workflows.update(savedWorkflow.id, payload)
+          : await appWeaverApiClient.system.workflows.create(payload);
+
+        resolvedSavedWorkflow = fromBackendWorkflow(persistedWorkflow);
+        resolvedSavedWorkflows = mergeSavedWorkflows(
+          [resolvedSavedWorkflow],
+          nextSavedWorkflows,
+        );
+      } catch (issue) {
+        if (!isWorkflowEndpointRouteConfigError(issue)) {
+          throw issue;
+        }
+
+        savedToBackend = false;
+      }
 
       setLoadedWorkflows(resolvedSavedWorkflows);
       onConfigChange({
@@ -907,7 +930,11 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
         bpmnXml: resolvedSavedWorkflow.xml || xml,
         savedWorkflows: resolvedSavedWorkflows,
       });
-      setStatus(`Saved ${resolvedSavedWorkflow.name}.`);
+      setStatus(
+        savedToBackend
+          ? `Saved ${resolvedSavedWorkflow.name}.`
+          : `Saved ${resolvedSavedWorkflow.name} in this workflow config.`,
+      );
       setError(null);
     } catch (issue) {
       setError(issue instanceof Error ? issue.message : "Could not save BPMN workflow.");
@@ -1086,7 +1113,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
         {isServiceTask(selectedElement) ? (
           <section style={{ display: "grid", gap: 7 }}>
             <span style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>Service task target</span>
-            <select
+            {/* <select
               value={selectedTargetType}
               onChange={(event) => {
                 const nextTargetType = event.target.value;
@@ -1113,7 +1140,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
                   {option.label}
                 </option>
               ))}
-            </select>
+            </select> */}
             <select
               value={selectedTargetName}
               onChange={(event) =>
@@ -1134,14 +1161,10 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
             >
               <option value="">
                 {isLoadingServiceTaskTargets
-                  ? "Loading targets..."
+                  ? "Loading direct routes..."
                   : serviceTaskTargetNames.length === 0
-                    ? selectedTargetType === "bean"
-                      ? "No beans loaded"
-                      : "No direct routes loaded"
-                    : selectedTargetType === "bean"
-                      ? "Select bean"
-                      : "Select direct route"}
+                    ? "No direct routes loaded"
+                    : "Select direct route"}
               </option>
               {selectedTargetName && !serviceTaskTargetNames.includes(selectedTargetName) ? (
                 <option value={selectedTargetName}>Unknown target: {selectedTargetName}</option>
@@ -1154,9 +1177,7 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
             </select>
             {!isLoadingServiceTaskTargets && serviceTaskTargetNames.length === 0 ? (
               <span style={{ color: "#92400e", fontSize: 12, lineHeight: 1.35 }}>
-                {selectedTargetType === "bean"
-                  ? "No beans came back from /system/beans."
-                  : "No direct routes came back from /system/routes/direct-routes."}
+                No direct routes came back from /system/routes/direct-routes.
               </span>
             ) : null}
           </section>

@@ -516,6 +516,10 @@ function getChoiceBranchFallbackSteps(node: AppNode, branchKey: string) {
     : [];
 }
 
+function getSplitCanvasName(node: AppNode) {
+  return `${node.data?.label || "Split"}: Steps`;
+}
+
 function getNodeNestedCanvasIds(node: AppNode): string[] {
   return [
     ...(node.data?.childCanvasId ? [node.data.childCanvasId] : []),
@@ -1321,6 +1325,28 @@ function buildChoiceBackendStep(workflow: WorkflowRecord, node: AppNode): Backen
   };
 }
 
+function buildSplitBackendStep(workflow: WorkflowRecord, node: AppNode): BackendRouteStep {
+  const splitConfig = stripBackendStepConfig("split", node.data?.config);
+  const childCanvas =
+    node.data?.childCanvasId ? workflow.canvases[node.data.childCanvasId] : null;
+  const steps = childCanvas
+    ? buildBackendStepsFromCanvas(workflow, childCanvas)
+    : Array.isArray(splitConfig.steps)
+      ? splitConfig.steps
+      : [];
+
+  if (steps.length > 0) {
+    splitConfig.steps = steps;
+  } else {
+    delete splitConfig.steps;
+  }
+
+  return {
+    type: "split",
+    ...splitConfig,
+  };
+}
+
 function stripBackendStepConfig(
   componentType: string,
   config: Record<string, unknown> | undefined,
@@ -1927,6 +1953,10 @@ function buildBackendStepsFromCanvas(
 
       if (componentType === "choice") {
         return buildChoiceBackendStep(workflow, node);
+      }
+
+      if (componentType === "split") {
+        return buildSplitBackendStep(workflow, node);
       }
 
       if (componentType === "workflow") {
@@ -2582,6 +2612,7 @@ interface FlowState {
   insertNodeOnEdge: (edgeId: string, type: InsertableNodeType) => void;
   openNestedRouteCanvas: (nodeId: string) => void;
   openChoiceBranchCanvas: (nodeId: string, branchKey: string) => void;
+  openSplitCanvas: (nodeId: string) => void;
   goBackCanvas: () => void;
   openCanvasFromBreadcrumb: (canvasId: string) => void;
   toggleSidebar: () => void;
@@ -3908,6 +3939,81 @@ export const useFlowStore = create<FlowState>()(
                       (branchNode) =>
                         branchNode.type !== "start" ||
                         (edge.source !== branchNode.id && edge.target !== branchNode.id),
+                    ),
+                  ),
+                },
+              },
+            }),
+            selectedNode: null,
+            selectedEdge: null,
+          };
+        }),
+
+      openSplitCanvas: (nodeId) =>
+        set((state) => {
+          const activeWorkflow = state.workflows[state.activeWorkflowId];
+
+          if (!activeWorkflow) {
+            return state;
+          }
+
+          const currentCanvas = activeWorkflow.canvases[activeWorkflow.currentCanvasId];
+          const node = currentCanvas?.nodes.find((item) => item.id === nodeId);
+
+          if (!currentCanvas || !node) {
+            return state;
+          }
+
+          const existingChildCanvasId = node.data?.childCanvasId;
+          const childCanvasId =
+            existingChildCanvasId ??
+            `canvas-${nodeId}-split-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+          const childCanvasName = getSplitCanvasName(node);
+          const childCanvas =
+            activeWorkflow.canvases[childCanvasId] ??
+            createCanvasFromBackendSteps(
+              childCanvasId,
+              childCanvasName,
+              node.data?.config?.steps,
+              { includeStart: false },
+            );
+          const nextNodes = existingChildCanvasId
+            ? currentCanvas.nodes
+            : currentCanvas.nodes.map((item) =>
+                item.id === nodeId
+                  ? {
+                      ...item,
+                      data: {
+                        ...item.data,
+                        childCanvasId,
+                      },
+                    }
+                  : item,
+              );
+          const nextStack = activeWorkflow.canvasStack.includes(childCanvasId)
+            ? activeWorkflow.canvasStack.slice(0, activeWorkflow.canvasStack.indexOf(childCanvasId) + 1)
+            : [...activeWorkflow.canvasStack, childCanvasId];
+
+          return {
+            ...syncActiveWorkflow(state, {
+              ...activeWorkflow,
+              currentCanvasId: childCanvasId,
+              canvasStack: nextStack,
+              canvases: {
+                ...activeWorkflow.canvases,
+                [activeWorkflow.currentCanvasId]: {
+                  ...currentCanvas,
+                  nodes: nextNodes,
+                },
+                [childCanvasId]: {
+                  ...childCanvas,
+                  name: childCanvasName,
+                  nodes: childCanvas.nodes.filter((childNode) => childNode.type !== "start"),
+                  edges: childCanvas.edges.filter((edge) =>
+                    childCanvas.nodes.every(
+                      (childNode) =>
+                        childNode.type !== "start" ||
+                        (edge.source !== childNode.id && edge.target !== childNode.id),
                     ),
                   ),
                 },

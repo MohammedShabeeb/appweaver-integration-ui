@@ -635,6 +635,7 @@ export default function ConfigPanel() {
     clearSelection,
     openNestedRouteCanvas,
     openChoiceBranchCanvas,
+    openSplitCanvas,
     customComponents,
   } = useFlowStore();
   const [promptEditor, setPromptEditor] = useState<PromptTemplateEditorState>(closedPromptTemplateEditor);
@@ -1042,6 +1043,19 @@ export default function ConfigPanel() {
       ? getCanvasStepCount(canvases[canvasId])
       : getBranchConfigStepCount(fallbackSteps);
   };
+  const splitCanvasId = selectedNode.data.childCanvasId;
+  const splitStepCount =
+    splitCanvasId && canvases[splitCanvasId]
+      ? getCanvasStepCount(canvases[splitCanvasId])
+      : getBranchConfigStepCount(config.steps);
+  const splitStrategy =
+    config.splitClazz && typeof config.splitClazz === "object" && !Array.isArray(config.splitClazz)
+      ? "class"
+      : typeof config.expression === "string" && config.expression.trim()
+        ? "expression"
+        : typeof config.tokenize === "string" && config.tokenize.trim()
+          ? "tokenize"
+          : "body";
   const updateChoiceWhenBranch = (index: number, branch: ChoiceWhenBranch) => {
     updateNodeData(selectedNode.id, {
       config: {
@@ -1953,11 +1967,39 @@ export default function ConfigPanel() {
         {type === "split" && (
           <div style={sectionStyle}>
             <label>
+              <span style={labelStyle}>Splitting strategy</span>
+              <select
+                value={splitStrategy}
+                style={inputStyle}
+                onChange={(event) => {
+                  const strategy = event.target.value;
+                  updateNodeData(selectedNode.id, {
+                    config: {
+                      expression: strategy === "expression" ? String(config.expression ?? "${body}") : "",
+                      tokenize: strategy === "tokenize" ? String(config.tokenize ?? ",") : "",
+                      splitClazz:
+                        strategy === "class"
+                          ? config.splitClazz && typeof config.splitClazz === "object" && !Array.isArray(config.splitClazz)
+                            ? config.splitClazz
+                            : { clazz: "", parameters: {} }
+                          : undefined,
+                    },
+                  });
+                }}
+              >
+                <option value="body">Body</option>
+                <option value="expression">Simple expression</option>
+                <option value="tokenize">Tokenize delimiter</option>
+                <option value="class">Splitter class</option>
+              </select>
+            </label>
+            <label>
               <span style={labelStyle}>Simple expression</span>
               <input
                 value={String(config.expression ?? "")}
                 placeholder="${body}"
                 style={inputStyle}
+                disabled={splitStrategy !== "expression"}
                 onChange={(event) =>
                   updateNodeData(selectedNode.id, {
                     config: { expression: event.target.value },
@@ -1972,6 +2014,7 @@ export default function ConfigPanel() {
                 value={String(config.tokenize ?? "")}
                 placeholder=","
                 style={inputStyle}
+                disabled={splitStrategy !== "tokenize"}
                 onChange={(event) =>
                   updateNodeData(selectedNode.id, {
                     config: { tokenize: event.target.value },
@@ -1979,6 +2022,35 @@ export default function ConfigPanel() {
                 }
               />
               <p style={helperTextStyle}>Used only when no simple expression or split class is configured.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Splitter class JSON</span>
+              <textarea
+                key={`${selectedNode.id}-split-class`}
+                defaultValue={JSON.stringify(
+                  config.splitClazz && typeof config.splitClazz === "object" && !Array.isArray(config.splitClazz)
+                    ? config.splitClazz
+                    : {},
+                  null,
+                  2,
+                )}
+                placeholder='{"clazz":"com.example.Splitter","parameters":{}}'
+                style={{ ...inputStyle, minHeight: 110, resize: "vertical", fontFamily: "monospace" }}
+                disabled={splitStrategy !== "class"}
+                onBlur={(event) => {
+                  if (splitStrategy !== "class") {
+                    return;
+                  }
+
+                  try {
+                    updateNodeData(selectedNode.id, {
+                      config: { splitClazz: parseParameters(event.target.value) },
+                    });
+                  } catch (issue) {
+                    window.alert(issue instanceof Error ? issue.message : "Splitter class must be valid JSON.");
+                  }
+                }}
+              />
             </label>
             <label style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}>
               <input
@@ -2040,29 +2112,29 @@ export default function ConfigPanel() {
                 }}
               />
             </label>
-            <label>
-              <span style={labelStyle}>Nested steps JSON</span>
-              <textarea
-                key={`${selectedNode.id}-split-steps`}
-                defaultValue={JSON.stringify(Array.isArray(config.steps) ? config.steps : [], null, 2)}
-                placeholder='[{"type":"log","message":"Inside split"}]'
-                style={{ ...inputStyle, minHeight: 130, resize: "vertical", fontFamily: "monospace" }}
-                onBlur={(event) => {
-                  try {
-                    const parsed = JSON.parse(event.target.value || "[]");
-                    if (!Array.isArray(parsed)) {
-                      throw new Error("Nested steps must be a JSON array.");
-                    }
-                    updateNodeData(selectedNode.id, {
-                      config: { steps: parsed },
-                    });
-                  } catch (issue) {
-                    window.alert(issue instanceof Error ? issue.message : "Nested steps must be valid JSON.");
-                  }
-                }}
-              />
-              <p style={helperTextStyle}>Saved as backend `steps` and applied inside the split block.</p>
-            </label>
+            <div
+              style={{
+                borderRadius: 10,
+                border: "1px solid rgba(203, 213, 225, 0.95)",
+                background: "#ffffff",
+                padding: 12,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+                <span style={{ ...labelStyle, marginBottom: 0 }}>Split steps</span>
+                <span style={{ ...helperTextStyle, marginTop: 0 }}>{splitStepCount} steps</span>
+              </div>
+              <button
+                type="button"
+                style={{ ...primaryBtnStyle, width: "100%" }}
+                onClick={() => openSplitCanvas(selectedNode.id)}
+              >
+                Open split steps
+              </button>
+              <p style={helperTextStyle}>
+                Components placed in this nested canvas export as backend `steps` inside the split block.
+              </p>
+            </div>
           </div>
         )}
 
