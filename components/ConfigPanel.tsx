@@ -47,6 +47,27 @@ const DB_CRUD_OUTPUT_OPTIONS = [
 ] as const;
 const SMART_ROUTER_PROTOCOL_OPTIONS = ["http", "https", "grpc", "soap"] as const;
 const SMART_ROUTER_METHOD_OPTIONS = ["get", "post", "put", "patch", "delete"] as const;
+const FROM_MODE_OPTIONS = [
+  { label: "Direct", value: "direct" },
+  { label: "Normal", value: "normal" },
+] as const;
+const CONTENT_TYPE_OPTIONS = [
+  { label: "Do not apply", value: "" },
+  { label: "JSON", value: "application/json" },
+  { label: "XML", value: "application/xml" },
+  { label: "Text", value: "text/plain" },
+  { label: "HTML", value: "text/html" },
+  { label: "Form URL encoded", value: "application/x-www-form-urlencoded" },
+  { label: "Multipart form data", value: "multipart/form-data" },
+  { label: "Binary", value: "application/octet-stream" },
+  { label: "CSV", value: "text/csv" },
+  { label: "PDF", value: "application/pdf" },
+  { label: "YAML", value: "application/yaml" },
+  { label: "JavaScript", value: "application/javascript" },
+  { label: "GraphQL", value: "application/graphql" },
+  { label: "NDJSON", value: "application/x-ndjson" },
+  { label: "Server-sent events", value: "text/event-stream" },
+] as const;
 const SMART_ROUTER_TRANSFORM_OPTIONS = [
   { label: "Simple Transform", value: "simple-transform" },
   { label: "Array Transform", value: "array-transform" },
@@ -372,6 +393,31 @@ function parseJsonArray(value: string) {
   }
 
   return parsed;
+}
+
+function getFromMode(config: Record<string, unknown>) {
+  const configuredMode = String(config.fromMode ?? "").trim();
+
+  if (configuredMode === "normal") {
+    return "normal";
+  }
+
+  if (configuredMode === "direct") {
+    return "direct";
+  }
+
+  const from = String(config.from ?? "").trim();
+  return from && !from.startsWith("direct:") ? "normal" : "direct";
+}
+
+function buildFromValue(routeId: string, fromMode: string) {
+  const trimmedRouteId = routeId.trim();
+
+  if (!trimmedRouteId) {
+    return "";
+  }
+
+  return fromMode === "normal" ? trimmedRouteId : `direct:${trimmedRouteId}`;
 }
 
 type ChoiceWhenBranch = Record<string, unknown> & {
@@ -759,10 +805,6 @@ export default function ConfigPanel() {
   const componentKey = selectedNode.data.componentKey ?? type ?? "";
   const customComponent = customComponents.find((component) => component.type === componentKey) ?? null;
 
-  if (type === "start") {
-    return null;
-  }
-
   const nodeMeta = nodeTypeMeta[type as keyof typeof nodeTypeMeta] ?? nodeTypeMeta.process;
   const config = (selectedNode.data.config as Record<string, unknown> | undefined) ?? {};
 
@@ -1033,6 +1075,12 @@ export default function ConfigPanel() {
         ? config.values
         : [];
   const choiceWhenBranches = normalizeChoiceWhenBranches(config.when);
+  const fromMode = getFromMode(config);
+  const fromRouteId = String(config.routeId ?? "").trim();
+  const fromContentType = String(config.contentType ?? "application/json");
+  const hasKnownFromContentType = CONTENT_TYPE_OPTIONS.some(
+    (option) => option.value === fromContentType,
+  );
   const choiceBranchCanvasIds =
     selectedNode.data.choiceBranchCanvasIds && typeof selectedNode.data.choiceBranchCanvasIds === "object"
       ? selectedNode.data.choiceBranchCanvasIds
@@ -1070,6 +1118,8 @@ export default function ConfigPanel() {
     :
     type === "marshal"
       ? "Write the exchange body into the selected data format."
+      : type === "start"
+        ? "Configure the route source and route-level metadata."
       : type === "setBody"
         ? "Set the exchange body from an expression or constant data."
       : type === "setHeader"
@@ -1164,6 +1214,155 @@ export default function ConfigPanel() {
             Disabled components stay on the canvas but are ignored when creating or exporting the backend direct route.
           </p>
         </div>
+
+        {type === "start" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>From type</span>
+              <div style={selectWrapStyle}>
+                <select
+                  value={fromMode}
+                  style={selectStyle}
+                  onChange={(event) => {
+                    const nextMode = event.target.value;
+                    updateNodeData(selectedNode.id, {
+                      config: {
+                        fromMode: nextMode,
+                        from: buildFromValue(fromRouteId, nextMode),
+                      },
+                    });
+                  }}
+                >
+                  {FROM_MODE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value} style={optionStyle}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={selectIconStyle}
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+              <p style={helperTextStyle}>
+                Direct exports `from` as `direct:&lt;routeId&gt;`; normal exports `from` as the route ID.
+              </p>
+            </label>
+
+            <label>
+              <span style={labelStyle}>Route ID</span>
+              <input
+                value={fromRouteId}
+                placeholder="systemSecurityAuthApikeyAddClientDirectRoute"
+                style={inputStyle}
+                onChange={(event) => {
+                  const routeId = event.target.value;
+                  updateNodeData(selectedNode.id, {
+                    label: routeId.trim() || "From",
+                    config: {
+                      routeId,
+                      from: buildFromValue(routeId, fromMode),
+                    },
+                  });
+                }}
+              />
+              <p style={helperTextStyle}>Exports as `routeId`.</p>
+            </label>
+
+            <label>
+              <span style={labelStyle}>From</span>
+              <input
+                value={buildFromValue(fromRouteId, fromMode)}
+                placeholder="direct:systemSecurityAuthApikeyAddClientDirectRoute"
+                readOnly
+                style={{ ...inputStyle, background: "#f8fafc" }}
+              />
+            </label>
+
+            <label>
+              <span style={labelStyle}>Content type</span>
+              <div style={selectWrapStyle}>
+                <select
+                  value={fromContentType}
+                  style={selectStyle}
+                  onChange={(event) =>
+                    updateNodeData(selectedNode.id, {
+                      config: { contentType: event.target.value },
+                    })
+                  }
+                >
+                  {CONTENT_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value || "none"} value={option.value} style={optionStyle}>
+                      {option.label}
+                    </option>
+                  ))}
+                  {!hasKnownFromContentType && fromContentType ? (
+                    <option value={fromContentType} style={optionStyle}>
+                      Custom - {fromContentType}
+                    </option>
+                  ) : null}
+                </select>
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={selectIconStyle}
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </div>
+              {fromContentType && !hasKnownFromContentType ? (
+                <p style={helperTextStyle}>Current custom value: `{fromContentType}`</p>
+              ) : null}
+            </label>
+
+            <label>
+              <span style={labelStyle}>Description</span>
+              <textarea
+                value={String(config.description ?? "")}
+                placeholder="Route purpose"
+                style={{ ...inputStyle, minHeight: 88, resize: "vertical" }}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { description: event.target.value },
+                  })
+                }
+              />
+            </label>
+
+            <label>
+              <span style={labelStyle}>On exception JSON</span>
+              <textarea
+                key={`${selectedNode.id}-from-on-exception`}
+                defaultValue={JSON.stringify(Array.isArray(config.onException) ? config.onException : [], null, 2)}
+                placeholder='[{"exception":["java.lang.Exception"],"steps":[{"type":"log","message":"Failed"}]}]'
+                style={{ ...codeTextAreaStyle, minHeight: 160 }}
+                onBlur={(event) => {
+                  try {
+                    updateNodeData(selectedNode.id, {
+                      config: { onException: parseJsonArray(event.target.value) },
+                    });
+                  } catch (issue) {
+                    window.alert(issue instanceof Error ? issue.message : "On exception must be a JSON array.");
+                  }
+                }}
+              />
+              <p style={helperTextStyle}>Route steps are built from the connected canvas components.</p>
+            </label>
+          </div>
+        )}
 
         {type === "marshal" && (
           <div style={sectionStyle}>

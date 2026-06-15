@@ -314,8 +314,10 @@ function normalizeDirectRoutePayload(route: AppWeaverDirectRouteConfig): AppWeav
       ...routeConfig,
       routeId: routeConfig.routeId?.trim() || routeName,
       from: routeConfig.from?.trim() ?? "",
-      contentType: routeConfig.contentType?.trim() || "application/json",
       steps: routeConfig.steps,
+      ...(routeConfig.contentType?.trim()
+        ? { contentType: routeConfig.contentType.trim() }
+        : {}),
     },
   };
 }

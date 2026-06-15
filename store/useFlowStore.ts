@@ -195,8 +195,10 @@ type BackendRouteStep = {
 type BackendRouteConfigExport = {
   routeId: string;
   from: string;
-  contentType: string;
   steps: BackendRouteStep[];
+  contentType?: string;
+  description?: string;
+  onException?: unknown[];
 };
 
 type BackendRouteExport = {
@@ -267,6 +269,8 @@ type RouteImportDefinition = {
   routeId?: string;
   from?: string;
   contentType?: string;
+  description?: string;
+  onException?: unknown;
   steps?: RouteImportStep[];
 };
 
@@ -1791,6 +1795,31 @@ function buildDefaultRouteName(routeId: string) {
   return `${trimmedRouteId.charAt(0).toLowerCase()}${trimmedRouteId.slice(1)}Route`;
 }
 
+function getRouteFromMode(config: Record<string, unknown>) {
+  const configuredMode = String(config.fromMode ?? "").trim();
+
+  if (configuredMode === "normal") {
+    return "normal";
+  }
+
+  if (configuredMode === "direct") {
+    return "direct";
+  }
+
+  const from = String(config.from ?? "").trim();
+  return from && !from.startsWith("direct:") ? "normal" : "direct";
+}
+
+function buildFromEndpoint(routeId: string, fromMode: string) {
+  const trimmedRouteId = routeId.trim();
+
+  if (!trimmedRouteId) {
+    return "";
+  }
+
+  return fromMode === "normal" ? trimmedRouteId : `direct:${trimmedRouteId}`;
+}
+
 function getRouteOrderedNodes(canvas: CanvasState): AppNode[] {
   const startNode = canvas.nodes.find((node) => node.type === "start") ?? null;
   const nonStartNodes = canvas.nodes.filter((node) => node.type !== "start");
@@ -1977,12 +2006,16 @@ function createBackendRouteJson(workflow: WorkflowRecord): BackendRouteExport {
   const startConfig = startNode?.data?.config ?? {};
   const steps = rootCanvas ? buildBackendStepsFromCanvas(workflow, rootCanvas) : [];
   const routeId = stringValueOrDefault(startConfig.routeId, workflow.name);
+  const fromMode = getRouteFromMode(startConfig);
+  const from = buildFromEndpoint(routeId, fromMode);
   const routeName = stringValueOrDefault(
     startConfig.name ?? startConfig.routeName,
     buildDefaultRouteName(routeId),
   );
   const routePath = String(startConfig.path ?? startConfig.routePath ?? "").trim();
   const description = String(startConfig.description ?? "").trim();
+  const contentType = String(startConfig.contentType ?? "application/json").trim();
+  const onException = Array.isArray(startConfig.onException) ? startConfig.onException : [];
 
   return {
     enabled: typeof startConfig.enabled === "boolean" ? startConfig.enabled : true,
@@ -1992,9 +2025,11 @@ function createBackendRouteJson(workflow: WorkflowRecord): BackendRouteExport {
     description,
     config: {
       routeId,
-      from: String(startConfig.from ?? ""),
-      contentType: String(startConfig.contentType ?? "application/json"),
       steps,
+      from,
+      ...(contentType ? { contentType } : {}),
+      ...(description ? { description } : {}),
+      onException,
     },
   };
 }
@@ -2068,13 +2103,18 @@ function buildWorkflowFromRouteDefinition(
     label: typeof route.from === "string" && route.from.trim() ? route.from : "From",
     config: {
       from: route.from ?? "",
+      fromMode:
+        typeof route.from === "string" && route.from.trim() && !route.from.startsWith("direct:")
+          ? "normal"
+          : "direct",
       routeId: route.routeId ?? "",
       contentType: route.contentType ?? "",
+      onException: Array.isArray(route.onException) ? route.onException : [],
       enabled: envelope.enabled ?? true,
       name: envelope.name ?? "",
       path: envelope.path ?? "",
       index: envelope.index ?? 0,
-      description: envelope.description ?? "",
+      description: route.description ?? envelope.description ?? "",
     },
   };
 
