@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
+  AppWeaverApiError,
   appWeaverApiClient,
+  type AppWeaverSecuritySettings,
   type AppWeaverRestRouteConfig,
 } from "@/lib/appweaverApiClient";
 import {
@@ -34,6 +36,14 @@ const DEFAULT_CONTENT = '{\n  "routeId": "",\n  "workflow": "",\n  "description"
 const REST_METHOD_OPTIONS = ["get", "post", "put", "delete"];
 const POLICY_OPTIONS = ["policy1", "policy2", "policy3"];
 const RATE_LIMITER_OPTIONS = ["rateLimiter", "strictRateLimiter", "publicRateLimiter"];
+const DEFAULT_SECURITY_SETTINGS: AppWeaverSecuritySettings = {
+  enabled: true,
+  basic: true,
+  apiKey: true,
+  hmac: true,
+  oauth2: true,
+  allowedUrlPatterns: "/actuator/prometheus,/h2-console/**,/api/idp/**",
+};
 const API_INDEX_CONTENT = `[
   {
     "enabled": true,
@@ -233,6 +243,51 @@ function buildBackendRestRoute(
   };
 }
 
+function parseCommaList(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function serializeCommaList(values: string[]) {
+  return values.map((value) => value.trim()).filter(Boolean).join(",");
+}
+
+function parsePolicyOptions(configs: Array<{ subsection: string; content: string }>) {
+  const names = configs.flatMap((config) => {
+    if (config.subsection !== "policies" && config.subsection !== "authorize") {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(config.content) as { policies?: Record<string, unknown> };
+      return Object.keys(parsed.policies ?? {});
+    } catch {
+      return [];
+    }
+  });
+
+  return Array.from(new Set([...names, ...POLICY_OPTIONS])).filter(Boolean);
+}
+
+function parseRateLimiterOptions(configs: Array<{ subsection: string; content: string }>) {
+  const names = configs.flatMap((config) => {
+    if (config.subsection !== "rateLimiters") {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(config.content) as { rateLimit?: Record<string, unknown> };
+      return Object.keys(parsed.rateLimit ?? {});
+    } catch {
+      return [];
+    }
+  });
+
+  return Array.from(new Set([...names, ...RATE_LIMITER_OPTIONS])).filter(Boolean);
+}
+
 function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div style={{ display: "grid", gap: 6 }}>
@@ -263,6 +318,7 @@ const listItemMetaStyle: React.CSSProperties = { marginTop: 4, fontSize: 12, col
 export default function EndpointsConfigurationWorkspace() {
   const {
     endpointConfigs,
+    securityConfigs,
     addEndpointConfig,
     replaceEndpointConfigs,
     updateEndpointConfig,
@@ -277,8 +333,22 @@ export default function EndpointsConfigurationWorkspace() {
   const [restRoutePath, setRestRoutePath] = useState("routes/llm");
   const [routeLookupName, setRouteLookupName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [securitySettings, setSecuritySettings] = useState<AppWeaverSecuritySettings>(DEFAULT_SECURITY_SETTINGS);
+  const [securitySettingsExists, setSecuritySettingsExists] = useState(false);
+  const [securitySettingsMessage, setSecuritySettingsMessage] = useState<string | null>(null);
+  const [backendPolicyOptions, setBackendPolicyOptions] = useState<string[]>([]);
 
   const selectedItem = endpointConfigs.find((item) => item.id === selectedId) ?? null;
+  const policyOptions = useMemo(
+    () => Array.from(new Set([...backendPolicyOptions, ...parsePolicyOptions(securityConfigs)])),
+    [backendPolicyOptions, securityConfigs],
+  );
+  const rateLimiterOptions = useMemo(() => parseRateLimiterOptions(securityConfigs), [securityConfigs]);
+  const allowedUrlPatterns = useMemo(
+    () => parseCommaList(securitySettings.allowedUrlPatterns),
+    [securitySettings.allowedUrlPatterns],
+  );
+  const isPublicEndpoint = allowedUrlPatterns.includes(apiEditor.path.trim());
   const protocolItems = endpointConfigs.filter((item) => item.protocol === selectedProtocol);
   const routeLookupSuggestions = useMemo(() => {
     const query = routeLookupName.trim().toLowerCase();
@@ -300,6 +370,67 @@ export default function EndpointsConfigurationWorkspace() {
     );
     return groups;
   }, [endpointConfigs]);
+
+  useEffect(() => {
+    const loadSecuritySettings = async () => {
+      try {
+        const settings = await appWeaverApiClient.system.security.authSettings.get();
+        setSecuritySettings(settings);
+        setSecuritySettingsExists(true);
+      } catch (issue) {
+        if (issue instanceof AppWeaverApiError && issue.status === 404) {
+          setSecuritySettings(DEFAULT_SECURITY_SETTINGS);
+          setSecuritySettingsExists(false);
+        }
+      }
+    };
+
+    void loadSecuritySettings();
+  }, []);
+
+  useEffect(() => {
+    const loadPolicies = async () => {
+      try {
+        const policies = await appWeaverApiClient.system.security.authorize.list();
+        setBackendPolicyOptions(Object.keys(policies ?? {}));
+      } catch {
+        setBackendPolicyOptions([]);
+      }
+    };
+
+    void loadPolicies();
+  }, []);
+
+  const setEndpointPublic = async (isPublic: boolean) => {
+    const endpointPath = apiEditor.path.trim();
+
+    if (!endpointPath) {
+      setError("Set the API URL before changing public access.");
+      return;
+    }
+
+    const nextPatterns = isPublic
+      ? Array.from(new Set([...allowedUrlPatterns, endpointPath]))
+      : allowedUrlPatterns.filter((pattern) => pattern !== endpointPath);
+    const nextSettings = {
+      ...securitySettings,
+      allowedUrlPatterns: serializeCommaList(nextPatterns),
+    };
+
+    try {
+      const savedSettings = securitySettingsExists
+        ? await appWeaverApiClient.system.security.authSettings.update(nextSettings)
+        : await appWeaverApiClient.system.security.authSettings.create(nextSettings);
+
+      setSecuritySettings(savedSettings);
+      setSecuritySettingsExists(true);
+      setSecuritySettingsMessage(isPublic ? "Endpoint path added to public bypass paths." : "Endpoint path removed from public bypass paths.");
+      setError(null);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not update allowed URL patterns.");
+      setSecuritySettingsMessage(null);
+    }
+  };
 
   const handleProtocolChange = (protocol: EndpointProtocol) => {
     setSelectedProtocol(protocol);
@@ -568,13 +699,13 @@ export default function EndpointsConfigurationWorkspace() {
                     <label style={{ display: "grid", gap: 6 }}>
                       <span style={fieldLabelStyle}>Policy Name</span>
                       <select value={apiEditor.policyName} onChange={(event) => setApiEditor((current) => ({ ...current, policyName: event.target.value }))} style={fieldStyle}>
-                        {POLICY_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                        {policyOptions.map((option) => <option key={option} value={option}>{option}</option>)}
                       </select>
                     </label>
                     <label style={{ display: "grid", gap: 6 }}>
                       <span style={fieldLabelStyle}>Rate Limiter</span>
                       <select value={apiEditor.rateLimiter} onChange={(event) => setApiEditor((current) => ({ ...current, rateLimiter: event.target.value }))} style={fieldStyle}>
-                        {RATE_LIMITER_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                        {rateLimiterOptions.map((option) => <option key={option} value={option}>{option}</option>)}
                       </select>
                     </label>
                   </div>
@@ -599,6 +730,14 @@ export default function EndpointsConfigurationWorkspace() {
                     <input type="checkbox" checked={apiEditor.enableCors} onChange={(event) => setApiEditor((current) => ({ ...current, enableCors: event.target.checked }))} />
                     Enable CORS
                   </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 13 }}>
+                    <input type="checkbox" checked={isPublicEndpoint} onChange={(event) => void setEndpointPublic(event.target.checked)} />
+                    Public endpoint
+                  </label>
+                  <p style={{ margin: 0, color: "#64748b", fontSize: 12, lineHeight: 1.6 }}>
+                    Public access is controlled by allowedUrlPatterns in global security settings.
+                  </p>
+                  {securitySettingsMessage ? <p style={{ margin: 0, color: "#047857", fontSize: 12, fontWeight: 700 }}>{securitySettingsMessage}</p> : null}
                   <label style={{ display: "grid", gap: 6 }}>
                     <span style={fieldLabelStyle}>Content Type</span>
                     <input value={apiEditor.contentType} onChange={(event) => setApiEditor((current) => ({ ...current, contentType: event.target.value }))} placeholder="application/json" style={fieldStyle} />

@@ -92,6 +92,8 @@ const DEFAULT_ENRICH_STRATEGY_CLASS =
   "com.bytestrone.appweaver.integration.core.aggregator.imp.EnrichAggregationStrategy";
 const DEFAULT_SPLIT_AGGREGATION_STRATEGY_CLASS =
   "com.bytestrone.appweaver.integration.core.aggregator.imp.SourceTrackingAggregationStrategy";
+const DEFAULT_AGGREGATION_STRATEGY_CLASS =
+  "com.bytestrone.appweaver.integration.core.aggregator.imp.BatchAggregationStrategy";
 
 const panelStyle: React.CSSProperties = {
   position: "absolute",
@@ -1104,6 +1106,14 @@ export default function ConfigPanel() {
         : typeof config.tokenize === "string" && config.tokenize.trim()
           ? "tokenize"
           : "body";
+  const splitAggregationMode =
+    config.aggregationMode === "strategy" || config.aggregationMode === "none"
+      ? String(config.aggregationMode)
+      : typeof config.aggregationStrategyClazz === "string" && config.aggregationStrategyClazz.trim()
+        ? "strategy"
+        : config.aggregationClazz && typeof config.aggregationClazz === "object" && !Array.isArray(config.aggregationClazz)
+          ? "object"
+          : "none";
   const updateChoiceWhenBranch = (index: number, branch: ChoiceWhenBranch) => {
     updateNodeData(selectedNode.id, {
       config: {
@@ -2174,6 +2184,7 @@ export default function ConfigPanel() {
                   const strategy = event.target.value;
                   updateNodeData(selectedNode.id, {
                     config: {
+                      splitBody: strategy === "body",
                       expression: strategy === "expression" ? String(config.expression ?? "${body}") : "",
                       tokenize: strategy === "tokenize" ? String(config.tokenize ?? ",") : "",
                       splitClazz:
@@ -2288,6 +2299,51 @@ export default function ConfigPanel() {
               <span style={{ fontWeight: 700 }}>Use virtual thread executor</span>
             </label>
             <label>
+              <span style={labelStyle}>Split aggregation</span>
+              <select
+                value={splitAggregationMode}
+                style={inputStyle}
+                onChange={(event) => {
+                  const aggregationMode = event.target.value;
+                  updateNodeData(selectedNode.id, {
+                    config: {
+                      aggregationMode,
+                      aggregationStrategyClazz:
+                        aggregationMode === "strategy"
+                          ? String(config.aggregationStrategyClazz ?? DEFAULT_SPLIT_AGGREGATION_STRATEGY_CLASS)
+                          : "",
+                      aggregationClazz:
+                        aggregationMode === "object"
+                          ? config.aggregationClazz && typeof config.aggregationClazz === "object" && !Array.isArray(config.aggregationClazz)
+                            ? config.aggregationClazz
+                            : { clazz: DEFAULT_AGGREGATION_STRATEGY_CLASS, parameters: {} }
+                          : undefined,
+                    },
+                  });
+                }}
+              >
+                <option value="none">None</option>
+                <option value="object">Aggregation class object</option>
+                <option value="strategy">Aggregation strategy class</option>
+              </select>
+              <p style={helperTextStyle}>Use the string strategy shape for `aggregationStrategyClazz`, or the object shape for `aggregationClazz`.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Aggregation strategy class</span>
+              <input
+                value={String(config.aggregationStrategyClazz ?? "")}
+                placeholder="org.apache.camel.processor.aggregate.GroupedBodyAggregationStrategy"
+                style={inputStyle}
+                disabled={splitAggregationMode !== "strategy"}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { aggregationStrategyClazz: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Exports as split-level `aggregationStrategyClazz`.</p>
+            </label>
+            <label>
               <span style={labelStyle}>Aggregation class JSON</span>
               <textarea
                 key={`${selectedNode.id}-split-aggregation`}
@@ -2300,7 +2356,12 @@ export default function ConfigPanel() {
                 )}
                 placeholder='{"clazz":"com.example.AggregationStrategy","parameters":{}}'
                 style={{ ...inputStyle, minHeight: 110, resize: "vertical", fontFamily: "monospace" }}
+                disabled={splitAggregationMode !== "object"}
                 onBlur={(event) => {
+                  if (splitAggregationMode !== "object") {
+                    return;
+                  }
+
                   try {
                     updateNodeData(selectedNode.id, {
                       config: { aggregationClazz: parseParameters(event.target.value) },
@@ -2310,6 +2371,42 @@ export default function ConfigPanel() {
                   }
                 }}
               />
+              <p style={helperTextStyle}>Exports as split-level `aggregationClazz` for custom strategies with parameters.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Completion size</span>
+              <input
+                type="number"
+                value={String(config.completionSize ?? "")}
+                min={1}
+                placeholder="2"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: {
+                      completionSize: event.target.value ? Number(event.target.value) : undefined,
+                    },
+                  })
+                }
+              />
+            </label>
+            <label>
+              <span style={labelStyle}>Completion timeout</span>
+              <input
+                type="number"
+                value={String(config.completionTimeOut ?? "")}
+                min={1}
+                placeholder="100"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: {
+                      completionTimeOut: event.target.value ? Number(event.target.value) : undefined,
+                    },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Exports as split-level `completionTimeOut`.</p>
             </label>
             <div
               style={{

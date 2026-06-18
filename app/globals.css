@@ -29,9 +29,7 @@ body {
 
 body {
   margin: 0;
-  background:
-    radial-gradient(circle at top left, rgba(var(--workflow-accent-rgb), 0.18), transparent 28%),
-    linear-gradient(180deg, #f8fafc 0%, #eef4fb 100%);
+  background: #ffffff;
   color: #0f172a;
   font-family: var(--font-body), Arial, Helvetica, sans-serif;
   font-size: var(--text-body-default-size);
@@ -171,9 +169,7 @@ body::-webkit-scrollbar-thumb:hover,
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  background:
-    radial-gradient(circle at top left, rgba(var(--workflow-accent-rgb), 0.12), transparent 22%),
-    linear-gradient(180deg, #ffffff 0%, #f6f9fc 100%);
+  background: #ffffff;
 }
 
 .app-body {
@@ -181,7 +177,7 @@ body::-webkit-scrollbar-thumb:hover,
   flex: 1;
   overflow: hidden;
   position: relative;
-  background: linear-gradient(180deg, #ffffff 0%, #f7fafc 100%);
+  background: #ffffff;
 }
 
 /* ── Top Navigation ────────────────────────────────── */
@@ -1129,7 +1125,7 @@ button.sidebar-item {
 .app-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1291,6 +1287,11 @@ button.sidebar-item {
 .sidebar-group-menu-item:focus-visible {
   outline: 2px solid var(--workflow-accent-outline);
   outline-offset: 2px;
+}
+
+body.direct-route-preview-open .djs-context-pad,
+body.direct-route-preview-open .djs-popup {
+  display: none !important;
 }
 
 @media (max-width: 640px) {

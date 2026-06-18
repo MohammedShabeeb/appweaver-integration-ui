@@ -5,8 +5,11 @@ import {
   appWeaverApiClient,
   // type AppWeaverBeanConfig,
   type AppWeaverDirectRouteConfig,
+  type AppWeaverDirectRouteStep,
   type AppWeaverWorkflowConfig,
 } from "@/lib/appweaverApiClient";
+import { nodeTypeMeta } from "@/components/node-icons";
+import { CircleStop, Eye, Plus, Route } from "lucide-react";
 import type BpmnModeler from "bpmn-js/lib/Modeler";
 
 type SavedBpmnWorkflow = {
@@ -83,6 +86,8 @@ const FLOWABLE_SERVICE_TASK_IMPLEMENTATION_ATTRIBUTES = [
   "operation",
   "expression",
 ];
+const routePreviewAccent = "#2DB780";
+const routePreviewLine = "#94a3b8";
 
 const workflowCreationOptions: Array<{
   type: WorkflowCreationType;
@@ -174,6 +179,106 @@ function createDefaultBpmnXml(
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
 </bpmn:definitions>`;
+}
+
+function getDirectRouteStepLabel(step: AppWeaverDirectRouteStep, index: number) {
+  const meta = getRouteStepMeta(step.type);
+  const explicitLabel =
+    typeof step.name === "string" && step.name.trim()
+      ? step.name
+      : typeof step.routeId === "string" && step.routeId.trim()
+        ? step.routeId
+        : typeof step.path === "string" && step.path.trim()
+          ? step.path
+          : typeof step.type === "string" && step.type.trim()
+            ? meta.label
+            : `Step ${index + 1}`;
+
+  return explicitLabel;
+}
+
+function isRouteStepType(value: string): value is keyof typeof nodeTypeMeta {
+  return value in nodeTypeMeta;
+}
+
+function getRouteStepMeta(type: string) {
+  if (isRouteStepType(type)) {
+    return nodeTypeMeta[type];
+  }
+
+  return {
+    label: type
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/[-_]+/g, " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase())
+      .trim() || "Custom Step",
+    Icon: nodeTypeMeta.workflow.Icon,
+  };
+}
+
+function getStepStringValue(step: AppWeaverDirectRouteStep, keys: string[]) {
+  for (const key of keys) {
+    const value = step[key];
+
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return null;
+}
+
+function getDirectRouteStepSummary(step: AppWeaverDirectRouteStep) {
+  return getStepStringValue(step, [
+    "uri",
+    "endpoint",
+    "endpointUri",
+    "ref",
+    "beanName",
+    "className",
+    "headerName",
+    "propertyName",
+    "expression",
+    "body",
+    "routeId",
+    "path",
+  ]);
+}
+
+function getNestedRouteStepGroups(step: AppWeaverDirectRouteStep) {
+  const groups: Array<{ label: string; steps: AppWeaverDirectRouteStep[] }> = [];
+
+  if (Array.isArray(step.steps)) {
+    groups.push({ label: "Steps", steps: step.steps as AppWeaverDirectRouteStep[] });
+  }
+
+  if (Array.isArray(step.when)) {
+    step.when.forEach((branch, index) => {
+      if (!branch || typeof branch !== "object" || Array.isArray(branch)) {
+        return;
+      }
+
+      const branchRecord = branch as Record<string, unknown>;
+      const branchSteps = branchRecord.steps;
+
+      if (!Array.isArray(branchSteps)) {
+        return;
+      }
+
+      const expression =
+        typeof branchRecord.expression === "string" && branchRecord.expression.trim()
+          ? branchRecord.expression.trim()
+          : `When ${index + 1}`;
+
+      groups.push({ label: expression, steps: branchSteps as AppWeaverDirectRouteStep[] });
+    });
+  }
+
+  if (Array.isArray(step.otherwise)) {
+    groups.push({ label: "Otherwise", steps: step.otherwise as AppWeaverDirectRouteStep[] });
+  }
+
+  return groups;
 }
 
 function hasFlowableServiceTaskImplementation(task: Element) {
@@ -404,6 +509,257 @@ function prepareBpmnXmlForBackend(xml: string) {
   return normalizeAppWeaverDirectRouteActions(ensureFlowableServiceTaskImplementations(xml));
 }
 
+function RoutePreviewConnector() {
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        minHeight: 34,
+        color: routePreviewLine,
+      }}
+    >
+      <span style={{ width: 2, flex: 1, minHeight: 22, background: "currentColor" }} />
+      <svg
+        viewBox="0 0 12 12"
+        width="12"
+        height="12"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M2 3l4 5 4-5" />
+      </svg>
+    </div>
+  );
+}
+
+function RoutePreviewEndpoint({ label, type }: { label: string; type: "start" | "end" }) {
+  const Icon = type === "start" ? nodeTypeMeta.start.Icon : null;
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        placeItems: "center",
+        gap: 8,
+        minWidth: 92,
+        color: type === "start" ? routePreviewAccent : "#475569",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          placeItems: "center",
+          width: 46,
+          height: 46,
+          borderRadius: "50%",
+          border: `2px solid ${type === "start" ? routePreviewAccent : "#64748b"}`,
+          background: "#ffffff",
+        }}
+      >
+        {Icon ? (
+          <Icon width={22} height={22} />
+        ) : (
+          <CircleStop aria-hidden="true" size={22} strokeWidth={2} />
+        )}
+      </div>
+      <span style={{ fontSize: 12, fontWeight: 800 }}>{label}</span>
+    </div>
+  );
+}
+
+function RoutePreviewStepCard({
+  step,
+  index,
+  compact = false,
+}: {
+  step: AppWeaverDirectRouteStep;
+  index: number;
+  compact?: boolean;
+}) {
+  const meta = getRouteStepMeta(step.type);
+  const Icon = meta.Icon;
+  const nestedGroups = getNestedRouteStepGroups(step);
+  const summary = getDirectRouteStepSummary(step);
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gap: 10,
+        width: "100%",
+        maxWidth: compact ? "100%" : 560,
+        borderRadius: 8,
+        border: "1px solid rgba(203, 213, 225, 0.95)",
+        background: "#ffffff",
+        padding: 12,
+        boxShadow: "0 10px 24px rgba(15, 23, 42, 0.06)",
+      }}
+    >
+      <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
+        <div
+          style={{
+            display: "grid",
+            flex: "0 0 auto",
+            placeItems: "center",
+            width: 36,
+            height: 36,
+            borderRadius: 8,
+            background: "var(--workflow-accent-soft)",
+            color: routePreviewAccent,
+          }}
+        >
+          <Icon width={20} height={20} />
+        </div>
+        <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+          <span
+            style={{
+              color: "#0f172a",
+              fontSize: 13,
+              fontWeight: 900,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={getDirectRouteStepLabel(step, index)}
+          >
+            {getDirectRouteStepLabel(step, index)}
+          </span>
+          <span style={{ color: "#64748b", fontSize: 11, fontWeight: 800 }}>{step.type}</span>
+        </div>
+      </div>
+
+      {summary ? (
+        <span
+          style={{
+            color: "#475569",
+            fontSize: 11,
+            lineHeight: 1.35,
+            overflowWrap: "anywhere",
+          }}
+        >
+          {summary}
+        </span>
+      ) : null}
+
+      {nestedGroups.length > 0 ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          {nestedGroups.map((group) => (
+            <div
+              key={`${step.type}-${group.label}`}
+              style={{
+                display: "grid",
+                gap: 6,
+                borderRadius: 8,
+                border: "1px solid rgba(45, 183, 128, 0.22)",
+                background: "rgba(45, 183, 128, 0.06)",
+                padding: 8,
+              }}
+            >
+              <span style={{ color: "#166534", fontSize: 10, fontWeight: 900 }}>
+                {group.label}
+              </span>
+              <RoutePreviewStepSequence steps={group.steps} compact />
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function RoutePreviewStepSequence({
+  steps,
+  compact = false,
+}: {
+  steps: AppWeaverDirectRouteStep[];
+  compact?: boolean;
+}) {
+  if (steps.length === 0) {
+    return (
+      <div
+        style={{
+          display: "grid",
+          placeItems: "center",
+          minHeight: compact ? 48 : 84,
+          borderRadius: 8,
+          border: "1px dashed rgba(148, 163, 184, 0.75)",
+          color: "#64748b",
+          fontSize: 12,
+          fontWeight: 800,
+        }}
+      >
+        No steps
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        justifyItems: "center",
+        gap: compact ? 6 : 8,
+        width: "100%",
+      }}
+    >
+      {steps.map((step, index) => (
+        <div
+          key={`${step.type}-${index}`}
+          style={{
+            display: "grid",
+            justifyItems: "center",
+            gap: compact ? 6 : 8,
+            width: "100%",
+          }}
+        >
+          {index > 0 ? <RoutePreviewConnector /> : null}
+          <RoutePreviewStepCard step={step} index={index} compact={compact} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DirectRouteWorkflowPreview({ route }: { route: AppWeaverDirectRouteConfig }) {
+  const steps = route.config?.steps ?? [];
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        maxHeight: "min(560px, calc(100vh - 260px))",
+        borderRadius: 8,
+        border: "1px solid rgba(203, 213, 225, 0.95)",
+        background: "#f8fafc",
+        overflowY: "auto",
+        overflowX: "hidden",
+        padding: 22,
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          justifyItems: "center",
+          gap: 8,
+          width: "100%",
+        }}
+      >
+        <RoutePreviewEndpoint label="Start" type="start" />
+        <RoutePreviewConnector />
+        <RoutePreviewStepSequence steps={steps} />
+        <RoutePreviewConnector />
+        <RoutePreviewEndpoint label="End" type="end" />
+      </div>
+    </div>
+  );
+}
+
 export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkflowEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const modelerRef = useRef<BpmnModeler | null>(null);
@@ -431,6 +787,10 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
   const [selectedTargetName, setSelectedTargetName] = useState("");
   const [serviceTaskTargetWarnings, setServiceTaskTargetWarnings] = useState<string[]>([]);
   const [workflowCreationType, setWorkflowCreationType] = useState<WorkflowCreationType>("service");
+  const [previewRoute, setPreviewRoute] = useState<AppWeaverDirectRouteConfig | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [isLoadingRoutePreview, setIsLoadingRoutePreview] = useState(false);
+  const [isCreatingDirectRoute, setIsCreatingDirectRoute] = useState(false);
 
   const configSavedWorkflows = useMemo(
     () => getSavedWorkflows(config.savedWorkflows),
@@ -450,6 +810,19 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
 
     return Array.from(new Set(names)).sort((left, right) => left.localeCompare(right));
   }, [directRoutes]);
+  const selectedDirectRoute = useMemo(
+    () => directRoutes.find((route) => route.name === selectedTargetName) ?? null,
+    [directRoutes, selectedTargetName],
+  );
+
+  useEffect(() => {
+    document.body.classList.toggle("direct-route-preview-open", Boolean(previewRoute));
+
+    return () => {
+      document.body.classList.remove("direct-route-preview-open");
+    };
+  }, [previewRoute]);
+
   const workflowId =
     typeof config.workflowId === "string" && config.workflowId.trim()
       ? config.workflowId
@@ -990,16 +1363,87 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
     }
   };
 
+  const handleOpenDirectRoutePreview = async () => {
+    if (!selectedDirectRoute) {
+      setError("Select a direct route before opening its workflow.");
+      return;
+    }
+
+    setIsLoadingRoutePreview(true);
+    setPreviewError(null);
+    setStatus(null);
+    setError(null);
+
+    try {
+      const backendRoute = await appWeaverApiClient.system.directRoutes.get(selectedDirectRoute.name);
+
+      setPreviewRoute(backendRoute);
+    } catch (issue) {
+      setPreviewRoute(selectedDirectRoute);
+      setPreviewError(issue instanceof Error ? issue.message : "Could not load direct route JSON.");
+    } finally {
+      setIsLoadingRoutePreview(false);
+    }
+  };
+
+  const handleCreateDirectRoute = async () => {
+    const routeName = window.prompt("Direct route name");
+    const normalizedRouteName = routeName?.trim();
+
+    if (!normalizedRouteName) {
+      return;
+    }
+
+    if (directRoutes.some((route) => route.name === normalizedRouteName)) {
+      setError(`Direct route "${normalizedRouteName}" already exists.`);
+      return;
+    }
+
+    setIsCreatingDirectRoute(true);
+    setError(null);
+    setStatus(null);
+
+    try {
+      const newRoute: AppWeaverDirectRouteConfig = {
+        enabled: true,
+        name: normalizedRouteName,
+        path: "",
+        index: directRoutes.length,
+        description: "Custom direct route",
+        config: {
+          routeId: normalizedRouteName,
+          from: `direct:${normalizedRouteName}`,
+          contentType: "application/json",
+          steps: [],
+        },
+      };
+      const savedRoute = await appWeaverApiClient.system.directRoutes.create(newRoute);
+      const nextDirectRoutes = Array.from(
+        new Map([...directRoutesRef.current, savedRoute].map((route) => [route.name, route])).values(),
+      ).sort((left, right) => left.name.localeCompare(right.name));
+
+      directRoutesRef.current = nextDirectRoutes;
+      setDirectRoutes(nextDirectRoutes);
+      updateSelectedElementTarget("directRoute", savedRoute.name);
+      setStatus(`Created direct route ${savedRoute.name}.`);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not create direct route.");
+    } finally {
+      setIsCreatingDirectRoute(false);
+    }
+  };
+
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "minmax(260px, 300px) minmax(0, 1fr)",
-        flex: 1,
-        minHeight: 0,
-        gap: 14,
-      }}
-    >
+    <>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(260px, 300px) minmax(0, 1fr)",
+          flex: 1,
+          minHeight: 0,
+          gap: 14,
+        }}
+      >
       <aside
         style={{
           display: "flex",
@@ -1141,40 +1585,93 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
                 </option>
               ))}
             </select> */}
-            <select
-              value={selectedTargetName}
-              onChange={(event) =>
-                updateSelectedElementTarget(selectedTargetType, event.target.value)
-              }
-              disabled={isLoadingServiceTaskTargets || serviceTaskTargetNames.length === 0}
+            <div
               style={{
-                width: "100%",
-                height: 42,
-                borderRadius: 8,
-                border: "1px solid rgba(203, 213, 225, 0.95)",
-                background: "#ffffff",
-                padding: "0 10px",
-                color: "#0f172a",
-                fontSize: 13,
-                fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) 38px 38px",
+                gap: 6,
               }}
             >
-              <option value="">
-                {isLoadingServiceTaskTargets
-                  ? "Loading direct routes..."
-                  : serviceTaskTargetNames.length === 0
-                    ? "No direct routes loaded"
-                    : "Select direct route"}
-              </option>
-              {selectedTargetName && !serviceTaskTargetNames.includes(selectedTargetName) ? (
-                <option value={selectedTargetName}>Unknown target: {selectedTargetName}</option>
-              ) : null}
-              {serviceTaskTargetNames.map((targetName) => (
-                <option key={targetName} value={targetName}>
-                  {targetName}
+              <select
+                value={selectedTargetName}
+                onChange={(event) =>
+                  updateSelectedElementTarget(selectedTargetType, event.target.value)
+                }
+                disabled={isLoadingServiceTaskTargets || serviceTaskTargetNames.length === 0}
+                style={{
+                  width: "100%",
+                  height: 42,
+                  minWidth: 0,
+                  borderRadius: 8,
+                  border: "1px solid rgba(203, 213, 225, 0.95)",
+                  background: "#ffffff",
+                  padding: "0 10px",
+                  color: "#0f172a",
+                  fontSize: 13,
+                  fontFamily: "var(--font-body), Arial, Helvetica, sans-serif",
+                }}
+              >
+                <option value="">
+                  {isLoadingServiceTaskTargets
+                    ? "Loading direct routes..."
+                    : serviceTaskTargetNames.length === 0
+                      ? "No direct routes loaded"
+                      : "Select direct route"}
                 </option>
-              ))}
-            </select>
+                {selectedTargetName && !serviceTaskTargetNames.includes(selectedTargetName) ? (
+                  <option value={selectedTargetName}>Unknown target: {selectedTargetName}</option>
+                ) : null}
+                {serviceTaskTargetNames.map((targetName) => (
+                  <option key={targetName} value={targetName}>
+                    {targetName}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                aria-label="Preview selected direct route workflow"
+                title="Preview selected direct route workflow"
+                onClick={() => void handleOpenDirectRoutePreview()}
+                disabled={!selectedDirectRoute || isLoadingRoutePreview}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 38,
+                  height: 42,
+                  padding: 0,
+                  borderRadius: 8,
+                  border: "1px solid rgba(45, 183, 128, 0.34)",
+                  background: selectedDirectRoute ? "var(--workflow-accent-soft)" : "#f8fafc",
+                  color: selectedDirectRoute ? "var(--workflow-accent)" : "#94a3b8",
+                  cursor: selectedDirectRoute && !isLoadingRoutePreview ? "pointer" : "not-allowed",
+                }}
+              >
+                <Eye aria-hidden="true" size={18} strokeWidth={2.2} />
+              </button>
+              <button
+                type="button"
+                aria-label="Create custom direct route"
+                title="Create custom direct route"
+                onClick={() => void handleCreateDirectRoute()}
+                disabled={isCreatingDirectRoute}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 38,
+                  height: 42,
+                  padding: 0,
+                  borderRadius: 8,
+                  border: "1px solid rgba(45, 183, 128, 0.34)",
+                  background: "#ffffff",
+                  color: "var(--workflow-accent)",
+                  cursor: isCreatingDirectRoute ? "progress" : "pointer",
+                }}
+              >
+                <Plus aria-hidden="true" size={18} strokeWidth={2.4} />
+              </button>
+            </div>
             {!isLoadingServiceTaskTargets && serviceTaskTargetNames.length === 0 ? (
               <span style={{ color: "#92400e", fontSize: 12, lineHeight: 1.35 }}>
                 No direct routes came back from /system/routes/direct-routes.
@@ -1269,6 +1766,56 @@ export default function BpmnWorkflowEditor({ config, onConfigChange }: BpmnWorkf
           overflow: "hidden",
         }}
       />
-    </div>
+      </div>
+
+      {previewRoute ? (
+        <div
+          className="app-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setPreviewRoute(null);
+            }
+          }}
+        >
+          <section
+            className="app-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="direct-route-preview-title"
+            style={{ width: "min(920px, calc(100vw - 48px))", maxWidth: "none" }}
+          >
+            <div className="app-modal-header">
+              <div className="app-modal-icon" aria-hidden="true">
+                <Route size={21} strokeWidth={2.1} />
+              </div>
+              <div className="app-modal-copy">
+                <h3 id="direct-route-preview-title" className="app-modal-title">
+                  {previewRoute.name}
+                </h3>
+                <p className="app-modal-text">
+                  {previewRoute.config?.steps.length ?? 0} components from backend route JSON
+                </p>
+              </div>
+            </div>
+            <DirectRouteWorkflowPreview route={previewRoute} />
+            {previewError ? (
+              <p style={{ margin: "10px 0 0", fontSize: 12, color: "#b91c1c" }}>
+                {previewError}
+              </p>
+            ) : null}
+            <div className="app-modal-actions">
+              <button
+                type="button"
+                className="app-modal-btn app-modal-btn-secondary"
+                onClick={() => setPreviewRoute(null)}
+              >
+                Close
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </>
   );
 }

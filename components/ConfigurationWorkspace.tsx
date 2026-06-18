@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import LlmConfigurationWorkspace from "./LlmConfigurationWorkspace";
 import EndpointsConfigurationWorkspace from "./EndpointsConfigurationWorkspace";
 import {
+  AppWeaverApiError,
   appWeaverApiClient,
   type AppWeaverBeanConfig,
   type AppWeaverDataSourceConfig,
+  type AppWeaverPolicyGroup,
+  type AppWeaverSecuritySettings,
 } from "@/lib/appweaverApiClient";
 
 import {
@@ -47,6 +50,17 @@ type SecurityEditorState = {
   includePrincipal: string;
   authTenants: AuthTenantEditorState[];
   authorizePolicy: AuthorizePolicyEditorState;
+};
+
+type RateLimiterEditorState = {
+  key: string;
+  strategy: "TENANT" | "USER" | "ROUTE" | "IP";
+  limit: string;
+  refreshPeriod: string;
+};
+
+type RateLimiterEntry = RateLimiterEditorState & {
+  limit: string;
 };
 
 type ComponentTemplateDraft = Omit<CreatedComponentTemplate, "id">;
@@ -98,7 +112,7 @@ type AuthTenantEditorState = {
   clients: AuthClientEditorState[];
 };
 
-type AuthorizeRuleType = "ROLE" | "OR" | "AND" | "NOT";
+type AuthorizeRuleType = "ROLE" | "OR" | "SPEL";
 
 type AuthorizeRoleEditorState = {
   id: string;
@@ -110,6 +124,7 @@ type AuthorizeRuleEditorState = {
   type: AuthorizeRuleType;
   roleId: string;
   roleIds: string[];
+  spel: string;
 };
 
 type AuthorizePolicyEditorState = {
@@ -704,6 +719,7 @@ function createAuthorizeRuleEditorState(
     type: overrides.type ?? "ROLE",
     roleId: overrides.roleId ?? roleId,
     roleIds: overrides.roleIds ?? (roleId ? [roleId] : []),
+    spel: overrides.spel ?? "hasRole('manager')",
   };
 }
 
@@ -736,8 +752,15 @@ function buildAuthorizeRule(
     };
   }
 
+  if (rule.type === "SPEL") {
+    return {
+      type: "SPEL",
+      value: rule.spel.trim(),
+    };
+  }
+
   return {
-    type: rule.type,
+    type: "OR",
     policyRules: rule.roleIds
       .map((roleId) => roleNameById.get(roleId))
       .filter((roleName): roleName is string => Boolean(roleName))
@@ -791,6 +814,23 @@ function buildAuthorizeConfig(policy: AuthorizePolicyEditorState) {
 
 function serializeAuthorizeConfig(policy: AuthorizePolicyEditorState) {
   return JSON.stringify(buildAuthorizeConfig(policy), null, 2);
+}
+
+function buildPolicyGroup(policy: AuthorizePolicyEditorState): AppWeaverPolicyGroup {
+  const config = buildAuthorizeConfig(policy);
+  const policyName = policy.policyName.trim();
+  const policyGroup = config.policies[policyName];
+
+  return {
+    name: policyName,
+    roleHierarchy: policyGroup.roleHierarchy,
+    rule: policyGroup.rule as AppWeaverPolicyGroup["rule"],
+    enabled: policyGroup.enabled,
+  };
+}
+
+function serializePolicyGroup(policy: AuthorizePolicyEditorState) {
+  return JSON.stringify(buildPolicyGroup(policy), null, 2);
 }
 
 function parseAuthorizePolicy(content: string): AuthorizePolicyEditorState {
@@ -849,7 +889,7 @@ function parseAuthorizePolicy(content: string): AuthorizePolicyEditorState {
     const firstRoleId = roles[0]?.id ?? "";
     const createParsedRule = (rule?: ParsedAuthorizeRule) => {
       const type: AuthorizeRuleType =
-        rule?.type === "OR" || rule?.type === "AND" || rule?.type === "NOT"
+        rule?.type === "OR" || rule?.type === "SPEL"
           ? rule.type
           : "ROLE";
       const roleId =
@@ -866,13 +906,10 @@ function parseAuthorizePolicy(content: string): AuthorizePolicyEditorState {
         type,
         roleId,
         roleIds,
+        spel: rule?.type === "SPEL" ? rule.value ?? "" : undefined,
       });
     };
-    const parsedRules =
-      policyValue.rule?.type === "AND" &&
-      policyValue.rule.policyRules?.some((rule) => rule.type && rule.type !== "ROLE")
-        ? policyValue.rule.policyRules.map((rule) => createParsedRule(rule))
-        : [createParsedRule(policyValue.rule)];
+    const parsedRules = [createParsedRule(policyValue.rule)];
 
     return {
       policyName,
@@ -887,7 +924,7 @@ function parseAuthorizePolicy(content: string): AuthorizePolicyEditorState {
 }
 
 const SECURITY_DEFAULTS: Record<
-  SecuritySubsection,
+  "auth" | "authorize",
   {
     fileName: string;
     content: string;
@@ -916,7 +953,10 @@ const SECURITY_DEFAULTS: Record<
 };
 
 function createSecurityEditorState(subsection: SecuritySubsection): SecurityEditorState {
-  const defaults = SECURITY_DEFAULTS[subsection];
+  const defaults =
+    subsection === "authorize" || subsection === "policies"
+      ? SECURITY_DEFAULTS.authorize
+      : SECURITY_DEFAULTS.auth;
 
   return {
     fileName: defaults.fileName,
@@ -926,7 +966,9 @@ function createSecurityEditorState(subsection: SecuritySubsection): SecurityEdit
     authTenants:
       subsection === "auth" ? defaults.authTenants : createDefaultAuthTenants(),
     authorizePolicy:
-      subsection === "authorize" ? defaults.authorizePolicy : createDefaultAuthorizePolicy(),
+      subsection === "authorize" || subsection === "policies"
+        ? defaults.authorizePolicy
+        : createDefaultAuthorizePolicy(),
   };
 }
 
@@ -951,8 +993,83 @@ function createSecurityEditorFromItem(item: CreatedSecurityConfig): SecurityEdit
     authTenants:
       item.subsection === "auth" ? parseAuthTenants(item.content, authMethod) : createDefaultAuthTenants(),
     authorizePolicy:
-      item.subsection === "authorize" ? parseAuthorizePolicy(item.content) : createDefaultAuthorizePolicy(),
+      item.subsection === "authorize" || item.subsection === "policies"
+        ? parseAuthorizePolicy(item.content)
+        : createDefaultAuthorizePolicy(),
   };
+}
+
+const DEFAULT_SECURITY_SETTINGS: AppWeaverSecuritySettings = {
+  enabled: true,
+  basic: true,
+  apiKey: true,
+  hmac: true,
+  oauth2: true,
+  allowedUrlPatterns: "/actuator/prometheus,/h2-console/**,/api/idp/**",
+};
+
+function parseCommaList(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function serializeCommaList(values: string[]) {
+  return values.map((value) => value.trim()).filter(Boolean).join(",");
+}
+
+function createRateLimiterEditorState(overrides: Partial<RateLimiterEditorState> = {}): RateLimiterEditorState {
+  return {
+    key: overrides.key ?? "standardTenantLimiter",
+    strategy: overrides.strategy ?? "TENANT",
+    limit: overrides.limit ?? "10",
+    refreshPeriod: overrides.refreshPeriod ?? "PT60S",
+  };
+}
+
+function buildRateLimiterConfig(rateLimiter: RateLimiterEditorState) {
+  return {
+    rateLimit: {
+      [rateLimiter.key.trim()]: {
+        strategy: rateLimiter.strategy,
+        limit: Number(rateLimiter.limit),
+        refreshPeriod: rateLimiter.refreshPeriod.trim(),
+      },
+    },
+  };
+}
+
+function serializeRateLimiterConfig(rateLimiter: RateLimiterEditorState) {
+  return JSON.stringify(buildRateLimiterConfig(rateLimiter), null, 2);
+}
+
+function parseRateLimiters(configs: CreatedSecurityConfig[]): RateLimiterEntry[] {
+  return configs.flatMap((config) => {
+    if (config.subsection !== "rateLimiters") {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(config.content) as {
+        rateLimit?: Record<string, { strategy?: string; limit?: number; refreshPeriod?: string }>;
+      };
+
+      return Object.entries(parsed.rateLimit ?? {}).map(([key, rateLimiter]) => ({
+        key,
+        strategy:
+          rateLimiter.strategy === "USER" ||
+          rateLimiter.strategy === "ROUTE" ||
+          rateLimiter.strategy === "IP"
+            ? rateLimiter.strategy
+            : "TENANT",
+        limit: String(rateLimiter.limit ?? 10),
+        refreshPeriod: rateLimiter.refreshPeriod ?? "PT60S",
+      }));
+    } catch {
+      return [];
+    }
+  });
 }
 
 const pageStyle: React.CSSProperties = {
@@ -2944,12 +3061,20 @@ function SecurityWorkspace() {
     securityConfigs,
     addSecurityConfig,
     updateSecurityConfig,
-    removeSecurityConfig,
   } = useFlowStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editor, setEditor] = useState<SecurityEditorState>(() =>
     createSecurityEditorState(selectedSecuritySubsection),
   );
+  const [globalSettings, setGlobalSettings] = useState<AppWeaverSecuritySettings>(DEFAULT_SECURITY_SETTINGS);
+  const [globalSettingsExists, setGlobalSettingsExists] = useState(false);
+  const [isGlobalSettingsLoading, setIsGlobalSettingsLoading] = useState(false);
+  const [securityMessage, setSecurityMessage] = useState<string | null>(null);
+  const [rateLimiterEditor, setRateLimiterEditor] = useState<RateLimiterEditorState>(() =>
+    createRateLimiterEditorState(),
+  );
+  const [backendPolicies, setBackendPolicies] = useState<Record<string, AppWeaverPolicyGroup>>({});
+  const [isPolicyLoading, setIsPolicyLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const filteredConfigs = securityConfigs.filter(
     (item) => item.subsection === selectedSecuritySubsection,
@@ -2959,16 +3084,151 @@ function SecurityWorkspace() {
     () => serializeAuthConfig(editor.authTenants, editor.authMethod, editor.includePrincipal),
     [editor.authMethod, editor.authTenants, editor.includePrincipal],
   );
-  const authorizePreview = useMemo(
-    () => serializeAuthorizeConfig(editor.authorizePolicy),
+  const policyGroupPreview = useMemo(
+    () => serializePolicyGroup(editor.authorizePolicy),
     [editor.authorizePolicy],
   );
+  const rateLimiterEntries = useMemo(() => parseRateLimiters(securityConfigs), [securityConfigs]);
+  const allowedUrlPatterns = useMemo(
+    () => parseCommaList(globalSettings.allowedUrlPatterns),
+    [globalSettings.allowedUrlPatterns],
+  );
+
+  const loadGlobalSettings = useCallback(async () => {
+    setIsGlobalSettingsLoading(true);
+    setSecurityMessage(null);
+
+    try {
+      const settings = await appWeaverApiClient.system.security.authSettings.get();
+      setGlobalSettings(settings);
+      setGlobalSettingsExists(true);
+      setError(null);
+    } catch (issue) {
+      if (issue instanceof AppWeaverApiError && issue.status === 404) {
+        setGlobalSettings(DEFAULT_SECURITY_SETTINGS);
+        setGlobalSettingsExists(false);
+        setError(null);
+        return;
+      }
+
+      setError(issue instanceof Error ? issue.message : "Could not load global security settings.");
+    } finally {
+      setIsGlobalSettingsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedSecuritySubsection !== "global") return;
+
+    const loadTimer = window.setTimeout(() => {
+      void loadGlobalSettings();
+    }, 0);
+
+    return () => window.clearTimeout(loadTimer);
+  }, [loadGlobalSettings, selectedSecuritySubsection]);
+
+  const loadPolicies = useCallback(async () => {
+    setIsPolicyLoading(true);
+    setSecurityMessage(null);
+
+    try {
+      const policies = await appWeaverApiClient.system.security.authorize.list();
+      setBackendPolicies(policies ?? {});
+      setError(null);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not load authorization policies.");
+    } finally {
+      setIsPolicyLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedSecuritySubsection !== "policies") return;
+
+    const loadTimer = window.setTimeout(() => {
+      void loadPolicies();
+    }, 0);
+
+    return () => window.clearTimeout(loadTimer);
+  }, [loadPolicies, selectedSecuritySubsection]);
 
   const handleSubsectionChange = (section: SecuritySubsection) => {
     selectSecuritySubsection(section);
     setSelectedId(null);
     setEditor(createSecurityEditorState(section));
     setError(null);
+    setSecurityMessage(null);
+  };
+
+  const saveGlobalSettings = async () => {
+    setIsGlobalSettingsLoading(true);
+    setSecurityMessage(null);
+
+    try {
+      const savedSettings = globalSettingsExists
+        ? await appWeaverApiClient.system.security.authSettings.update(globalSettings)
+        : await appWeaverApiClient.system.security.authSettings.create(globalSettings);
+
+      setGlobalSettings(savedSettings);
+      setGlobalSettingsExists(true);
+      setError(null);
+      setSecurityMessage(globalSettingsExists ? "Updated global security settings." : "Created global security settings.");
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not save global security settings.");
+    } finally {
+      setIsGlobalSettingsLoading(false);
+    }
+  };
+
+  const deleteGlobalSettings = async () => {
+    setIsGlobalSettingsLoading(true);
+    setSecurityMessage(null);
+
+    try {
+      await appWeaverApiClient.system.security.authSettings.remove();
+      setGlobalSettings(DEFAULT_SECURITY_SETTINGS);
+      setGlobalSettingsExists(false);
+      setError(null);
+      setSecurityMessage("Deleted security.json. Backend property defaults will be used.");
+    } catch (issue) {
+      if (issue instanceof AppWeaverApiError && issue.status === 404) {
+        setGlobalSettings(DEFAULT_SECURITY_SETTINGS);
+        setGlobalSettingsExists(false);
+        setError(null);
+        setSecurityMessage("No security.json exists. Backend property defaults are already active.");
+        return;
+      }
+
+      setError(issue instanceof Error ? issue.message : "Could not delete global security settings.");
+    } finally {
+      setIsGlobalSettingsLoading(false);
+    }
+  };
+
+  const updateAllowedUrlPattern = (index: number, value: string) => {
+    const nextPatterns = allowedUrlPatterns.map((pattern, patternIndex) =>
+      patternIndex === index ? value : pattern,
+    );
+    setGlobalSettings((current) => ({
+      ...current,
+      allowedUrlPatterns: serializeCommaList(nextPatterns),
+    }));
+  };
+
+  const addAllowedUrlPattern = () => {
+    setGlobalSettings((current) => ({
+      ...current,
+      allowedUrlPatterns: serializeCommaList([...parseCommaList(current.allowedUrlPatterns), "/public/**"]),
+    }));
+  };
+
+  const removeAllowedUrlPattern = (index: number) => {
+    setGlobalSettings((current) => ({
+      ...current,
+      allowedUrlPatterns: serializeCommaList(
+        parseCommaList(current.allowedUrlPatterns).filter((_, patternIndex) => patternIndex !== index),
+      ),
+    }));
   };
 
   const handleAuthMethodChange = (method: AuthMethod) => {
@@ -2983,76 +3243,6 @@ function SecurityWorkspace() {
           : createDefaultAuthTenants(),
     }));
     setError(null);
-  };
-
-  const validateAuthEditor = () => {
-    if (editor.authTenants.length === 0) {
-      throw new Error("Add at least one tenant.");
-    }
-
-    const tenantNames = new Set<string>();
-
-    for (const tenant of editor.authTenants) {
-      const tenantName = tenant.name.trim();
-
-      if (!tenantName) {
-        throw new Error("Each tenant needs a name.");
-      }
-
-      const normalizedTenantName = tenantName.toLowerCase();
-
-      if (tenantNames.has(normalizedTenantName)) {
-        throw new Error(`Duplicate tenant name: ${tenantName}`);
-      }
-
-      tenantNames.add(normalizedTenantName);
-
-      if (editor.authMethod === "apikey" && (!tenant.keyHeader.trim() || !tenant.secretHeader.trim())) {
-        throw new Error(`Tenant ${tenantName} must include both key and secret headers.`);
-      }
-
-      if (editor.authMethod === "jwt") {
-        if (tenant.jwtType === "RS") {
-          if (!tenant.roleKeyClaims.trim() || !tenant.usernameKeyClaims.trim() || !tenant.publicKeyUrl.trim()) {
-            throw new Error(`JWT tenant ${tenantName} needs role claims, username claims, and public key URL.`);
-          }
-
-          try {
-            JSON.parse(tenant.claimsHeaderMapping || "{}");
-          } catch {
-            throw new Error(`JWT tenant ${tenantName} has invalid claims header mapping JSON.`);
-          }
-        }
-
-        if (tenant.jwtType === "HS" && !tenant.jwtSecret.trim()) {
-          throw new Error(`JWT tenant ${tenantName} needs a JWT secret.`);
-        }
-
-        continue;
-      }
-
-      if (tenant.clients.length === 0) {
-        throw new Error(`Tenant ${tenantName} needs at least one client.`);
-      }
-
-      const clientNames = new Set<string>();
-
-      for (const client of tenant.clients) {
-        const clientName = client.name.trim();
-
-        if (!clientName) {
-          throw new Error(`Every client under ${tenantName} needs a name.`);
-        }
-
-        const normalizedClientName = clientName.toLowerCase();
-
-        if (clientNames.has(normalizedClientName)) {
-          throw new Error(`Duplicate client name "${clientName}" under tenant ${tenantName}.`);
-        }
-
-        clientNames.add(normalizedClientName);
-      }
-    }
   };
 
   const validateAuthorizeEditor = () => {
@@ -3097,71 +3287,214 @@ function SecurityWorkspace() {
         continue;
       }
 
+      if (rule.type === "SPEL") {
+        if (!rule.spel.trim()) {
+          throw new Error(`Rule ${ruleIndex + 1} needs a SpEL expression.`);
+        }
+
+        continue;
+      }
+
       if (rule.roleIds.length === 0) {
         throw new Error(`Rule ${ruleIndex + 1} needs at least one role.`);
       }
     }
   };
 
-  const getEditorContent = () => {
-    if (selectedSecuritySubsection === "auth") {
-      validateAuthEditor();
-      return authPreview;
-    }
-
-    validateAuthorizeEditor();
-    return authorizePreview;
-  };
-
-  const runAction = (
-    action: (
-      payload: Omit<CreatedSecurityConfig, "id">,
-    ) => { ok: true } | { ok: false; reason: string },
-  ) => {
+  const savePolicyToBackend = async (mode: "create" | "update") => {
     try {
-      const nextContent = getEditorContent();
+      validateAuthorizeEditor();
+      const policy = buildPolicyGroup(editor.authorizePolicy);
+      const policyName = editor.authorizePolicy.policyName.trim();
 
-      const result = action({
-        subsection: selectedSecuritySubsection,
-        fileName: editor.fileName,
-        content: nextContent,
-      });
+      setIsPolicyLoading(true);
+      setSecurityMessage(null);
 
-      if (!result.ok) {
-        setError(result.reason);
-        return;
-      }
+      const savedPolicy =
+        mode === "create"
+          ? await appWeaverApiClient.system.security.authorize.create(policy)
+          : await appWeaverApiClient.system.security.authorize.update(policyName, policy);
 
+      setBackendPolicies((current) => ({
+        ...current,
+        [policyName]: savedPolicy ?? policy,
+      }));
+      setSelectedId(policyName);
       setError(null);
+      setSecurityMessage(mode === "create" ? `Created policy "${policyName}".` : `Updated policy "${policyName}".`);
     } catch (issue) {
-      setError(
-        issue instanceof Error
-          ? issue.message
-          : selectedSecuritySubsection === "auth"
-            ? "Auth config is incomplete. Fill in the tenant and client details."
-            : "Security config content must be valid JSON.",
-      );
-      return;
+      setError(issue instanceof Error ? issue.message : "Could not save authorization policy.");
+    } finally {
+      setIsPolicyLoading(false);
     }
   };
 
-  const handleDelete = (configId: string) => {
-    removeSecurityConfig(configId);
+  const deletePolicyFromBackend = async (name: string) => {
+    setIsPolicyLoading(true);
+    setSecurityMessage(null);
 
-    if (selectedId === configId) {
-      setSelectedId(null);
-      setEditor(createSecurityEditorState(selectedSecuritySubsection));
+    try {
+      await appWeaverApiClient.system.security.authorize.remove(name);
+      setBackendPolicies((current) => {
+        const nextPolicies = { ...current };
+        delete nextPolicies[name];
+        return nextPolicies;
+      });
+      if (selectedId === name) {
+        setSelectedId(null);
+        setEditor(createSecurityEditorState("policies"));
+      }
       setError(null);
+      setSecurityMessage(`Deleted policy "${name}".`);
+    } catch (issue) {
+      setError(issue instanceof Error ? issue.message : "Could not delete authorization policy.");
+    } finally {
+      setIsPolicyLoading(false);
     }
   };
+
+  if (selectedSecuritySubsection === "global") {
+    return (
+      <div style={workspaceGridStyle}>
+        <section style={workspacePanelStyle}>
+          <SectionTitle
+            title="Global Security Settings"
+            subtitle="Manage the security.json master switch, cooperative auth mechanisms, and public bypass paths."
+          />
+          <div style={{ marginTop: 18, display: "grid", gap: 16, flex: 1, minHeight: 0, alignContent: "start", overflow: "auto", paddingRight: 6 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 24, borderBottom: "1px solid rgba(226, 232, 240, 0.95)", paddingBottom: 2 }}>
+              {(["global", "policies", "rateLimiters"] as const).map((section) => (
+                <button key={section} type="button" onClick={() => handleSubsectionChange(section)} style={{ ...securitySubsectionButtonStyle, color: selectedSecuritySubsection === section ? "var(--workflow-accent)" : "#475569", borderBottom: selectedSecuritySubsection === section ? "2px solid var(--workflow-accent)" : securitySubsectionButtonStyle.borderBottom }}>
+                  {section === "rateLimiters" ? "Rate Limiters" : section === "global" ? "Global Settings" : "Policies"}
+                </button>
+              ))}
+            </div>
+            {!globalSettingsExists ? (
+              <div style={{ borderRadius: 16, border: "1px dashed #cbd5e1", background: "#f8fafc", padding: 16, color: "#475569", fontSize: 13, lineHeight: 1.6 }}>
+                No security.json was found. The backend is using property defaults until you create a config.
+              </div>
+            ) : null}
+            <div style={{ display: "grid", gap: 12 }}>
+              {(["enabled", "basic", "apiKey", "hmac", "oauth2"] as const).map((field) => (
+                <label key={field} style={{ display: "flex", alignItems: "center", gap: 10, color: "#334155", fontSize: 14 }}>
+                  <input
+                    type="checkbox"
+                    checked={globalSettings[field]}
+                    onChange={(event) => setGlobalSettings((current) => ({ ...current, [field]: event.target.checked }))}
+                  />
+                  <span style={{ fontWeight: 700 }}>{field === "apiKey" ? "API Key" : field === "oauth2" ? "OAuth2 / JWT" : field}</span>
+                </label>
+              ))}
+            </div>
+            <div style={{ borderRadius: 16, border: "1px solid rgba(203, 213, 225, 0.95)", background: "#ffffff", padding: 16, display: "grid", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <span style={fieldLabelStyle}>Allowed URL Patterns</span>
+                <button type="button" onClick={addAllowedUrlPattern} style={{ ...secondaryButtonStyle, padding: "8px 12px", fontSize: 12 }}>Add Path</button>
+              </div>
+              {(allowedUrlPatterns.length > 0 ? allowedUrlPatterns : [""]).map((pattern, index) => (
+                <div key={`${index}-${pattern}`} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10 }}>
+                  <input value={pattern} onChange={(event) => updateAllowedUrlPattern(index, event.target.value)} placeholder="/public/**" style={fieldStyle} />
+                  <button type="button" aria-label="Remove allowed URL pattern" onClick={() => removeAllowedUrlPattern(index)} style={deleteIconButtonStyle}>-</button>
+                </div>
+              ))}
+              <p style={{ margin: 0, color: "#64748b", fontSize: 12, lineHeight: 1.6 }}>
+                These paths bypass security. If security is enabled, endpoints not listed here are protected. Basic, API Key, HMAC, and OAuth2 can be enabled together.
+              </p>
+            </div>
+          </div>
+          <div style={{ flexShrink: 0 }}>
+            {error ? <p style={{ margin: 0, color: "#dc2626", fontSize: 13, fontWeight: 600 }}>{error}</p> : null}
+            {securityMessage ? <p style={{ margin: error ? "8px 0 0" : 0, color: "#047857", fontSize: 13, fontWeight: 600 }}>{securityMessage}</p> : null}
+            <div style={stickyActionBarStyle}>
+              <button type="button" onClick={() => void saveGlobalSettings()} disabled={isGlobalSettingsLoading} style={primaryButtonStyle}>
+                {globalSettingsExists ? "Update Global Settings" : "Create Security Config"}
+              </button>
+              <button type="button" onClick={() => void loadGlobalSettings()} disabled={isGlobalSettingsLoading} style={secondaryButtonStyle}>Reload</button>
+              <button type="button" onClick={() => void deleteGlobalSettings()} disabled={isGlobalSettingsLoading || !globalSettingsExists} style={secondaryButtonStyle}>Delete Config</button>
+            </div>
+          </div>
+        </section>
+        <section style={workspacePanelStyle}>
+          <SectionTitle title="Security Behavior" subtitle="How these settings affect endpoint access." />
+          <div style={{ marginTop: 18, display: "grid", gap: 12, color: "#475569", fontSize: 13, lineHeight: 1.6 }}>
+            <p style={{ margin: 0 }}>Setting enabled to false disables security globally.</p>
+            <p style={{ margin: 0 }}>Allowed URL patterns are public bypass paths.</p>
+            <p style={{ margin: 0 }}>Endpoint-specific Basic/API Key/HMAC/OAuth2 selection is not used; auth mechanisms are global and cooperative.</p>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  if (selectedSecuritySubsection === "rateLimiters") {
+    const rateLimiterPreview = serializeRateLimiterConfig(rateLimiterEditor);
+    const selectedRateLimiterConfig = filteredConfigs.find((item) => item.id === selectedId) ?? null;
+
+    return (
+      <div style={workspaceGridStyle}>
+        <section style={workspacePanelStyle}>
+          <SectionTitle title={selectedRateLimiterConfig ? "Edit Rate Limiter" : "Create Rate Limiter"} subtitle="Stored as /system-config/rate-limiter/index.json content until backend management APIs exist." />
+          <div style={{ marginTop: 18, display: "grid", gap: 14, flex: 1, minHeight: 0, alignContent: "start", overflow: "auto", paddingRight: 6 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 24, borderBottom: "1px solid rgba(226, 232, 240, 0.95)", paddingBottom: 2 }}>
+              {(["global", "policies", "rateLimiters"] as const).map((section) => (
+                <button key={section} type="button" onClick={() => handleSubsectionChange(section)} style={{ ...securitySubsectionButtonStyle, color: selectedSecuritySubsection === section ? "var(--workflow-accent)" : "#475569", borderBottom: selectedSecuritySubsection === section ? "2px solid var(--workflow-accent)" : securitySubsectionButtonStyle.borderBottom }}>
+                  {section === "rateLimiters" ? "Rate Limiters" : section === "global" ? "Global Settings" : "Policies"}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+              <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Name / Key</span><input value={rateLimiterEditor.key} onChange={(event) => setRateLimiterEditor((current) => ({ ...current, key: event.target.value }))} placeholder="heavyUserLimiter" style={fieldStyle} /></label>
+              <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Strategy</span><select value={rateLimiterEditor.strategy} onChange={(event) => setRateLimiterEditor((current) => ({ ...current, strategy: event.target.value as RateLimiterEditorState["strategy"] }))} style={fieldStyle}>{(["TENANT", "USER", "ROUTE", "IP"] as const).map((strategy) => <option key={strategy} value={strategy}>{strategy}</option>)}</select></label>
+              <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Limit</span><input value={rateLimiterEditor.limit} onChange={(event) => setRateLimiterEditor((current) => ({ ...current, limit: event.target.value }))} placeholder="10" style={fieldStyle} /></label>
+              <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Refresh Period</span><input value={rateLimiterEditor.refreshPeriod} onChange={(event) => setRateLimiterEditor((current) => ({ ...current, refreshPeriod: event.target.value }))} placeholder="PT60S" style={fieldStyle} /></label>
+            </div>
+            <label style={{ display: "grid", gap: 6 }}><span style={fieldLabelStyle}>Generated JSON Preview</span><textarea value={rateLimiterPreview} readOnly style={{ ...fieldStyle, minHeight: 220, resize: "vertical", fontFamily: "monospace" }} /></label>
+          </div>
+          <div style={{ flexShrink: 0 }}>
+            {error ? <p style={{ margin: 0, color: "#dc2626", fontSize: 13, fontWeight: 600 }}>{error}</p> : null}
+            <div style={stickyActionBarStyle}>
+              <button type="button" onClick={() => {
+                const limit = Number(rateLimiterEditor.limit);
+                if (!rateLimiterEditor.key.trim() || !Number.isFinite(limit) || limit <= 0 || !rateLimiterEditor.refreshPeriod.trim()) {
+                  setError("Rate limiter key, positive limit, and refresh period are required.");
+                  return;
+                }
+                const result = addSecurityConfig({ subsection: "rateLimiters", fileName: "index.json", content: rateLimiterPreview });
+                if (!result.ok) setError(result.reason); else setError(null);
+              }} style={primaryButtonStyle}>Create Rate Limiter</button>
+              <button type="button" onClick={() => {
+                if (!selectedId) return void setError("Select a rate limiter config to edit it.");
+                const result = updateSecurityConfig(selectedId, { subsection: "rateLimiters", fileName: "index.json", content: rateLimiterPreview });
+                if (!result.ok) setError(result.reason); else setError(null);
+              }} style={secondaryButtonStyle}>Edit Rate Limiter</button>
+            </div>
+          </div>
+        </section>
+        <section style={workspacePanelStyle}>
+          <SectionTitle title="Rate Limiters" subtitle="Endpoint security selectors read these names." />
+          <div style={{ marginTop: 18, display: "grid", gap: 10, overflow: "auto" }}>
+            {rateLimiterEntries.map((rateLimiter) => (
+              <button key={rateLimiter.key} type="button" onClick={() => setRateLimiterEditor(rateLimiter)} style={{ textAlign: "left", borderRadius: 18, border: "1px solid rgba(226, 232, 240, 0.95)", background: "#ffffff", padding: "14px 16px", color: "#0f172a", cursor: "pointer" }}>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>{rateLimiter.key}</div>
+                <div style={listItemMetaStyle}>{rateLimiter.strategy} | {rateLimiter.limit} / {rateLimiter.refreshPeriod}</div>
+              </button>
+            ))}
+            {filteredConfigs.map((item) => (
+              <button key={item.id} type="button" onClick={() => { setSelectedId(item.id); setRateLimiterEditor(parseRateLimiters([item])[0] ?? createRateLimiterEditorState()); }} style={{ ...secondaryButtonStyle, textAlign: "left" }}>{item.fileName}</button>
+            ))}
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <>
       <div style={workspaceGridStyle}>
         <section style={workspacePanelStyle}>
           <SectionTitle
-            title={selectedItem ? "Edit Security Config" : "Create Security Config"}
-            subtitle="Manage auth and authorize JSON files for security configuration."
+            title={selectedItem ? "Edit Policy" : "Create Policy"}
+            subtitle="Manage named authorization policies for endpoint policyName selectors."
           />
           <div
             style={{
@@ -3176,7 +3509,7 @@ function SecurityWorkspace() {
             }}
           >
             <div style={{ display: "flex", flexWrap: "wrap", gap: 24, borderBottom: "1px solid rgba(226, 232, 240, 0.95)", paddingBottom: 2 }}>
-              {(["auth", "authorize"] as const).map((section) => (
+              {(["global", "policies", "rateLimiters"] as const).map((section) => (
                 <button
                   key={section}
                   type="button"
@@ -3190,7 +3523,7 @@ function SecurityWorkspace() {
                         : securitySubsectionButtonStyle.borderBottom,
                   }}
                 >
-                  {section}
+                  {section === "rateLimiters" ? "Rate Limiters" : section === "global" ? "Global Settings" : "Policies"}
                 </button>
               ))}
             </div>
@@ -3958,7 +4291,7 @@ function SecurityWorkspace() {
                               }
                               style={fieldStyle}
                             >
-                              {(["ROLE", "OR", "AND", "NOT"] as const).map((ruleType) => (
+                              {(["ROLE", "OR", "SPEL"] as const).map((ruleType) => (
                                 <option key={ruleType} value={ruleType}>
                                   {ruleType}
                                 </option>
@@ -3990,6 +4323,26 @@ function SecurityWorkspace() {
                                   </option>
                                 ))}
                               </select>
+                            </label>
+                          ) : rule.type === "SPEL" ? (
+                            <label style={{ display: "grid", gap: 6 }}>
+                              <span style={fieldLabelStyle}>SpEL Expression</span>
+                              <input
+                                value={rule.spel}
+                                onChange={(event) =>
+                                  setEditor((current) => ({
+                                    ...current,
+                                    authorizePolicy: {
+                                      ...current.authorizePolicy,
+                                      rules: current.authorizePolicy.rules.map((item) =>
+                                        item.id === rule.id ? { ...item, spel: event.target.value } : item,
+                                      ),
+                                    },
+                                  }))
+                                }
+                                placeholder="hasRole('manager') or hasHeader('X-Developer-Mode')"
+                                style={fieldStyle}
+                              />
                             </label>
                           ) : (
                             <div style={{ display: "grid", gap: 8 }}>
@@ -4038,7 +4391,7 @@ function SecurityWorkspace() {
                       type="button"
                       onClick={async () => {
                         try {
-                          await navigator.clipboard.writeText(authorizePreview);
+                          await navigator.clipboard.writeText(policyGroupPreview);
                           setError(null);
                         } catch {
                           setError("Could not copy the generated JSON preview.");
@@ -4050,7 +4403,7 @@ function SecurityWorkspace() {
                     </button>
                   </div>
                   <textarea
-                    value={authorizePreview}
+                    value={policyGroupPreview}
                     readOnly
                     style={{ ...fieldStyle, minHeight: 220, resize: "vertical", fontFamily: "monospace" }}
                   />
@@ -4060,23 +4413,28 @@ function SecurityWorkspace() {
           </div>
           <div style={{ flexShrink: 0 }}>
             {error ? <p style={{ margin: 0, color: "#fca5a5", fontSize: 13 }}>{error}</p> : null}
+            {securityMessage ? <p style={{ margin: error ? "8px 0 0" : 0, color: "#047857", fontSize: 13, fontWeight: 600 }}>{securityMessage}</p> : null}
             <div style={stickyActionBarStyle}>
-              <button type="button" onClick={() => runAction(addSecurityConfig)} style={primaryButtonStyle}>
-                Create Security Config
+              <button type="button" onClick={() => void savePolicyToBackend("create")} disabled={isPolicyLoading} style={primaryButtonStyle}>
+                Create Policy
               </button>
               <button
                 type="button"
                 onClick={() => {
                   if (!selectedId) {
-                    setError("Select a security config from the list to edit it.");
+                    setError("Select a policy from the list to edit it.");
                     return;
                   }
 
-                  runAction((payload) => updateSecurityConfig(selectedId, payload));
+                  void savePolicyToBackend("update");
                 }}
+                disabled={isPolicyLoading}
                 style={secondaryButtonStyle}
               >
-                Edit Security Config
+                Edit Policy
+              </button>
+              <button type="button" onClick={() => void loadPolicies()} disabled={isPolicyLoading} style={secondaryButtonStyle}>
+                {isPolicyLoading ? "Loading..." : "Load Policies"}
               </button>
             </div>
           </div>
@@ -4084,8 +4442,8 @@ function SecurityWorkspace() {
 
         <section style={workspacePanelStyle}>
           <SectionTitle
-            title="List Security Configs"
-            subtitle="Auth and authorize files are grouped by subsection, like a config tree."
+            title="Policies"
+            subtitle="These names are available to endpoint policy selectors."
           />
           <div
             style={{
@@ -4099,111 +4457,90 @@ function SecurityWorkspace() {
               paddingRight: 6,
             }}
           >
-            {(["auth", "authorize"] as const).map((section) => {
-              const sectionItems = securityConfigs.filter((item) => item.subsection === section);
-
-              return (
-                <div key={section} style={{ display: "grid", gap: 10 }}>
+            {Object.keys(backendPolicies).length > 0 ? (
+              Object.entries(backendPolicies).map(([policyName, policy]) => (
+                <div key={policyName} style={{ position: "relative" }}>
                   <button
                     type="button"
-                    onClick={() => handleSubsectionChange(section)}
+                    onClick={() => {
+                      setSelectedId(policyName);
+                      setEditor(
+                        createSecurityEditorFromItem({
+                          id: policyName,
+                          subsection: "policies",
+                          fileName: `${policyName}.json`,
+                          content: JSON.stringify({ policies: { [policyName]: policy } }, null, 2),
+                        }),
+                      );
+                      setError(null);
+                    }}
                     style={{
-                      border: "none",
-                      background: "transparent",
-                      color: selectedSecuritySubsection === section ? "var(--workflow-accent)" : "#475569",
-                      padding: "0 0 8px",
+                      width: "100%",
                       textAlign: "left",
-                      fontSize: 16,
-                      lineHeight: "24px",
-                      fontWeight: 500,
+                      borderRadius: 16,
+                      border:
+                        policyName === selectedId
+                          ? "1px solid rgba(96, 165, 250, 0.5)"
+                          : "1px solid rgba(71, 85, 105, 0.3)",
+                      background:
+                        policyName === selectedId
+                          ? "rgba(30, 64, 175, 0.18)"
+                          : "rgba(255, 255, 255, 0.96)",
+                      padding: "12px 46px 12px 16px",
+                      color: "#0f172a",
                       cursor: "pointer",
-                      textTransform: "lowercase",
-                      borderBottom: selectedSecuritySubsection === section ? "2px solid var(--workflow-accent)" : "2px solid transparent",
-                      width: "fit-content",
                     }}
                   >
-                    {section}
-                  </button>
-                  {sectionItems.length > 0 ? (
-                    sectionItems.map((item) => (
-                      <div key={item.id} style={{ position: "relative", marginLeft: 12 }}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            selectSecuritySubsection(item.subsection);
-                            setSelectedId(item.id);
-                            setEditor(createSecurityEditorFromItem(item));
-                            setError(null);
-                          }}
-                          style={{
-                            width: "100%",
-                            textAlign: "left",
-                            borderRadius: 16,
-                            border:
-                              item.id === selectedId
-                                ? "1px solid rgba(96, 165, 250, 0.5)"
-                                : "1px solid rgba(71, 85, 105, 0.3)",
-                            background:
-                              item.id === selectedId
-                                ? "rgba(30, 64, 175, 0.18)"
-                                : "rgba(255, 255, 255, 0.96)",
-                            padding: "12px 46px 12px 16px",
-                            color: "#0f172a",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <div style={{ fontSize: 14, fontWeight: 700, overflowWrap: "anywhere" }}>
-                            {item.fileName}
-                          </div>
-                          <div style={listItemMetaStyle}>{item.subsection}</div>
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`Delete ${item.fileName}`}
-                          onClick={() => handleDelete(item.id)}
-                          style={{
-                            ...deleteIconButtonStyle,
-                            position: "absolute",
-                            top: "50%",
-                            right: 12,
-                            transform: "translateY(-50%)",
-                          }}
-                        >
-                          <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.8"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            style={{ width: 14, height: 14 }}
-                          >
-                            <path d="M9 3.75h6a1 1 0 0 1 1 1V6H8V4.75a1 1 0 0 1 1-1Z" />
-                            <path d="M4.75 6h14.5" />
-                            <path d="M6.75 6.75 7.6 19a2 2 0 0 0 2 1.86h4.8a2 2 0 0 0 2-1.86l.85-12.25" />
-                            <path d="M10 10.25v6.5" />
-                            <path d="M14 10.25v6.5" />
-                          </svg>
-                        </button>
-                      </div>
-                    ))
-                  ) : (
-                    <div
-                      style={{
-                        marginLeft: 12,
-                        borderRadius: 14,
-                        border: "1px dashed rgba(71, 85, 105, 0.4)",
-                        padding: "14px 16px",
-                        color: "#64748b",
-                        fontSize: 12,
-                      }}
-                    >
-                      No {section} configs created yet.
+                    <div style={{ fontSize: 14, fontWeight: 700, overflowWrap: "anywhere" }}>
+                      {policyName}
                     </div>
-                  )}
+                    <div style={listItemMetaStyle}>
+                      {policy.enabled === false ? "Disabled" : "Enabled"} | {policy.rule?.type ?? "RULE"}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Delete ${policyName}`}
+                    onClick={() => void deletePolicyFromBackend(policyName)}
+                    style={{
+                      ...deleteIconButtonStyle,
+                      position: "absolute",
+                      top: "50%",
+                      right: 12,
+                      transform: "translateY(-50%)",
+                    }}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      style={{ width: 14, height: 14 }}
+                    >
+                      <path d="M9 3.75h6a1 1 0 0 1 1 1V6H8V4.75a1 1 0 0 1 1-1Z" />
+                      <path d="M4.75 6h14.5" />
+                      <path d="M6.75 6.75 7.6 19a2 2 0 0 0 2 1.86h4.8a2 2 0 0 0 2-1.86l.85-12.25" />
+                      <path d="M10 10.25v6.5" />
+                      <path d="M14 10.25v6.5" />
+                    </svg>
+                  </button>
                 </div>
-              );
-            })}
+              ))
+            ) : (
+              <div
+                style={{
+                  borderRadius: 14,
+                  border: "1px dashed rgba(71, 85, 105, 0.4)",
+                  padding: "14px 16px",
+                  color: "#64748b",
+                  fontSize: 12,
+                }}
+              >
+                No backend policies loaded yet.
+              </div>
+            )}
           </div>
         </section>
       </div>

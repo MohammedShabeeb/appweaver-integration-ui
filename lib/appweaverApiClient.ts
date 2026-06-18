@@ -107,6 +107,28 @@ export type AppWeaverRestRouteConfig = {
   };
 };
 
+export type AppWeaverSecuritySettings = {
+  enabled: boolean;
+  basic: boolean;
+  apiKey: boolean;
+  hmac: boolean;
+  oauth2: boolean;
+  allowedUrlPatterns: string;
+};
+
+export type AppWeaverPolicyRule = {
+  type: "AND" | "OR" | "NOT" | "ROLE" | "PERMISSION" | "SPEL";
+  value?: string;
+  policyRules?: AppWeaverPolicyRule[];
+};
+
+export type AppWeaverPolicyGroup = {
+  name?: string;
+  roleHierarchy?: Record<string, string[]>;
+  rule: AppWeaverPolicyRule;
+  enabled?: boolean;
+};
+
 export type AppWeaverDirectRouteStep = {
   type: string;
   [key: string]: unknown;
@@ -165,6 +187,9 @@ const appWeaverEndpoints = {
     restRoute: (name: string) => `/system/routes/rest-routes/${encodeURIComponent(name)}`,
     directRoutes: "/system/routes/direct-routes",
     directRoute: (name: string) => `/system/routes/direct-routes/${encodeURIComponent(name)}`,
+    securityAuthSettings: "/system/security/auth/settings",
+    securityAuthorize: "/system/security/authorize",
+    securityAuthorizePolicy: (name: string) => `/system/security/authorize/${encodeURIComponent(name)}`,
   },
 };
 
@@ -628,6 +653,46 @@ export const appWeaverApiClient = {
         request<AppWeaverRestRouteConfig | null>(appWeaverEndpoints.system.restRoute(name), {
           method: "DELETE",
         }),
+    },
+    security: {
+      authSettings: {
+        get: () =>
+          request<AppWeaverSecuritySettings>(appWeaverEndpoints.system.securityAuthSettings),
+        create: (settings: AppWeaverSecuritySettings) =>
+          request<AppWeaverSecuritySettings>(appWeaverEndpoints.system.securityAuthSettings, {
+            method: "POST",
+            body: settings,
+          }),
+        update: (settings: AppWeaverSecuritySettings) =>
+          request<AppWeaverSecuritySettings>(appWeaverEndpoints.system.securityAuthSettings, {
+            method: "PUT",
+            body: settings,
+          }),
+        remove: () =>
+          request<AppWeaverSecuritySettings | null>(appWeaverEndpoints.system.securityAuthSettings, {
+            method: "DELETE",
+          }),
+      },
+      authorize: {
+        list: () =>
+          request<Record<string, AppWeaverPolicyGroup>>(appWeaverEndpoints.system.securityAuthorize),
+        get: (name: string) =>
+          request<AppWeaverPolicyGroup>(appWeaverEndpoints.system.securityAuthorizePolicy(name)),
+        create: (policy: AppWeaverPolicyGroup) =>
+          request<AppWeaverPolicyGroup>(appWeaverEndpoints.system.securityAuthorize, {
+            method: "POST",
+            body: policy,
+          }),
+        update: (name: string, policy: AppWeaverPolicyGroup) =>
+          request<AppWeaverPolicyGroup>(appWeaverEndpoints.system.securityAuthorizePolicy(name), {
+            method: "PUT",
+            body: { ...policy, name },
+          }),
+        remove: (name: string) =>
+          request<AppWeaverPolicyGroup | null>(appWeaverEndpoints.system.securityAuthorizePolicy(name), {
+            method: "DELETE",
+          }),
+      },
     },
     directRoutes: {
       list: () =>

@@ -15,7 +15,7 @@ type ConfigSection = "beans" | "datasources" | "security" | "llms" | "endpoints"
 type LlmSubsection = "providers" | "rag";
 export type EndpointProtocol = "api" | "grpc" | "sse" | "ws";
 
-export type SecuritySubsection = "auth" | "authorize";
+export type SecuritySubsection = "global" | "policies" | "rateLimiters" | "auth" | "authorize";
 
 type DbCrudOperation =
   | "create"
@@ -226,6 +226,7 @@ type RouteImportStep = {
   steps?: unknown;
   when?: unknown;
   otherwise?: unknown;
+  splitBody?: boolean;
   splitClazz?: unknown;
   tokenize?: string;
   parallel?: boolean;
@@ -675,6 +676,7 @@ function createFlowNode(
     },
     split: {
       disabled: false,
+      splitBody: true,
       expression: "",
       tokenize: "",
       parallel: false,
@@ -682,10 +684,14 @@ function createFlowNode(
       useVirtualThread: false,
       enableParallelExecutorServiceRef: false,
       executorServiceRef: "",
+      aggregationMode: "object",
+      aggregationStrategyClazz: "",
       aggregationClazz: {
         clazz: DEFAULT_AGGREGATION_STRATEGY_CLASS,
         parameters: {},
       },
+      completionSize: undefined,
+      completionTimeOut: undefined,
       steps: [],
     },
     dynamicroute: {
@@ -1378,8 +1384,15 @@ function stripBackendStepConfig(
   if (componentType === "aggregation") {
     const aggregationConfig = { ...backendConfig };
     const rawAggregationClazz = aggregationConfig.aggregationClazz;
+    const directClazz =
+      typeof aggregationConfig.clazz === "string" && aggregationConfig.clazz.trim()
+        ? aggregationConfig.clazz
+        : isPlainRecord(rawAggregationClazz) &&
+            typeof rawAggregationClazz.clazz === "string" &&
+            rawAggregationClazz.clazz.trim()
+          ? rawAggregationClazz.clazz
+          : DEFAULT_AGGREGATION_STRATEGY_CLASS;
 
-    removeBlankStringField(aggregationConfig, "clazz");
     removeBlankStringField(aggregationConfig, "correlationExpression");
 
     if (isPlainRecord(rawAggregationClazz)) {
@@ -1406,7 +1419,7 @@ function stripBackendStepConfig(
       };
     }
 
-    delete aggregationConfig.clazz;
+    aggregationConfig.clazz = directClazz;
 
     if (typeof aggregationConfig.completionSize !== "number" || !Number.isFinite(aggregationConfig.completionSize)) {
       delete aggregationConfig.completionSize;
@@ -1477,16 +1490,37 @@ function stripBackendStepConfig(
 
   if (componentType === "split") {
     const splitConfig = { ...backendConfig };
+    const aggregationMode = String(splitConfig.aggregationMode ?? "").trim();
+    const usesExplicitSplitSource =
+      Boolean(splitConfig.expression) ||
+      Boolean(splitConfig.tokenize) ||
+      isPlainRecord(splitConfig.splitClazz);
 
     removeBlankStringField(splitConfig, "expression");
     removeBlankStringField(splitConfig, "tokenize");
     removeBlankStringField(splitConfig, "executorServiceRef");
+    removeBlankStringField(splitConfig, "aggregationStrategyClazz");
+    delete splitConfig.aggregationMode;
 
     if (!isPlainRecord(splitConfig.splitClazz)) {
       delete splitConfig.splitClazz;
     }
 
-    if (!isPlainRecord(splitConfig.aggregationClazz)) {
+    if (usesExplicitSplitSource || splitConfig.splitBody !== true) {
+      delete splitConfig.splitBody;
+    }
+
+    if (aggregationMode === "none") {
+      delete splitConfig.aggregationClazz;
+      delete splitConfig.aggregationStrategyClazz;
+    } else if (aggregationMode === "strategy") {
+      if (typeof splitConfig.aggregationStrategyClazz !== "string" || !splitConfig.aggregationStrategyClazz.trim()) {
+        delete splitConfig.aggregationStrategyClazz;
+      }
+      if (!isPlainRecord(splitConfig.aggregationClazz)) {
+        delete splitConfig.aggregationClazz;
+      }
+    } else if (!isPlainRecord(splitConfig.aggregationClazz)) {
       delete splitConfig.aggregationClazz;
     }
 
@@ -2309,6 +2343,7 @@ function buildWorkflowFromRouteDefinition(
             ? buildImportedDbCrudConfig(step)
           : componentKey === "split"
             ? {
+                splitBody: Boolean(step.splitBody),
                 expression: step.expression ?? "",
                 tokenize: step.tokenize ?? "",
                 splitClazz:
@@ -2319,6 +2354,14 @@ function buildWorkflowFromRouteDefinition(
                   step.aggregationClazz && typeof step.aggregationClazz === "object" && !Array.isArray(step.aggregationClazz)
                     ? step.aggregationClazz
                     : undefined,
+                aggregationMode:
+                  typeof step.aggregationStrategyClazz === "string" && step.aggregationStrategyClazz.trim()
+                    ? "strategy"
+                    : step.aggregationClazz && typeof step.aggregationClazz === "object" && !Array.isArray(step.aggregationClazz)
+                      ? "object"
+                      : "none",
+                aggregationStrategyClazz:
+                  typeof step.aggregationStrategyClazz === "string" ? step.aggregationStrategyClazz : "",
                 parallel: Boolean(step.parallel),
                 streaming: step.streaming !== false,
                 executorServiceRef: step.executorServiceRef ?? "",
@@ -2428,6 +2471,7 @@ function buildWorkflowFromRouteDefinition(
                             : DEFAULT_AGGREGATION_STRATEGY_CLASS,
                         parameters: step.parameters ?? {},
                       },
+                clazz: step.clazz ?? "",
                 correlationExpression: step.correlationExpression ?? "",
                 completionSize: step.completionSize,
                 completionTimeOut: step.completionTimeOut,
@@ -2769,7 +2813,7 @@ export const useFlowStore = create<FlowState>()(
       isSidebarOpen: false,
       sidebarView: "components",
       selectedConfigSection: "beans",
-      selectedSecuritySubsection: "auth",
+      selectedSecuritySubsection: "global",
       selectedLlmSubsection: "providers",
       beans: [],
       dataSources: [],
@@ -3066,6 +3110,8 @@ export const useFlowStore = create<FlowState>()(
         }
 
         if (
+          config.subsection !== "policies" &&
+          config.subsection !== "rateLimiters" &&
           currentState.securityConfigs.some(
             (item) =>
               item.subsection === config.subsection &&
@@ -3099,6 +3145,8 @@ export const useFlowStore = create<FlowState>()(
         }
 
         if (
+          config.subsection !== "policies" &&
+          config.subsection !== "rateLimiters" &&
           currentState.securityConfigs.some(
             (item) =>
               item.id !== configId &&
