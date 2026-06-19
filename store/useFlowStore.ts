@@ -2899,11 +2899,20 @@ export const useFlowStore = create<FlowState>()(
             }),
             selectedNode: newNode,
             selectedEdge: null,
+            isSidebarOpen: false,
           };
         }),
 
-      setSelectedNode: (node) => set({ selectedNode: node }),
-      setSelectedEdge: (edge) => set({ selectedEdge: edge }),
+      setSelectedNode: (node) =>
+        set({
+          selectedNode: node,
+          ...(node ? { isSidebarOpen: false } : {}),
+        }),
+      setSelectedEdge: (edge) =>
+        set({
+          selectedEdge: edge,
+          ...(edge ? { isSidebarOpen: false } : {}),
+        }),
       clearSelection: () => set({ selectedNode: null, selectedEdge: null }),
       toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
       openSidebar: (view) => set({ isSidebarOpen: true, sidebarView: view }),
