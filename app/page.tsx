@@ -6,6 +6,7 @@ import TopNav from "@/components/TopNav";
 import ComponentsSidebar from "@/components/ComponentsSidebar";
 import ConfigPanel from "@/components/ConfigPanel";
 import ConfigurationWorkspace from "@/components/ConfigurationWorkspace";
+import DirectRouteEditorOverlay from "@/components/DirectRouteEditorOverlay";
 
 export default function Home(){
   const { isSidebarOpen, sidebarView } = useFlowStore();
@@ -23,6 +24,7 @@ export default function Home(){
           <ConfigPanel />
         </div>
       )}
+      <DirectRouteEditorOverlay />
     </div>
   );
 }

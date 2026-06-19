@@ -1294,6 +1294,133 @@ body.direct-route-preview-open .djs-popup {
   display: none !important;
 }
 
+.direct-route-editor-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+}
+
+.direct-route-editor-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 360px) auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 68px;
+  padding: 10px 18px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.95);
+  background: linear-gradient(180deg, #081B32 0%, #0b223f 100%);
+  color: #f8fafc;
+  box-shadow: 0 12px 34px rgba(2, 6, 23, 0.20);
+}
+
+.direct-route-editor-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 12px;
+}
+
+.direct-route-editor-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 8px;
+  border: 1px solid rgba(45, 183, 128, 0.35);
+  background: rgba(236, 249, 243, 0.12);
+  color: #8cdabd;
+}
+
+.direct-route-editor-title h2 {
+  margin: 0;
+  overflow: hidden;
+  color: #f8fafc;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 22px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.direct-route-editor-title p {
+  margin: 2px 0 0;
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.direct-route-editor-status {
+  min-height: 20px;
+  overflow: hidden;
+  color: #bbf7d0;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.direct-route-editor-error {
+  color: #fecaca;
+}
+
+.direct-route-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.direct-route-editor-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 38px;
+  min-width: 112px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0 12px;
+  font-family: var(--font-body), Arial, Helvetica, sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.direct-route-editor-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.direct-route-editor-btn-secondary {
+  border-color: rgba(203, 213, 225, 0.32);
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+}
+
+.direct-route-editor-btn-primary {
+  border-color: rgba(45, 183, 128, 0.42);
+  background: var(--workflow-accent);
+  color: #ffffff;
+}
+
+.direct-route-editor-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #ffffff;
+}
+
 @media (max-width: 640px) {
   .app-modal-actions {
     flex-direction: column-reverse;
@@ -1301,6 +1428,23 @@ body.direct-route-preview-open .djs-popup {
 
   .app-modal-btn {
     width: 100%;
+  }
+
+  .direct-route-editor-header {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .direct-route-editor-status {
+    text-align: left;
+  }
+
+  .direct-route-editor-actions {
+    justify-content: stretch;
+  }
+
+  .direct-route-editor-btn {
+    flex: 1;
   }
 }
 

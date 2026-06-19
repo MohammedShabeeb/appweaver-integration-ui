@@ -8,6 +8,7 @@ import {
   isBuiltInComponent,
 } from "@/config/componentCatalog";
 import type { DataSourceStrategy } from "@/config/datasourceCatalog";
+import type { AppWeaverDirectRouteConfig } from "@/lib/appweaverApiClient";
 
 type InsertableNodeType = Exclude<ComponentType, "start">;
 type SidebarView = "components" | "workflows" | "configs";
@@ -208,6 +209,11 @@ type BackendRouteExport = {
   index: number;
   description: string;
   config: BackendRouteConfigExport;
+};
+
+type DirectRouteEditorSession = {
+  route: AppWeaverDirectRouteConfig;
+  sourceWorkflowId: string;
 };
 
 type RouteImportStep = {
@@ -2669,6 +2675,7 @@ interface FlowState {
   canvasStack: string[];
   selectedNode: AppNode | null;
   selectedEdge: AppEdge | null;
+  directRouteEditorSession: DirectRouteEditorSession | null;
   isSidebarOpen: boolean;
   sidebarView: SidebarView;
   selectedConfigSection: ConfigSection;
@@ -2770,6 +2777,8 @@ interface FlowState {
   exportWorkflow: () => WorkflowExport;
   exportBackendRouteJson: () => BackendRouteExport;
   markBackendRoutePublished: (routeName: string, routeSignature: string) => void;
+  openDirectRouteEditor: (route: AppWeaverDirectRouteConfig) => void;
+  closeDirectRouteEditor: () => void;
   importWorkflow: (raw: unknown, fallbackName?: string) => boolean;
   createWorkflow: (name?: string) => { id: string; name: string };
   selectWorkflow: (workflowId: string) => void;
@@ -2810,6 +2819,7 @@ export const useFlowStore = create<FlowState>()(
       canvasStack: initialWorkflow.canvasStack,
       selectedNode: null,
       selectedEdge: null,
+      directRouteEditorSession: null,
       isSidebarOpen: false,
       sidebarView: "components",
       selectedConfigSection: "beans",
@@ -3498,6 +3508,19 @@ export const useFlowStore = create<FlowState>()(
             },
           });
         }),
+
+      openDirectRouteEditor: (route) =>
+        set((state) => ({
+          directRouteEditorSession: {
+            route,
+            sourceWorkflowId: state.activeWorkflowId,
+          },
+        })),
+
+      closeDirectRouteEditor: () =>
+        set(() => ({
+          directRouteEditorSession: null,
+        })),
 
       importWorkflow: (raw, fallbackName = "Imported Workflow") => {
         const currentWorkflows = get().workflows;
