@@ -30,6 +30,7 @@ const nodeTypes = {
   unmarshal: StepNode,
   setBody: StepNode,
   setHeader: StepNode,
+  removeHeaders: StepNode,
   setProperty: StepNode,
   setContext: StepNode,
   globalOption: StepNode,

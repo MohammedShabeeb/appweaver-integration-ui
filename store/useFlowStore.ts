@@ -229,6 +229,8 @@ type RouteImportStep = {
   useMap?: boolean;
   ref?: string;
   expression?: string;
+  pattern?: string;
+  excludePattern?: string;
   steps?: unknown;
   when?: unknown;
   otherwise?: unknown;
@@ -578,6 +580,7 @@ function createFlowNode(
     unmarshal: "Unmarshal",
     setBody: "Set Body",
     setHeader: "Set Header",
+    removeHeaders: "Remove Headers",
     setProperty: "Set Property",
     setContext: "Set Context",
     globalOption: "Global Option",
@@ -629,6 +632,11 @@ function createFlowNode(
       disabled: false,
       name: "Content-Type",
       expression: "application/json",
+    },
+    removeHeaders: {
+      disabled: false,
+      pattern: "CamelHttp*",
+      excludePattern: "",
     },
     setProperty: {
       disabled: false,
@@ -1467,6 +1475,14 @@ function stripBackendStepConfig(
     return filterConfig;
   }
 
+  if (componentType === "removeHeaders") {
+    const removeHeadersConfig = { ...backendConfig };
+    removeBlankStringField(removeHeadersConfig, "pattern");
+    removeBlankStringField(removeHeadersConfig, "excludePattern");
+
+    return removeHeadersConfig;
+  }
+
   if (componentType === "choice") {
     const choiceConfig = { ...backendConfig };
     const when = Array.isArray(choiceConfig.when)
@@ -2098,6 +2114,7 @@ function buildWorkflowFromRouteDefinition(
       step?.type === "unmarshal" ||
       step?.type === "setBody" ||
       step?.type === "setHeader" ||
+      step?.type === "removeHeaders" ||
       step?.type === "setProperty" ||
       step?.type === "setContext" ||
       step?.type === "globalOption" ||
@@ -2191,6 +2208,8 @@ function buildWorkflowFromRouteDefinition(
               ? step.name?.trim() || "Set Body"
             : componentKey === "setHeader"
               ? step.name?.trim() || "Set Header"
+            : componentKey === "removeHeaders"
+              ? step.pattern?.trim() || "Remove Headers"
               : componentKey === "setProperty"
                 ? step.name?.trim() || "Set Property"
                 : componentKey === "setContext"
@@ -2275,6 +2294,14 @@ function buildWorkflowFromRouteDefinition(
             ? {
                 name: step.name ?? "Content-Type",
                 expression: step.expression ?? "application/json",
+                disabled: Boolean(step.disabled),
+                parameters: step.parameters ?? {},
+                dependencies: normalizeDependencyList(step.dependencies),
+              }
+          : componentKey === "removeHeaders"
+            ? {
+                pattern: step.pattern ?? "CamelHttp*",
+                excludePattern: step.excludePattern ?? "",
                 disabled: Boolean(step.disabled),
                 parameters: step.parameters ?? {},
                 dependencies: normalizeDependencyList(step.dependencies),
@@ -2547,6 +2574,7 @@ function normalizePersistedState(
       "unmarshal",
       "setBody",
       "setHeader",
+      "removeHeaders",
       "setProperty",
       "setContext",
       "globalOption",

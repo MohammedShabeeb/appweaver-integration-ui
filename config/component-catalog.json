@@ -81,6 +81,14 @@
       "dependencies": []
     },
     {
+      "type": "removeHeaders",
+      "defaultGroup": "metadata",
+      "singleEndpointOnly": false,
+      "color": "#0891b2",
+      "bgClass": "sidebar-item-setheader",
+      "dependencies": []
+    },
+    {
       "type": "setProperty",
       "defaultGroup": "metadata",
       "singleEndpointOnly": false,

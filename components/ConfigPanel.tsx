@@ -1134,6 +1134,8 @@ export default function ConfigPanel() {
         ? "Set the exchange body from an expression or constant data."
       : type === "setHeader"
         ? "Set an exchange header from an expression or constant value."
+      : type === "removeHeaders"
+        ? "Remove headers by pattern."
         : type === "setProperty"
           ? "Set an exchange property from an expression or constant value."
         : type === "setContext"
@@ -1692,6 +1694,39 @@ export default function ConfigPanel() {
                 Saved as `expression`. Values containing <code>{"${...}"}</code> or <code>#</code> are evaluated as
                 Camel simple expressions; other values are constants.
               </p>
+            </label>
+          </div>
+        )}
+
+        {type === "removeHeaders" && (
+          <div style={sectionStyle}>
+            <label>
+              <span style={labelStyle}>Header pattern</span>
+              <input
+                value={String(config.pattern ?? "")}
+                placeholder="CamelHttp*"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { pattern: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Saved as `pattern`. Use Camel header wildcard patterns such as `CamelHttp*`.</p>
+            </label>
+            <label>
+              <span style={labelStyle}>Exclude pattern</span>
+              <input
+                value={String(config.excludePattern ?? "")}
+                placeholder="Authorization|X-Correlation-Id"
+                style={inputStyle}
+                onChange={(event) =>
+                  updateNodeData(selectedNode.id, {
+                    config: { excludePattern: event.target.value },
+                  })
+                }
+              />
+              <p style={helperTextStyle}>Optional. Matching headers are preserved when this field is provided.</p>
             </label>
           </div>
         )}

@@ -15,6 +15,7 @@ export type BuiltInComponentType =
   | "unmarshal"
   | "setBody"
   | "setHeader"
+  | "removeHeaders"
   | "setProperty"
   | "setContext"
   | "globalOption"

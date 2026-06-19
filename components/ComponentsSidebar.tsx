@@ -59,6 +59,7 @@ const stepDescriptions: Record<StepListItem["type"], string> = {
   unmarshal: "Read JSON, CSV, or XML into the message body.",
   setBody: "Set the message body from an expression or constant data.",
   setHeader: "Set a message header from an expression or constant value.",
+  removeHeaders: "Remove headers by pattern.",
   setProperty: "Set an exchange property from an expression or constant value.",
   setContext: "Set a shared context value from an expression or constant.",
   globalOption: "Set a reusable Camel global option.",

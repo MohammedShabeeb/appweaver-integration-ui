@@ -407,6 +407,10 @@ export const nodeTypeMeta = {
     label: "Set Header",
     Icon: SetHeaderIcon,
   },
+  removeHeaders: {
+    label: "Remove Headers",
+    Icon: SetHeaderIcon,
+  },
   setProperty: {
     label: "Set Property",
     Icon: SetPropertyIcon,
